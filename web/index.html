@@ -43,8 +43,6 @@ body{font-family:"PingFang SC","Microsoft YaHei",sans-serif;background:#F4F6FB;c
 .m-confirm{background:var(--blue);color:#fff}
 .m-confirm.danger{background:var(--red)}
 .hidden{display:none!important}
-
-/* 登录 */
 #screen-login{justify-content:center;overflow:hidden;z-index:999;position:relative}
 .login-bg{position:absolute;inset:0;overflow:hidden}
 .blob{position:absolute;border-radius:50%;filter:blur(72px);opacity:.5}
@@ -118,7 +116,6 @@ body{font-family:"PingFang SC","Microsoft YaHei",sans-serif;background:#F4F6FB;c
 .qtg{font-size:11.5px;color:var(--faint);font-weight:600;margin:0 0 10px}
 .qtx{font-size:16.5px;line-height:1.55;font-weight:600;margin:0}
 .qb{display:inline-block;font-size:10px;font-weight:700;padding:2px 7px;border-radius:999px;background:var(--bl);color:var(--blue);margin-bottom:8px}
-.sl{position:absolute;inset:0;pointer-events:none}
 .stmp{position:absolute;top:8px;right:8px;width:84px;height:84px;animation:ss .5s cubic-bezier(.2,.85,.3,1.2) forwards}
 @keyframes ss{0%{transform:translateY(-130px)scale(2.2)rotate(var(--rot));opacity:0}55%{transform:translateY(0)scale(1.16)rotate(var(--rot));opacity:1}78%{transform:scale(.9)rotate(var(--rot))}100%{transform:scale(1)rotate(var(--rot));opacity:1}}
 .shk{animation:sx .4s}
@@ -237,7 +234,7 @@ body{font-family:"PingFang SC","Microsoft YaHei",sans-serif;background:#F4F6FB;c
 
 <section id="screen-generate" class="screen"><header class="topbar"><button class="cb" onclick="showScreen('list')">←</button><h2>生成题目</h2></header>
 <div class="gb"><div class="mch"><span>📄</span><span id="gfn">加载中...</span></div>
-<div><p class="sl">题型</p><div class="tg" id="tg"><div class="tc sel" data-t="choice" onclick="selt(this,'choice')"><span class="ck">✓</span><span class="tn">单选题</span><span class="td">四选一</span></div><div class="tc" data-t="multi_choice" onclick="selt(this,'multi_choice')"><span class="ck">✓</span><span class="tn">多选题</span><span class="td">多选多</span></div><div class="tc" data-t="true_false" onclick="selt(this,'true_false')"><span class="ck">✓</span><span class="tn">判断题</span><span class="td">对/错</span></div><div class="tc" data-t="fill" onclick="selt(this,'fill')"><span class="ck">✓</span><span class="tn">填空题</span><span class="td">手动输入</span></div><div class="tc" data-t="subjective" onclick="selt(this,'subjective')"><span class="ck">✓</span><span class="tn">主观题</span><span class="td">简答/论述</span></div></div></div>
+<div><p class="sl">题型（可多选混合出题）</p><div class="tg" id="tg"><div class="tc sel" data-t="choice" onclick="selt(this,'choice')"><span class="ck">✓</span><span class="tn">单选题</span><span class="td">四选一</span></div><div class="tc" data-t="multi_choice" onclick="selt(this,'multi_choice')"><span class="ck">✓</span><span class="tn">多选题</span><span class="td">多选多</span></div><div class="tc" data-t="true_false" onclick="selt(this,'true_false')"><span class="ck">✓</span><span class="tn">判断题</span><span class="td">对/错</span></div><div class="tc" data-t="fill" onclick="selt(this,'fill')"><span class="ck">✓</span><span class="tn">填空题</span><span class="td">手动输入</span></div><div class="tc" data-t="subjective" onclick="selt(this,'subjective')"><span class="ck">✓</span><span class="tn">主观题</span><span class="td">简答/论述</span></div></div></div>
 <div><p class="sl">目标群体</p><select class="as" id="as2"><option value="通用">通用</option><option value="小学1-2年级">小学1-2年级</option><option value="小学3-4年级">小学3-4年级</option><option value="小学5-6年级">小学5-6年级</option><option value="初中">初中</option><option value="高中">高中</option><option value="大学生/成人">大学生/成人</option></select></div>
 <div><p class="sl" style="text-align:center">题目数量</p><div class="stp"><button class="stb" onclick="ac(-1)">−</button><span class="sn" id="sn">5</span><button class="stb" onclick="ac(1)">＋</button></div></div>
 <button class="btn btn-pri" id="gb2" onclick="gq()">生成题目</button></div></section>
@@ -266,15 +263,11 @@ body{font-family:"PingFang SC","Microsoft YaHei",sans-serif;background:#F4F6FB;c
 
 <script>
 const AB='http://localhost:8000';let TK=localStorage.getItem('tk')||'',UID=localStorage.getItem('uid')||'';
-let mats=[],qt='choice',qc=5,qs=null;
+let mats=[],qts=new Set(['choice']),qc=5,qs=null;
 function tt(m,d){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');clearTimeout(t._timer);t._timer=setTimeout(()=>t.classList.remove('show'),d||2000);}
 
-// ====== 安全退出：清除所有命名空间存储 ======
 function nk(r){return UID?'ai_'+UID+'_'+r:'ai_'+r;}
-function clearAllKeys(){
-  ['tk','uid'].forEach(k=>localStorage.removeItem(k));
-  const prefix='ai_';Object.keys(localStorage).filter(k=>k.startsWith(prefix)).forEach(k=>localStorage.removeItem(k));
-}
+function clearAllKeys(){['tk','uid'].forEach(k=>localStorage.removeItem(k));const prefix='ai_';Object.keys(localStorage).filter(k=>k.startsWith(prefix)).forEach(k=>localStorage.removeItem(k));}
 function logout(){TK='';UID='';clearAllKeys();showScreen('login');}
 
 async function api(p,o={}){
@@ -315,11 +308,7 @@ async function ha(){
   catch(e2){const el=document.getElementById('le');el.textContent=(e2&&e2.message)||String(e2)||'操作失败';el.classList.add('show');}
   finally{btn.disabled=false;btn.textContent=ilt?'登录':'注册';}
 }
-// 自动登录：先显示登录页（带加载状态），验证通过才跳转
-if(TK){
-  document.getElementById('lb').textContent='验证中...';document.getElementById('lb').disabled=true;
-  api('/api/auth/me').then(u=>{UID=u.id;localStorage.setItem('uid',String(UID));showScreen('list');checkApi();}).catch(()=>{logout();document.getElementById('lb').textContent='登录';document.getElementById('lb').disabled=false;});
-}
+if(TK){document.getElementById('lb').textContent='验证中...';document.getElementById('lb').disabled=true;api('/api/auth/me').then(u=>{UID=u.id;localStorage.setItem('uid',String(UID));showScreen('list');checkApi();}).catch(()=>{logout();document.getElementById('lb').textContent='登录';document.getElementById('lb').disabled=false;});}
 
 // ====== 电池 + 资料 ======
 async function checkApi(){try{const c=await api('/api/config/config');const btn=document.getElementById('bb');btn.classList.toggle('ok',c.configured);const d=document.createElement('span');d.className='dot '+(c.configured?'on':'off');btn.innerHTML='🔋';btn.appendChild(d);}catch(e){}}
@@ -342,7 +331,7 @@ document.getElementById('fi').onchange=async function(e){
 };
 async function dm(id){const m=mats.find(x=>x.id===id);if(!m)return;om({t:'删除资料',b:'确定删除「'+m.filename+'」吗？',c3:'删除',dg:true,cb:async()=>{try{await api('/api/materials/'+id,{method:'DELETE'});await loadMats();tt('已删除');}catch(e2){tt(e2.message);}}});}
 
-// ====== API配置（命名空间隔离）======
+// ====== API配置 ======
 const PROVS={deepseek:{name:'DeepSeek',base:'https://api.deepseek.com/v1',model:'deepseek-chat'},siliconflow:{name:'SiliconFlow',base:'https://api.siliconflow.cn/v1',model:'Qwen/Qwen2.5-7B-Instruct'},openai:{name:'OpenAI',base:'https://api.openai.com/v1',model:'gpt-3.5-turbo'},tongyi:{name:'通义千问',base:'https://dashscope.aliyuncs.com/compatible-mode/v1',model:'qwen-turbo'},zhipu:{name:'智谱清言',base:'https://open.bigmodel.cn/api/paas/v4',model:'glm-4-flash'},custom:{name:'自定义',base:'',model:''}};
 let cp='custom';
 async function loadCfg(){
@@ -363,18 +352,35 @@ async function sc(){
   try{await api('/api/config/config',{method:'POST',body:JSON.stringify({provider:cp,api_key:k,api_base:b,model_name:m})});tt('✅ 已保存');setStat('ok','🟢 已配置',b+' · '+m);checkApi();}catch(e2){tt('❌ '+e2.message);}
 }
 
-// ====== 主页退出按钮 ======
+// ====== 退出按钮 ======
 setTimeout(()=>{const h=document.querySelector('#screen-list .topbar');if(h){const a=h.lastElementChild;if(a){const l=document.createElement('button');l.className='cb';l.style.cssText='border:none;background:none;font-size:18px;cursor:pointer;color:var(--muted)';l.textContent='⇥';l.title='退出';l.onclick=()=>om({t:'退出登录',b:'退出后当前账号的API配置将被清除，确定退出吗？',c3:'退出',dg:true,cb:()=>logout()});a.parentNode.insertBefore(l,a.nextSibling);}}},100);
 
-// ====== 生成题目 ======
+// ====== 生成题目（混合题型） ======
 let gmi=0;
-function og(id,nm){gmi=id;document.getElementById('gfn').textContent=nm;document.getElementById('tg').querySelector('.tc.sel')?.classList.remove('sel');document.getElementById('tg').querySelector('[data-t="choice"]').classList.add('sel');qt='choice';showScreen('generate');}
-function selt(el,t){document.querySelectorAll('.tc').forEach(c=>c.classList.remove('sel'));el.classList.add('sel');qt=t;}
+function og(id,nm){gmi=id;document.getElementById('gfn').textContent=nm;qts=new Set(['choice']);document.querySelectorAll('#tg .tc').forEach(c=>c.classList.toggle('sel',c.dataset.t==='choice'));showScreen('generate');}
+function selt(el,t){
+  if(qts.has(t)){if(qts.size>1){qts.delete(t);el.classList.remove('sel');}}else{qts.add(t);el.classList.add('sel');}
+}
 function ac(d){const n=qc+d;if(n<1||n>20)return;qc=n;document.getElementById('sn').textContent=n;}
 async function gq(){
+  if(qts.size===0){tt('请至少选择一种题型');return;}
   const btn=document.getElementById('gb2');btn.disabled=true;btn.innerHTML='<span class="spin" style="margin-right:8px"></span>AI 出题中...';
-  try{const d=await api('/api/questions/generate',{method:'POST',body:JSON.stringify({material_id:gmi,question_type:qt,question_count:qc,target_audience:document.getElementById('as2').value})});startQuiz(d);showScreen('practice');}
-  catch(e2){tt(e2.message);}
+  const types=Array.from(qts);const audience=document.getElementById('as2').value;
+  // 每种题型分配题目数（至少1题）
+  const perType=Math.max(1,Math.floor(qc/types.length));
+  const remainder=qc-perType*types.length;
+  try{
+    // 并行请求所有题型
+    const promises=types.map(async(t,i)=>{
+      const count=i===0?perType+remainder:perType;
+      return await api('/api/questions/generate',{method:'POST',body:JSON.stringify({material_id:gmi,question_type:t,question_count:count,target_audience:audience})});
+    });
+    const results=await Promise.all(promises);
+    // 合并题目
+    const allQuestions=results.flatMap(r=>{const qs2=r.questions||[];return qs2||[];});
+    startQuiz({bank_id:results[0].bank_id,questions:allQuestions});
+    showScreen('practice');
+  }catch(e2){tt(e2.message);}
   finally{btn.disabled=false;btn.textContent='生成题目';}
 }
 
@@ -400,59 +406,24 @@ function rq2(){
   document.getElementById('qtx').textContent=q.question;
   document.getElementById('sn2').textContent=qs.streak;
   const w=document.getElementById('ow');ms=[];qs.selected=null;
-
-  if(qq==='subjective'){
-    w.className='opts';
-    w.innerHTML='<textarea id="si2" placeholder="输入你的答案..." style="border:1.5px solid var(--line);border-radius:10px;padding:12px;font-size:14.5px;outline:none;background:#fff;width:100%;min-height:100px;resize:vertical;font-family:inherit"></textarea>';
-    document.getElementById('si2').oninput=function(){qs.selected=this.value.trim()||null;document.getElementById('sb2').disabled=!this.value.trim();};
-  } else if(qq==='true_false'){
-    w.className='opts';
-    w.innerHTML='<button class="opt" data-v="正确">正确</button><button class="opt" data-v="错误">错误</button>';
-    w.querySelectorAll('.opt').forEach(b=>{b.onclick=()=>{if(qs.answered)return;w.querySelectorAll('.opt').forEach(o=>o.classList.remove('sel'));b.classList.add('sel');qs.selected=b.dataset.v;document.getElementById('sb2').disabled=false;};});
-  } else if(q.options){
-    w.className='opts';
-    if(qq==='multi_choice'){
-      w.innerHTML=q.options.map((o,i)=>`<button class="opt" data-i="${i}"><span class="cm">□</span>${o}</button>`).join('');
-      w.querySelectorAll('.opt').forEach(b=>{b.onclick=()=>{if(qs.answered)return;const i=parseInt(b.dataset.i);const idx=ms.indexOf(i);if(idx>=0){ms.splice(idx,1);b.classList.remove('ms');b.querySelector('.cm').textContent='□';}else{ms.push(i);ms.sort();b.classList.add('ms');b.querySelector('.cm').textContent='✓';}qs.selected=ms.length?ms.map(j=>String.fromCharCode(65+j)).join(','):null;document.getElementById('sb2').disabled=!ms.length;};});
-    } else {
-      w.innerHTML=q.options.map((o,i)=>`<button class="opt" data-i="${i}">${o}</button>`).join('');
-      w.querySelectorAll('.opt').forEach(b=>{b.onclick=()=>{if(qs.answered)return;w.querySelectorAll('.opt').forEach(o=>o.classList.remove('sel'));b.classList.add('sel');qs.selected=String.fromCharCode(65+parseInt(b.dataset.i));document.getElementById('sb2').disabled=false;};});
-    }
-  }
-  qs.answered=false;
-  document.getElementById('fa').innerHTML='';
-  document.getElementById('sb2').style.display='';document.getElementById('sb2').disabled=true;
+  if(qq==='subjective'){w.className='opts';w.innerHTML='<textarea id="si2" placeholder="输入你的答案..." style="border:1.5px solid var(--line);border-radius:10px;padding:12px;font-size:14.5px;outline:none;background:#fff;width:100%;min-height:100px;resize:vertical;font-family:inherit"></textarea>';document.getElementById('si2').oninput=function(){qs.selected=this.value.trim()||null;document.getElementById('sb2').disabled=!this.value.trim();};}
+  else if(qq==='true_false'){w.className='opts';w.innerHTML='<button class="opt" data-v="正确">正确</button><button class="opt" data-v="错误">错误</button>';w.querySelectorAll('.opt').forEach(b=>{b.onclick=()=>{if(qs.answered)return;w.querySelectorAll('.opt').forEach(o=>o.classList.remove('sel'));b.classList.add('sel');qs.selected=b.dataset.v;document.getElementById('sb2').disabled=false;};});}
+  else if(q.options){w.className='opts';
+    if(qq==='multi_choice'){w.innerHTML=q.options.map((o,i)=>`<button class="opt" data-i="${i}"><span class="cm">□</span>${o}</button>`).join('');w.querySelectorAll('.opt').forEach(b=>{b.onclick=()=>{if(qs.answered)return;const i=parseInt(b.dataset.i);const idx=ms.indexOf(i);if(idx>=0){ms.splice(idx,1);b.classList.remove('ms');b.querySelector('.cm').textContent='□';}else{ms.push(i);ms.sort();b.classList.add('ms');b.querySelector('.cm').textContent='✓';}qs.selected=ms.length?ms.map(j=>String.fromCharCode(65+j)).join(','):null;document.getElementById('sb2').disabled=!ms.length;};});}
+    else{w.innerHTML=q.options.map((o,i)=>`<button class="opt" data-i="${i}">${o}</button>`).join('');w.querySelectorAll('.opt').forEach(b=>{b.onclick=()=>{if(qs.answered)return;w.querySelectorAll('.opt').forEach(o=>o.classList.remove('sel'));b.classList.add('sel');qs.selected=String.fromCharCode(65+parseInt(b.dataset.i));document.getElementById('sb2').disabled=false;};});}}
+  qs.answered=false;document.getElementById('fa').innerHTML='';document.getElementById('sb2').style.display='';document.getElementById('sb2').disabled=true;
   document.getElementById('nb2').style.display='none';document.getElementById('stl').innerHTML='';
   document.querySelectorAll('#pd span').forEach((s,i)=>s.classList.toggle('cur',i===qs.idx));
 }
-
-async function sa(){
-  if(qs.answered||qs.selected==null)return;qs.answered=true;
-  try{
-    const r=await api('/api/practice/submit',{method:'POST',body:JSON.stringify({bank_id:qs.bankId,question_index:qs.idx,user_answer:qs.selected})});
-    const cor=r.is_correct;
-    if(cor){qs.score++;qs.streak++;}else{qs.streak=0;qs.wrongs.push(qs.idx);}
-    document.getElementById('sn2').textContent=qs.streak;spSt(cor);
-    const w=document.getElementById('ow');w.classList.add('lk');
-    if(qs.qtype==='multi_choice'){
-      const cl=r.correct_answer?r.correct_answer.map(c=>c.charCodeAt(0)-65):[];
-      cl.forEach(ci=>{if(w.children[ci])w.children[ci].classList.add('cor');});
-      ms.forEach(si=>{if(!cl.includes(si))w.children[si]?.classList.add('wro');});
-    } else if(qs.qtype==='true_false'){
-      const ci=r.correct_answer==='正确'?0:1;w.children[ci]?.classList.add('cor');
-      const si=['正确','错误'].indexOf(qs.selected);if(si>=0&&si!==ci)w.children[si]?.classList.add('wro');
-    } else {
-      const ci=r.correct_answer?r.correct_answer.charCodeAt(0)-65:-1;
-      if(ci>=0)w.children[ci]?.classList.add('cor');
-      if(!cor&&qs.selected.length===1){const si=qs.selected.charCodeAt(0)-65;if(si>=0)w.children[si]?.classList.add('wro');}
-    }
+async function sa(){if(qs.answered||qs.selected==null)return;qs.answered=true;
+  try{const r=await api('/api/practice/submit',{method:'POST',body:JSON.stringify({bank_id:qs.bankId,question_index:qs.idx,user_answer:qs.selected})});const cor=r.is_correct;if(cor){qs.score++;qs.streak++;}else{qs.streak=0;qs.wrongs.push(qs.idx);}document.getElementById('sn2').textContent=qs.streak;spSt(cor);const w=document.getElementById('ow');w.classList.add('lk');
+    if(qs.qtype==='multi_choice'){const cl=r.correct_answer?r.correct_answer.map(c=>c.charCodeAt(0)-65):[];cl.forEach(ci=>{if(w.children[ci])w.children[ci].classList.add('cor');});ms.forEach(si=>{if(!cl.includes(si))w.children[si]?.classList.add('wro');});}
+    else if(qs.qtype==='true_false'){const ci=r.correct_answer==='正确'?0:1;w.children[ci]?.classList.add('cor');const si=['正确','错误'].indexOf(qs.selected);if(si>=0&&si!==ci)w.children[si]?.classList.add('wro');}
+    else{const ci=r.correct_answer?r.correct_answer.charCodeAt(0)-65:-1;if(ci>=0)w.children[ci]?.classList.add('cor');if(!cor&&qs.selected.length===1){const si=qs.selected.charCodeAt(0)-65;if(si>=0)w.children[si]?.classList.add('wro');}}
     if(!cor){document.getElementById('qc').classList.add('shk');setTimeout(()=>document.getElementById('qc').classList.remove('shk'),400);}
     const fb=document.getElementById('fa');
-    fb.innerHTML='<div class="rb '+(cor?'gd':'bd')+'">'+(cor?'✅ 正确！':'❌ ')+(qs.qtype==='subjective'?'已记录，参考答案如下：':'答错了')+'</div>'+(r.correct_answer?'<p class="ca">答案：'+(Array.isArray(r.correct_answer)?r.correct_answer.join(', '):r.correct_answer)+'</p>':'')+(r.explanation?'<div class="ec"><p class="el">💡 解析</p><p class="et">'+r.explanation+'</p></div>':'');
-    const dots=document.querySelectorAll('#pd span');dots[qs.idx].classList.remove('cur');dots[qs.idx].classList.add(cor?'gd':'bd');
-    document.getElementById('sb2').style.display='none';document.getElementById('nb2').style.display='';
-  }catch(e2){tt(e2.message);qs.answered=false;}
-}
+    const subjEnd=qs.qtype==='subjective'?' 参考答案如下：':(cor?' 答对了！🎉':' 看看解析吧');fb.innerHTML='<div class="rb '+(cor?'gd':'bd')+'">'+(cor?'✅ 正确！':'❌ 答错了')+subjEnd+'</div>'+(r.correct_answer?'<p class="ca">答案：'+(Array.isArray(r.correct_answer)?r.correct_answer.join(', '):r.correct_answer)+'</p>':'')+(r.explanation?'<div class="ec"><p class="el">💡 解析</p><p class="et">'+r.explanation+'</p></div>':'');
+    const dots=document.querySelectorAll('#pd span');dots[qs.idx].classList.remove('cur');dots[qs.idx].classList.add(cor?'gd':'bd');document.getElementById('sb2').style.display='none';document.getElementById('nb2').style.display='';}catch(e2){tt(e2.message);qs.answered=false;}}
 function spSt(c){const l=document.getElementById('stl');const r=(Math.random()*16-8).toFixed(1)+'deg';const cl=c?'#10B981':'#EF4444';l.innerHTML='<div class="stmp" style="--rot:'+r+'"><svg viewBox="0 0 92 92" width="84" height="84"><circle cx="46" cy="46" r="38" fill="none" stroke="'+cl+'" stroke-width="6"/>'+(c?'<path d="M22 46 L38 62 L70 26" stroke="'+cl+'" stroke-width="9" fill="none" stroke-linecap="round" stroke-linejoin="round"/>':'<g stroke="'+cl+'" stroke-width="9" stroke-linecap="round"><line x1="26" y1="26" x2="66" y2="66"/><line x1="66" y1="26" x2="26" y2="66"/></g>')+'</svg></div>';for(let i=0;i<6;i++){const a=Math.random()*Math.PI*2,d=26+Math.random()*46;const p=document.createElement('span');p.style.cssText='position:absolute;top:46px;right:46px;width:6px;height:6px;border-radius:50%;background:'+cl+';animation:ik .65s ease-out forwards;--dx:'+Math.cos(a)*d+'px;--dy:'+Math.sin(a)*d+'px';l.appendChild(p);setTimeout(()=>p.remove(),700);}setTimeout(()=>{const s=l.querySelector('.stmp');if(s)s.remove();},1400);}
 function nq(){qs.idx++;if(qs.idx>=qs.total){showComplete();return;}rq2();}
 async function showComplete(){document.getElementById('qv').style.display='none';document.getElementById('cv').style.display='flex';const p=Math.round(qs.score/qs.total*100);document.getElementById('ss2').textContent=`${qs.score} / ${qs.total} 题正确`;const ring=document.getElementById('rf');const len=2*Math.PI*68;ring.style.strokeDasharray=len;setTimeout(()=>{ring.style.strokeDashoffset=len*(1-p/100);},50);anim(document.getElementById('sp'),p,'%');confetti();try{await api('/api/practice/complete',{method:'POST',body:JSON.stringify({bank_id:qs.bankId,total_questions:qs.total,correct_count:qs.score,wrong_indices:qs.wrongs})});}catch(e){}}
@@ -460,8 +431,8 @@ function rq(){qs.idx=0;qs.score=0;qs.streak=0;qs.wrongs=[];document.getElementBy
 function cex(){om({t:'退出答题？',b:'当前进度不会保存。',c3:'退出',dg:true,cb:()=>showScreen('list')});}
 function anim(el,t,s){let cur=0;const step=Math.max(1,Math.round(t/28));const i=setInterval(()=>{cur+=step;if(cur>=t){cur=t;clearInterval(i);}el.textContent=cur+s;},22);}
 function confetti(){const l=document.getElementById('cl2');l.innerHTML='';const cs=['#2563EB','#10B981','#F59E0B','#EF4444','#93C5FD'];for(let i=0;i<26;i++){const b=document.createElement('span');b.className='cfp';b.style.left=Math.random()*100+'%';b.style.background=cs[i%5];b.style.animationDuration=(1.6+Math.random()*1.2)+'s';b.style.animationDelay=Math.random()*0.6+'s';l.appendChild(b);}setTimeout(()=>l.innerHTML='',3200);}
-async function loadHist(){const body=document.getElementById('hb');try{const d=await api('/api/practice/history');if(!d||!d.length){body.innerHTML='<div style="text-align:center;padding:60px 0;color:var(--faint)">暂无记录</div>';return;}body.innerHTML=d.map(h=>{const pct=h.accuracy;const t=(h.material_name||'未知').replace(/\.[^/.]+$/,'')+' #'+h.sequence;return `<div class="hc"><div class="hr"><h4>📝 ${t}</h4><span class="hp" style="color:${pct>=60?'var(--green)':'var(--red)'}">${pct}%</span></div><div class="hd"><span>✅ ${h.correct_count}/${h.total_questions}</span><span>❌ ${h.wrong_count}错</span><span>🕐 ${fd(h.completed_at)}</span></div></div>`;}).join('');}catch(e){body.innerHTML='<div style="text-align:center;padding:60px 0;color:var(--faint)">加载失败</div>';}}
-async function loadWrong(){const body=document.getElementById('wb');try{const g=await api('/api/practice/wrong');if(!g||!g.length){body.innerHTML='<div style="text-align:center;padding:60px 0;color:var(--faint)">暂无错题！🎉</div>';return;}body.innerHTML=g.map(gr=>{const nm=(gr.material_name||'未知').replace(/\.[^/.]+$/,'');const items=gr.questions.map((w,i)=>`<div class="wi"><div class="wit">${TLBL[w.question_type]||'题'} · 第${w.question_index+1}题</div><div class="wiq">${i+1}. ${w.question}</div>${w.options&&w.options.length?'<div style="font-size:12px;color:var(--muted);margin-bottom:4px">'+w.options.join(' · ')+'</div>':''}<div class="wia">✅ ${Array.isArray(w.answer)?w.answer.join(', '):w.answer}</div>${w.explanation?'<div class="wie">💡 '+w.explanation+'</div>':''}</div>`).join('');return `<div class="wg"><div class="wh"><h4>📕 ${nm}</h4><div><span class="wgb">${gr.wrong_count}错</span><button class="btn-sm red" style="margin-left:6px" onclick="rw(${gr.bank_id})">重练</button></div></div>${items}</div>`;}).join('');}catch(e){body.innerHTML='<div style="text-align:center;padding:60px 0;color:var(--faint)">加载失败</div>';}}
+async function loadHist(){const body=document.getElementById('hb');try{const d=await api('/api/practice/history');if(!d||!d.length){body.innerHTML='<div style="text-align:center;padding:60px 0;color:var(--faint)">暂无记录</div>';return;}body.innerHTML=d.map(h=>{const pct=h.accuracy;const t=(h.material_name||'未知').replace(/\.[^/.]+$/,'')+' #'+h.sequence;return `<div class="hc"><div class="hr"><h4>📝 ${t}</h4><span class="hp" style="color:${pct>=60?'var(--green)':'var(--red)'}">${pct}%</span></div><div class="hd"><span>✅ ${h.correct_count}/${h.total_questions}</span><span>❌ ${h.wrong_count}错</span><span>🕐 ${fd(h.completed_at)}</span></div></div>`;}).join('');}catch(e){}}
+async function loadWrong(){const body=document.getElementById('wb');try{const g=await api('/api/practice/wrong');if(!g||!g.length){body.innerHTML='<div style="text-align:center;padding:60px 0;color:var(--faint)">暂无错题！🎉</div>';return;}body.innerHTML=g.map(gr=>{const nm=(gr.material_name||'未知').replace(/\.[^/.]+$/,'');const items=gr.questions.map((w,i)=>`<div class="wi"><div class="wit">${TLBL[w.question_type]||'题'} · 第${w.question_index+1}题</div><div class="wiq">${i+1}. ${w.question}</div>${w.options&&w.options.length?'<div style="font-size:12px;color:var(--muted);margin-bottom:4px">'+w.options.join(' · ')+'</div>':''}<div class="wia">✅ ${Array.isArray(w.answer)?w.answer.join(', '):w.answer}</div>${w.explanation?'<div class="wie">💡 '+w.explanation+'</div>':''}</div>`).join('');return `<div class="wg"><div class="wh"><h4>📕 ${nm}</h4><div><span class="wgb">${gr.wrong_count}错</span><button class="btn-sm red" style="margin-left:6px" onclick="rw(${gr.bank_id})">重练</button></div></div>${items}</div>`;}).join('');}catch(e){}}
 async function rw(bankId){try{const ws=await api('/api/practice/wrong');const g=ws.find(x=>x.bank_id===bankId);if(!g||!g.questions.length){tt('没有错题');return;}startQuiz({bank_id:bankId,questions:g.questions});showScreen('practice');}catch(e){tt(e.message);}}
 async function loadStats(){try{const s=await api('/api/stats');document.getElementById('st1').textContent=s.total_questions;document.getElementById('st2').textContent=s.correct_count;document.getElementById('st3').textContent=s.practice_count;document.getElementById('st4').textContent=s.last_practice_time?fd(s.last_practice_time):'暂无';document.getElementById('ss3').textContent=`${s.correct_count} / ${s.total_questions} 题正确`;const pct=s.total_questions?Math.round(s.correct_count/s.total_questions*100):0;const ring=document.getElementById('sr');const len=2*Math.PI*50;ring.style.strokeDasharray=len;setTimeout(()=>{ring.style.strokeDashoffset=len*(1-pct/100);},100);anim(document.getElementById('sp2'),pct,'%');}catch(e){}}
 const stl2=document.createElement('style');stl2.textContent='@keyframes ik{0%{transform:translate(0,0)scale(1);opacity:.85}100%{transform:translate(var(--dx),var(--dy))scale(0);opacity:0}}';document.head.appendChild(stl2);
