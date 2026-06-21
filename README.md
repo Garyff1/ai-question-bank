@@ -9,6 +9,10 @@
 <p align="center"><b>"躯壳与电池"</b> —— 接入你自己的 API Key 才能驱动使用</p>
 <p align="center">上传资料 → AI 自动出题 → 答题练习 → 错题巩固</p>
 
+<p align="center">
+  <img src="screenshot.png" alt="答题界面截图" width="280">
+</p>
+
 ---
 
 ## 📦 快速上手
