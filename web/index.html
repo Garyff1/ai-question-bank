@@ -45,7 +45,7 @@ body{font-family:"PingFang SC","Microsoft YaHei",sans-serif;background:#F4F6FB;c
 .hidden{display:none!important}
 
 /* 登录 */
-#screen-login{justify-content:center;overflow:hidden}
+#screen-login{justify-content:center;overflow:hidden;z-index:999;position:relative}
 .login-bg{position:absolute;inset:0;overflow:hidden}
 .blob{position:absolute;border-radius:50%;filter:blur(72px);opacity:.5}
 .blob.b1{width:280px;height:280px;background:var(--bs);top:-80px;left:-80px;animation:drift 9s ease-in-out infinite}
@@ -217,8 +217,8 @@ body{font-family:"PingFang SC","Microsoft YaHei",sans-serif;background:#F4F6FB;c
 <section id="screen-login" class="screen active"><div class="login-bg"><div class="blob b1"></div><div class="blob b2"></div></div>
 <div class="login-content"><div class="brand"><h2 class="logo">AI题库</h2><p class="tagline">智能出题 · 高效学习</p></div>
 <div class="auth-card"><div class="auth-tabs"><div class="ti" id="ti"></div><button class="tab active" onclick="st(0)">登录</button><button class="tab" onclick="st(1)">注册</button></div>
-<div class="fld"><span>👤</span><input id="ei" placeholder="账号（随便填）"></div>
-<div class="fld"><span>🔒</span><input id="pi" placeholder="密码（随便填）" type="password"></div>
+<div class="fld"><span>👤</span><input id="ei" placeholder="建议使用邮箱注册，如 user@example.com"></div>
+<div class="fld"><span>🔒</span><input id="pi" placeholder="密码至少6位，建议字母+数字组合" type="password"></div>
 <p class="err" id="le"></p><button class="btn btn-pri" id="lb" onclick="ha()">登录</button></div></div></section>
 
 <section id="screen-list" class="screen"><header class="topbar"><h2>我的资料</h2><button class="cb bat" id="bb" onclick="showScreen('config')" title="API配置">🔋</button><button class="cb pri" onclick="uf()">＋</button></header>
@@ -279,7 +279,7 @@ function logout(){TK='';UID='';clearAllKeys();showScreen('login');}
 
 async function api(p,o={}){
   const h={'Content-Type':'application/json'};if(TK)h['Authorization']='Bearer '+TK;
-  const r=await fetch(AB+p,{...o,h});
+  const r=await fetch(AB+p,{...o,headers:h});
   if(r.status===401){logout();throw new Error('登录过期');}
   const d=await r.json();if(!r.ok)throw new Error(Array.isArray(d.detail)?d.detail.map(x=>x.msg||String(x)).join('; '):(d.detail||'请求失败'));return d;
 }
@@ -315,7 +315,11 @@ async function ha(){
   catch(e2){const el=document.getElementById('le');el.textContent=(e2&&e2.message)||String(e2)||'操作失败';el.classList.add('show');}
   finally{btn.disabled=false;btn.textContent=ilt?'登录':'注册';}
 }
-if(TK){api('/api/auth/me').then(u=>{UID=u.id;localStorage.setItem('uid',String(UID));showScreen('list');checkApi();}).catch(()=>logout());}
+// 自动登录：先显示登录页（带加载状态），验证通过才跳转
+if(TK){
+  document.getElementById('lb').textContent='验证中...';document.getElementById('lb').disabled=true;
+  api('/api/auth/me').then(u=>{UID=u.id;localStorage.setItem('uid',String(UID));showScreen('list');checkApi();}).catch(()=>{logout();document.getElementById('lb').textContent='登录';document.getElementById('lb').disabled=false;});
+}
 
 // ====== 电池 + 资料 ======
 async function checkApi(){try{const c=await api('/api/config/config');const btn=document.getElementById('bb');btn.classList.toggle('ok',c.configured);const d=document.createElement('span');d.className='dot '+(c.configured?'on':'off');btn.innerHTML='🔋';btn.appendChild(d);}catch(e){}}
