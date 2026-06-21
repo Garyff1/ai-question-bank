@@ -63,10 +63,22 @@ def submit(
     q = questions[req.question_index]
     correct_answer = q.get("answer", "")
 
+    qtype = bank.question_type
     if isinstance(correct_answer, list):
-        is_correct = req.user_answer.strip().lower() in [a.strip().lower() for a in correct_answer]
+        # 多选题：按字母排序后拼接比较
+        correct_set = sorted([str(a).strip().upper() for a in correct_answer])
+        user_set = sorted([a.strip().upper() for a in req.user_answer.replace("，", ",").split(",")])
+        is_correct = correct_set == user_set
+    elif qtype == "true_false":
+        # 判断题：宽松匹配
+        ua = req.user_answer.strip().lower()
+        ca = str(correct_answer).strip().lower()
+        is_correct = ua == ca or (ua in ("对", "✔") and ca == "正确") or (ua in ("错", "✘") and ca == "错误")
+    elif qtype == "subjective":
+        # 主观题：人工批改性质，答即对
+        is_correct = True
     else:
-        is_correct = req.user_answer.strip().lower() == correct_answer.strip().lower()
+        is_correct = req.user_answer.strip().lower() == str(correct_answer).strip().lower()
 
     record = PracticeRecord(
         user_id=current_user.id,

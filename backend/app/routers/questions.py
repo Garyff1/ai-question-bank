@@ -28,8 +28,8 @@ class GenerateRequest(BaseModel):
     @field_validator("question_type")
     @classmethod
     def type_valid(cls, v: str) -> str:
-        if v not in ("choice", "fill"):
-            raise ValueError("题目类型只能是 choice 或 fill")
+        if v not in ("choice", "multi_choice", "true_false", "fill", "subjective"):
+            raise ValueError("无效的题目类型")
         return v
 
 
