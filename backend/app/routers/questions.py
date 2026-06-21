@@ -28,8 +28,11 @@ class GenerateRequest(BaseModel):
     @field_validator("question_type")
     @classmethod
     def type_valid(cls, v: str) -> str:
-        if v not in ("choice", "multi_choice", "true_false", "fill", "subjective"):
-            raise ValueError("无效的题目类型")
+        VALID = {"choice", "multi_choice", "true_false", "fill", "subjective"}
+        types = [t.strip() for t in v.split(",")]
+        for t in types:
+            if t not in VALID:
+                raise ValueError(f"无效的题目类型: {t}")
         return v
 
 
@@ -58,16 +61,28 @@ def generate(req: GenerateRequest, db: Session = Depends(get_db), current_user: 
     if not api_config:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="请先在设置页面配置 API Key")
 
+    # 支持混合题型：用逗号分隔，如 "choice,fill"
+    types = [t.strip() for t in req.question_type.split(",")]
+    all_questions = []
+    per_type = max(1, req.question_count // len(types))
+    remainder = req.question_count - per_type * len(types)
+
     try:
-        questions = generate_questions(
-            text=material.content_text[:10000],
-            question_type=req.question_type,
-            question_count=req.question_count,
-            target_audience=req.target_audience,
-            api_key=api_config.api_key,
-            api_base=api_config.api_base,
-            model=api_config.model_name,
-        )
+        for i, qtype in enumerate(types):
+            count = per_type + (1 if i == 0 else 0) * remainder
+            questions = generate_questions(
+                text=material.content_text[:10000],
+                question_type=qtype,
+                question_count=count,
+                target_audience=req.target_audience,
+                api_key=api_config.api_key,
+                api_base=api_config.api_base,
+                model=api_config.model_name,
+            )
+            # 标注题型到每道题
+            for q in questions:
+                q["question_type"] = qtype
+            all_questions.extend(questions)
     except RuntimeError as e:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
@@ -76,13 +91,13 @@ def generate(req: GenerateRequest, db: Session = Depends(get_db), current_user: 
         material_id=req.material_id,
         question_type=req.question_type,
         target_audience=req.target_audience,
-        questions_json=json.dumps(questions, ensure_ascii=False),
+        questions_json=json.dumps(all_questions, ensure_ascii=False),
     )
     db.add(bank)
     db.commit()
     db.refresh(bank)
 
-    return {"bank_id": bank.id, "question_count": len(questions), "questions": questions}
+    return {"bank_id": bank.id, "question_count": len(all_questions), "questions": all_questions}
 
 
 @router.get("/banks", response_model=list[QuestionBankResponse])

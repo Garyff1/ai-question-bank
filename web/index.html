@@ -365,21 +365,11 @@ function ac(d){const n=qc+d;if(n<1||n>20)return;qc=n;document.getElementById('sn
 async function gq(){
   if(qts.size===0){tt('请至少选择一种题型');return;}
   const btn=document.getElementById('gb2');btn.disabled=true;btn.innerHTML='<span class="spin" style="margin-right:8px"></span>AI 出题中...';
-  const types=Array.from(qts);const audience=document.getElementById('as2').value;
-  // 每种题型分配题目数（至少1题）
-  const perType=Math.max(1,Math.floor(qc/types.length));
-  const remainder=qc-perType*types.length;
+  const types=Array.from(qts).join(',');const audience=document.getElementById('as2').value;
   try{
-    // 并行请求所有题型
-    const promises=types.map(async(t,i)=>{
-      const count=i===0?perType+remainder:perType;
-      return await api('/api/questions/generate',{method:'POST',body:JSON.stringify({material_id:gmi,question_type:t,question_count:count,target_audience:audience})});
-    });
-    const results=await Promise.all(promises);
-    // 合并题目
-    const allQuestions=results.flatMap(r=>{const qs2=r.questions||[];return qs2||[];});
-    startQuiz({bank_id:results[0].bank_id,questions:allQuestions});
-    showScreen('practice');
+    // 一次请求出混合题型（后端用逗号分隔，如 "choice,fill"）
+    const data=await api('/api/questions/generate',{method:'POST',body:JSON.stringify({material_id:gmi,question_type:types,question_count:qc,target_audience:audience})});
+    startQuiz(data);showScreen('practice');
   }catch(e2){tt(e2.message);}
   finally{btn.disabled=false;btn.textContent='生成题目';}
 }
