@@ -383,8 +383,10 @@ function startQuiz(d){
   document.getElementById('pd').innerHTML=Array.from({length:qs.total},()=>'<span></span>').join('');rq2();
 }
 function gqt(q){
-  if(q.options===undefined||!q.options.length) return 'subjective';
-  if(q.options.length===2){const t=q.options[0]||'';if(t.startsWith('正确')||t.startsWith('对'))return 'true_false';}
+  // 优先使用后端标注的题型
+  if(q.question_type) return q.question_type;
+  if(q.options===undefined||!q.options||!q.options.length) return 'subjective';
+  if(q.options.length===2){const t=(q.options[0]||'');if(t.startsWith('正确')||t.startsWith('对')||t.startsWith('True'))return 'true_false';}
   return 'choice';
 }
 function rq2(){
@@ -398,9 +400,11 @@ function rq2(){
   const w=document.getElementById('ow');ms=[];qs.selected=null;
   if(qq==='subjective'){w.className='opts';w.innerHTML='<textarea id="si2" placeholder="输入你的答案..." style="border:1.5px solid var(--line);border-radius:10px;padding:12px;font-size:14.5px;outline:none;background:#fff;width:100%;min-height:100px;resize:vertical;font-family:inherit"></textarea>';document.getElementById('si2').oninput=function(){qs.selected=this.value.trim()||null;document.getElementById('sb2').disabled=!this.value.trim();};}
   else if(qq==='true_false'){w.className='opts';w.innerHTML='<button class="opt" data-v="正确">正确</button><button class="opt" data-v="错误">错误</button>';w.querySelectorAll('.opt').forEach(b=>{b.onclick=()=>{if(qs.answered)return;w.querySelectorAll('.opt').forEach(o=>o.classList.remove('sel'));b.classList.add('sel');qs.selected=b.dataset.v;document.getElementById('sb2').disabled=false;};});}
-  else if(q.options){w.className='opts';
+  else if(q.options&&q.options.length){
+    w.className='opts';
     if(qq==='multi_choice'){w.innerHTML=q.options.map((o,i)=>`<button class="opt" data-i="${i}"><span class="cm">□</span>${o}</button>`).join('');w.querySelectorAll('.opt').forEach(b=>{b.onclick=()=>{if(qs.answered)return;const i=parseInt(b.dataset.i);const idx=ms.indexOf(i);if(idx>=0){ms.splice(idx,1);b.classList.remove('ms');b.querySelector('.cm').textContent='□';}else{ms.push(i);ms.sort();b.classList.add('ms');b.querySelector('.cm').textContent='✓';}qs.selected=ms.length?ms.map(j=>String.fromCharCode(65+j)).join(','):null;document.getElementById('sb2').disabled=!ms.length;};});}
     else{w.innerHTML=q.options.map((o,i)=>`<button class="opt" data-i="${i}">${o}</button>`).join('');w.querySelectorAll('.opt').forEach(b=>{b.onclick=()=>{if(qs.answered)return;w.querySelectorAll('.opt').forEach(o=>o.classList.remove('sel'));b.classList.add('sel');qs.selected=String.fromCharCode(65+parseInt(b.dataset.i));document.getElementById('sb2').disabled=false;};});}}
+  else{w.className='opts';w.innerHTML='<textarea id="si2" placeholder="输入你的答案..." style="border:1.5px solid var(--line);border-radius:10px;padding:12px;font-size:14.5px;outline:none;background:#fff;width:100%;min-height:80px;resize:vertical;font-family:inherit"></textarea>';document.getElementById('si2').oninput=function(){qs.selected=this.value.trim()||null;document.getElementById('sb2').disabled=!this.value.trim();};}
   qs.answered=false;document.getElementById('fa').innerHTML='';document.getElementById('sb2').style.display='';document.getElementById('sb2').disabled=true;
   document.getElementById('nb2').style.display='none';document.getElementById('stl').innerHTML='';
   document.querySelectorAll('#pd span').forEach((s,i)=>s.classList.toggle('cur',i===qs.idx));

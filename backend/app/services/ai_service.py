@@ -11,8 +11,9 @@ def generate_questions(
     text: str, question_type: str, question_count: int,
     target_audience: str = "通用", api_key: str | None = None,
     api_base: str | None = None, model: str | None = None,
+    prev_topics: str = "",
 ) -> list[dict]:
-    prompt = _build_prompt(text, question_type, question_count, target_audience)
+    prompt = _build_prompt(text, question_type, question_count, target_audience, prev_topics)
     for attempt in range(2):
         try:
             result = _call_llm(prompt, api_key, api_base, model)
@@ -25,7 +26,7 @@ def generate_questions(
     raise RuntimeError("AI 生成题目失败，请检查 API 配置或稍后重试")
 
 
-def _build_prompt(text: str, qtype: str, count: int, audience: str) -> str:
+def _build_prompt(text: str, qtype: str, count: int, audience: str, prev_topics: str = "") -> str:
     # 各题型描述 + JSON 示例
     type_specs = {
         "choice": {
@@ -64,16 +65,19 @@ def _build_prompt(text: str, qtype: str, count: int, audience: str) -> str:
     audience_guide = ""
     if audience and audience != "通用":
         audience_guide = f"""【重要】目标用户：{audience}
-请根据该年龄段的认知水平调整语言难度：
-- 小学生：简单直白，多用生活化例子
-- 初中生：语言稍正式但不复杂
-- 高中生/大学生：可使用规范学术表达
+请根据该年龄段的认知水平调整语言难度：小学生用简单直白语言，初中生适度正式，高中生/大学生可规范学术表达。
+"""
+
+    no_repeat = ""
+    if prev_topics:
+        no_repeat = f"""⚠️ 避免重复：以下题目已在之前的练习中出现过，请从资料中选新的知识点出题，不要与这些雷同：
+{prev_topics}
 """
 
     prompt = f"""你是专业出题老师。根据以下学习资料，生成 {count} 道{spec['desc']}。
-{audience_guide}
+{audience_guide}{no_repeat}
 要求：
-1. 题目严格基于资料内容
+1. 题目严格基于资料内容，优先选择尚未被提问过的知识点
 2. 答案必须准确，解析通俗易懂
 3. 多选题的 answer 必须是数组（如 ["A","C"]），且至少 2 个正确选项
 4. 判断题 answer 只能是"正确"或"错误"

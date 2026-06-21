@@ -61,6 +61,17 @@ def generate(req: GenerateRequest, db: Session = Depends(get_db), current_user: 
     if not api_config:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="请先在设置页面配置 API Key")
 
+    # 查该教材已出过的题目，传给 AI 避免重复
+    prev_banks = db.query(QuestionBank).filter(
+        QuestionBank.material_id == req.material_id,
+        QuestionBank.user_id == current_user.id,
+    ).all()
+    prev_questions = []
+    for pb in prev_banks:
+        prev_questions.extend(json.loads(pb.questions_json))
+    # 取前20道旧题的题干作为去重参考
+    prev_topics = json.dumps([q.get("question", "")[:60] for q in prev_questions[-20:]], ensure_ascii=False)
+
     # 支持混合题型：用逗号分隔，如 "choice,fill"
     types = [t.strip() for t in req.question_type.split(",")]
     all_questions = []
@@ -78,6 +89,7 @@ def generate(req: GenerateRequest, db: Session = Depends(get_db), current_user: 
                 api_key=api_config.api_key,
                 api_base=api_config.api_base,
                 model=api_config.model_name,
+                prev_topics=prev_topics,
             )
             # 标注题型到每道题
             for q in questions:
