@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
+<title>AI题库</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:"PingFang SC","Microsoft YaHei",sans-serif;background:#F4F6FB;color:#1E293B;min-height:100vh}
+:root{--blue:#2563EB;--bl:#EFF6FF;--bs:#93C5FD;--green:#10B981;--gl:#ECFDF5;--red:#EF4444;--rl:#FEF2F2;--amber:#F59E0B;--ink:#1E293B;--muted:#64748B;--faint:#94A3B8;--line:#E2E8F0;--bg:#F4F6FB;--paper:#FFFDF9}
+.app{max-width:480px;margin:0 auto;min-height:100vh;background:#fff;position:relative}
+.screen{display:none;flex-direction:column;min-height:100vh;background:var(--bg)}
+.screen.active{display:flex}
+.topbar{display:flex;align-items:center;gap:10px;padding:12px 20px 14px;background:#fff}
+.topbar h2{font-size:19px;font-weight:700;flex:1}
+.topbar-plain{padding:16px 20px 14px;background:#fff}
+.topbar-plain h2{font-size:20px;font-weight:700;margin:0}
+.topbar-plain .sub{margin:3px 0 0;font-size:12.5px;color:var(--muted)}
+.cb{width:36px;height:36px;border-radius:50%;border:1px solid var(--line);background:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:18px;color:var(--muted);transition:.15s;flex-shrink:0}
+.cb:active{transform:scale(.9)}
+.cb.pri{background:var(--blue);color:#fff;border:none;box-shadow:0 6px 14px -4px rgba(37,99,235,.5)}
+.cb.bat{background:#FEF3C7;color:#D97706;border:none;position:relative}
+.cb.bat.ok{background:var(--gl);color:var(--green)}
+.cb.bat .dot{position:absolute;top:-2px;right:-2px;width:10px;height:10px;border-radius:50%;border:2px solid #fff}
+.cb.bat .dot.off{background:var(--red)}
+.cb.bat .dot.on{background:var(--green)}
+.btn{width:100%;height:48px;border:none;border-radius:12px;font-size:15.5px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;transition:.15s}
+.btn:active{transform:scale(.98)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn-pri{background:var(--blue);color:#fff;box-shadow:0 10px 20px -8px rgba(37,99,235,.5)}
+.btn-sec{background:#fff;color:var(--blue);border:1.5px solid var(--blue);margin-top:10px}
+.btn-sm{height:34px;padding:0 14px;border:none;border-radius:8px;font-size:12.5px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:4px;transition:.12s}
+.btn-sm:active{transform:scale(.95)}
+.btn-sm.blue{background:var(--bl);color:var(--blue)}
+.btn-sm.red{background:var(--rl);color:var(--red)}
+.btn-sm.amber{background:#FEF3C7;color:#D97706}
+.modal-overlay{position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:100;display:flex;align-items:center;justify-content:center;padding:32px}
+.modal-card{background:#fff;border-radius:16px;padding:24px 22px;width:100%;max-width:400px;box-shadow:0 24px 48px -12px rgba(0,0,0,.25)}
+.modal-card h3{margin:0 0 8px;font-size:16px}
+.modal-card p{margin:0 0 18px;font-size:13.5px;color:var(--muted);line-height:1.6}
+.modal-actions{display:flex;gap:10px}
+.modal-actions button{flex:1;height:42px;border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;border:none}
+.m-cancel{background:#F1F5F9;color:var(--ink)}
+.m-confirm{background:var(--blue);color:#fff}
+.m-confirm.danger{background:var(--red)}
+.hidden{display:none!important}
+#screen-login{justify-content:center;overflow:hidden;z-index:999;position:relative}
+.login-bg{position:absolute;inset:0;overflow:hidden}
+.blob{position:absolute;border-radius:50%;filter:blur(72px);opacity:.5}
+.blob.b1{width:280px;height:280px;background:var(--bs);top:-80px;left:-80px;animation:drift 9s ease-in-out infinite}
+.blob.b2{width:320px;height:320px;background:#FDE68A;bottom:-100px;right:-100px;animation:drift 9s ease-in-out infinite 2s}
+@keyframes drift{0%,100%{transform:translate(0)}50%{transform:translate(18px,-26px)scale(1.07)}}
+.login-content{position:relative;z-index:1;padding:0 24px}
+.brand{text-align:center;margin-bottom:34px}
+.logo{font-size:34px;font-weight:800;color:var(--blue);letter-spacing:2px}
+.tagline{font-size:13.5px;color:var(--muted);margin:8px 0 0}
+.auth-card{background:#fff;border-radius:18px;padding:24px;box-shadow:0 18px 40px -16px rgba(15,23,42,.18)}
+.auth-tabs{position:relative;display:flex;background:#F1F5F9;border-radius:10px;padding:3px;margin-bottom:18px;overflow:hidden}
+.auth-tabs .tab{flex:1;border:none;background:transparent;padding:9px 0;font-size:14px;font-weight:600;color:var(--muted);border-radius:8px;cursor:pointer;position:relative;z-index:1;transition:color .2s}
+.auth-tabs .tab.active{color:var(--blue)}
+.ti{position:absolute;top:3px;bottom:3px;width:calc(50% - 3px);background:#fff;border-radius:8px;box-shadow:0 2px 6px rgba(0,0,0,.08);transition:transform .28s;z-index:0}
+.ti.r{transform:translateX(100%)}
+.fld{display:flex;align-items:center;gap:8px;border:1.5px solid var(--line);border-radius:12px;height:48px;padding:0 14px;margin-bottom:12px;transition:border-color .15s}
+.fld:focus-within{border-color:var(--bs)}
+.fld input{border:none;outline:none;flex:1;font-size:14.5px;background:transparent}
+.err{color:var(--red);font-size:12.5px;margin:-2px 0 10px;display:none}
+.err.show{display:block}
+.ub{margin:0 20px 10px;padding:10px 14px;border-radius:10px;font-size:12.5px;display:none;align-items:center;gap:8px}
+.ub.show{display:flex}
+.ub.load{background:var(--bl);color:var(--blue)}
+.ub.ok{background:var(--gl);color:var(--green)}
+.ut{font-size:11.5px;color:var(--faint);text-align:center;padding:6px 20px 10px}
+.lb{padding:4px 20px 90px;display:flex;flex-direction:column;gap:10px;flex:1}
+.mc{display:flex;align-items:center;gap:12px;padding:14px;background:#fff;border-radius:14px;box-shadow:0 6px 16px -10px rgba(15,23,42,.18);position:relative}
+.fi{width:42px;height:42px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;flex-shrink:0}
+.fi.pdf{background:var(--bl);color:var(--blue)}
+.fi.word{background:var(--gl);color:var(--green)}
+.fi.txt{background:#F1F5F9;color:var(--muted)}
+.mi{flex:1;min-width:0}
+.mn{font-size:14.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding-right:50px}
+.mt{font-size:11.5px;color:var(--faint);margin-top:3px}
+.ma{position:absolute;right:10px;top:50%;transform:translateY(-50%);display:flex;gap:4px}
+.ma button{border:none;background:none;cursor:pointer;width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;transition:.12s}
+.ma button:active{transform:scale(.88)}
+.ma .ga{background:var(--bl);color:var(--blue);font-size:13px;font-weight:700}
+.ma .da{background:transparent;color:var(--faint);font-size:15px;width:28px;height:28px}
+.ma .da:active{background:var(--rl);color:var(--red)}
+.le{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:0 40px;gap:6px}
+.le .ei{font-size:52px}
+.le h3{font-size:15.5px;margin:6px 0 0}
+.le p{font-size:12.5px;color:var(--muted)}
+.nc{animation:pu .35s cubic-bezier(.34,1.4,.4,1) both}
+@keyframes pu{0%{transform:translateY(-12px)scale(.92);opacity:0}100%{transform:translateY(0)scale(1);opacity:1}}
+.gb{padding:4px 22px 24px;display:flex;flex-direction:column;gap:18px}
+.mch{display:flex;align-items:center;gap:10px;background:var(--bl);border-radius:12px;padding:13px 14px;font-size:13.5px;font-weight:600;color:var(--blue)}
+.sl{font-size:12.5px;color:var(--muted);font-weight:600;margin:0}
+.tg{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}
+.tc{border:1.5px solid var(--line);background:#fff;border-radius:12px;padding:14px 8px;text-align:center;cursor:pointer;transition:.12s;position:relative}
+.tc .ck{position:absolute;top:6px;right:8px;width:16px;height:16px;border-radius:50%;background:var(--blue);color:#fff;font-size:10px;display:none;align-items:center;justify-content:center}
+.tc.sel{border-color:var(--blue);background:var(--bl)}
+.tc.sel .ck{display:flex}
+.tc .tn{font-size:13px;font-weight:600;display:block;margin-bottom:2px}
+.tc .td{font-size:10px;color:var(--muted)}
+.as{width:100%;height:48px;border:1.5px solid var(--line);border-radius:12px;padding:0 14px;font-size:14px;background:#fff;color:var(--ink);outline:none;cursor:pointer;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%2394A3B8' d='M6 8L1 3h10z'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 14px center}
+.stp{margin-top:10px;display:flex;align-items:center;justify-content:center;gap:26px;padding:6px 0}
+.stb{width:38px;height:38px;border-radius:50%;border:1.5px solid var(--line);background:#fff;font-size:20px;color:var(--blue);cursor:pointer;transition:.12s}
+.stb:active{transform:scale(.9)}
+.stb:disabled{color:var(--faint);border-color:var(--line);opacity:.5;cursor:not-allowed}
+.sn{font-size:26px;font-weight:800;min-width:38px;text-align:center}
+.qp{padding:4px 20px 28px;display:flex;flex-direction:column;gap:14px;flex:1}
+.pr{display:flex;gap:6px;justify-content:center;padding:0 20px 14px;background:#fff}
+.pr span{width:10px;height:10px;border-radius:50%;background:var(--line);transition:.25s}
+.pr span.cur{background:var(--bs)}
+.pr span.gd{background:var(--green)}
+.pr span.bd{background:var(--red)}
+.qc{background:var(--paper);border-radius:14px;padding:18px;box-shadow:0 8px 20px -12px rgba(15,23,42,.2);position:relative}
+.qtg{font-size:11.5px;color:var(--faint);font-weight:600;margin:0 0 10px}
+.qtx{font-size:16.5px;line-height:1.55;font-weight:600;margin:0}
+.qb{display:inline-block;font-size:10px;font-weight:700;padding:2px 7px;border-radius:999px;background:var(--bl);color:var(--blue);margin-bottom:8px}
+.stmp{position:absolute;top:8px;right:8px;width:84px;height:84px;animation:ss .5s cubic-bezier(.2,.85,.3,1.2) forwards}
+@keyframes ss{0%{transform:translateY(-130px)scale(2.2)rotate(var(--rot));opacity:0}55%{transform:translateY(0)scale(1.16)rotate(var(--rot));opacity:1}78%{transform:scale(.9)rotate(var(--rot))}100%{transform:scale(1)rotate(var(--rot));opacity:1}}
+.shk{animation:sx .4s}
+@keyframes sx{0%,100%{transform:translateX(0)}25%{transform:translateX(-5px)}75%{transform:translateX(5px)}}
+.opts{display:flex;flex-direction:column;gap:8px}
+.opt{text-align:left;border:1.5px solid var(--line);background:#fff;border-radius:10px;padding:12px 14px;font-size:14.5px;cursor:pointer;transition:.12s}
+.opt:active{transform:scale(.985)}
+.opt.sel{border-color:var(--blue);background:var(--bl);color:var(--blue);font-weight:600}
+.opt.cor{border-color:var(--green);background:var(--gl);color:var(--green);font-weight:600}
+.opt.wro{border-color:var(--red);background:var(--rl);color:var(--red);font-weight:600}
+.opt.ms{border-color:var(--blue);background:var(--bl);color:var(--blue);font-weight:600}
+.opt.ms .cm{display:inline-flex;width:18px;height:18px;border-radius:4px;background:var(--blue);color:#fff;font-size:11px;align-items:center;justify-content:center;margin-right:8px}
+.opt .cm{display:inline-flex;width:18px;height:18px;border-radius:4px;background:var(--line);color:#fff;font-size:11px;align-items:center;justify-content:center;margin-right:8px}
+.opts.lk .opt{pointer-events:none}
+.rb{padding:11px 14px;border-radius:10px;font-size:14px;font-weight:700}
+.rb.gd{background:var(--gl);color:var(--green)}
+.rb.bd{background:var(--rl);color:var(--red)}
+.ca{font-size:12.5px;color:var(--red);margin:6px 0;font-weight:600}
+.ec{background:#F1F5F9;border-radius:10px;padding:12px 14px;margin-top:8px}
+.el{font-size:11.5px;color:var(--muted);font-weight:700;margin:0 0 4px}
+.et{margin:0;font-size:13.5px;line-height:1.55}
+.cv{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:0 32px 30px;gap:8px;overflow:hidden;position:relative}
+.rw{position:relative;width:160px;height:160px;flex-shrink:0}
+.rw svg{width:100%;height:100%;transform:rotate(-90deg)}
+.sp{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:32px;font-weight:800}
+.ss2{font-size:13.5px;color:var(--muted);margin:4px 0 18px}
+.wb{padding:6px 20px 90px;flex:1;display:flex;flex-direction:column;gap:14px;overflow-y:auto}
+.wg{background:#fff;border-radius:14px;box-shadow:0 6px 16px -10px rgba(15,23,42,.18);overflow:hidden}
+.wh{display:flex;justify-content:space-between;align-items:center;padding:14px 16px 10px;border-bottom:1px solid var(--line)}
+.wh h4{margin:0;font-size:14px;font-weight:700}
+.wh .wgb{font-size:11px;color:var(--red);background:var(--rl);padding:2px 8px;border-radius:999px;font-weight:700}
+.wi{padding:12px 16px;border-bottom:1px solid #F1F5F9}
+.wi:last-child{border-bottom:none}
+.wiq{font-size:14px;font-weight:600;margin-bottom:4px}
+.wia{font-size:12.5px;color:var(--red);font-weight:600;margin-bottom:4px}
+.wie{font-size:12.5px;color:var(--muted);line-height:1.5}
+.wit{font-size:11px;color:var(--faint);margin-bottom:4px}
+.hb{padding:6px 20px 90px;flex:1;display:flex;flex-direction:column;gap:10px;overflow-y:auto}
+.hc{background:#fff;border-radius:14px;padding:14px 16px;box-shadow:0 6px 16px -10px rgba(15,23,42,.18)}
+.hr{display:flex;justify-content:space-between;align-items:center}
+.hr h4{margin:0;font-size:15px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;padding-right:10px}
+.hp{font-size:18px;font-weight:800;flex-shrink:0}
+.hd{margin-top:6px;font-size:12px;color:var(--muted);display:flex;gap:12px;flex-wrap:wrap}
+.sb{padding:6px 20px 90px;display:flex;flex-direction:column;gap:16px}
+.bsc{background:#fff;border-radius:16px;padding:24px 16px;text-align:center;box-shadow:0 10px 24px -14px rgba(15,23,42,.18)}
+.dc{background:#fff;border-radius:16px;padding:6px 18px;box-shadow:0 10px 24px -14px rgba(15,23,42,.18)}
+.dr{display:flex;justify-content:space-between;align-items:center;padding:13px 0;font-size:14px}
+.dr+.dr{border-top:1px solid var(--line)}
+.dr b{font-size:15px}
+.dr b.grn{color:var(--green)}
+.cb2{padding:6px 22px 24px;display:flex;flex-direction:column;gap:18px}
+.ci{background:#FFFBEB;border-radius:12px;padding:14px;font-size:13px;color:#92400E;line-height:1.6;display:flex;gap:10px}
+.ci .cii{font-size:20px;flex-shrink:0}
+.cs{display:flex;align-items:center;gap:10px;background:var(--bg);border-radius:12px;padding:14px;font-size:13px}
+.csd{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+.csd.ok{background:var(--green)}
+.csd.no{background:var(--red)}
+.csd.wt{background:var(--amber)}
+.cst{flex:1}
+.cst strong{display:block;font-size:14px;margin-bottom:2px}
+.pg{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.pc{border:1.5px solid var(--line);border-radius:12px;padding:12px;text-align:center;cursor:pointer;transition:.12s;background:#fff}
+.pc:active{transform:scale(.97)}
+.pc.sel{border-color:var(--blue);background:var(--bl)}
+.pc .pn{font-size:13px;font-weight:600;margin-bottom:2px}
+.pc .pd{font-size:10.5px;color:var(--faint)}
+.cf{display:flex;flex-direction:column;gap:4px}
+.cf label{font-size:12px;font-weight:600;color:var(--muted)}
+.cf input{height:44px;border:1.5px solid var(--line);border-radius:10px;padding:0 14px;font-size:14px;outline:none;transition:border-color .15s}
+.cf input:focus{border-color:var(--bs)}
+.cf input.cd{font-family:monospace;font-size:13px}
+.cf .ht{font-size:11px;color:var(--faint);margin-top:2px}
+.tr{padding:12px 14px;border-radius:10px;font-size:13px;line-height:1.5;display:none}
+.tr.show{display:block}
+.tr.suc{background:var(--gl);color:var(--green);border:1px solid var(--green)}
+.tr.fail{background:var(--rl);color:var(--red);border:1px solid var(--red)}
+.bnav{position:fixed;bottom:0;max-width:480px;width:100%;left:50%;transform:translateX(-50%);height:64px;background:#fff;border-radius:18px 18px 0 0;box-shadow:0 -4px 30px -10px rgba(15,23,42,.2);display:flex;z-index:50;padding:4px 0 2px}
+.nb{flex:1;border:none;background:none;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;font-size:22px;color:var(--faint);cursor:pointer;padding:2px 0}
+.nb span{font-size:10px;color:var(--faint);font-weight:500;margin-top:1px}
+.nb.act{color:var(--blue)}
+.nb.act span{color:var(--blue);font-weight:600}
+.bnav.hid{display:none}
+.cl{position:absolute;inset:0;overflow:hidden;pointer-events:none}
+.cfp{position:absolute;top:-20px;width:8px;height:12px;animation:fl linear forwards}
+@keyframes fl{0%{transform:translateY(-20px)rotate(0deg);opacity:1}100%{transform:translateY(700px)rotate(420deg);opacity:.85}}
+.toast{position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#1E293B;color:#fff;padding:12px 24px;border-radius:12px;font-size:14px;z-index:200;opacity:0;transition:.3s;pointer-events:none;max-width:440px;text-align:center}
+.toast.show{opacity:1}
+@media(max-width:500px){.app{box-shadow:none}}
+.spin{display:inline-block;width:16px;height:16px;border-radius:50%;border:2.5px solid rgba(255,255,255,.3);border-top-color:#fff;animation:spn .7s linear infinite}
+@keyframes spn{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<div class="toast" id="toast"></div>
+<div class="app">
+<section id="screen-login" class="screen active"><div class="login-bg"><div class="blob b1"></div><div class="blob b2"></div></div>
+<div class="login-content"><div class="brand"><h2 class="logo">AI题库</h2><p class="tagline">智能出题 · 高效学习</p></div>
+<div class="auth-card"><div class="auth-tabs"><div class="ti" id="ti"></div><button class="tab active" onclick="st(0)">登录</button><button class="tab" onclick="st(1)">注册</button></div>
+<div class="fld"><span>👤</span><input id="ei" placeholder="建议使用邮箱注册，如 user@example.com"></div>
+<div class="fld"><span>🔒</span><input id="pi" placeholder="密码至少6位，建议字母+数字组合" type="password"></div>
+<p class="err" id="le"></p><button class="btn btn-pri" id="lb" onclick="ha()">登录</button></div></div></section>
+
+<section id="screen-list" class="screen"><header class="topbar"><h2>我的资料</h2><button class="cb bat" id="bb" onclick="showScreen('config')" title="API配置">🔋</button><button class="cb pri" onclick="uf()">＋</button></header>
+<div class="ub" id="ub"><span id="bt"></span></div><div class="ut">支持 PDF、Word、TXT · 单个文件不超过 50MB</div>
+<div class="lb" id="ml"></div><div class="le" id="le2"><span class="ei">🗂️</span><h3>还没有上传资料</h3><p>点击右上角 ＋ 上传学习文档，AI 自动出题</p></div></section>
+
+<section id="screen-config" class="screen"><header class="topbar"><button class="cb" onclick="showScreen('list')">←</button><h2>API 配置</h2></header>
+<div class="cb2"><div class="ci"><span class="cii">🔋</span><div><strong>需要"电池"才能运行</strong>AI题库只是一个躯壳，需要接入大模型 API 才能出题。每个账号的配置独立保存，退出后彻底清除。</div></div>
+<div class="cs"><span class="csd wt" id="csd"></span><div class="cst"><strong id="cstt">未检测</strong><span id="csdd">下方测试连接</span></div></div>
+<div><p class="sl">选择服务商</p><div class="pg" id="pg" style="margin-top:8px"></div></div>
+<div class="cf"><label>API Key <span style="color:var(--faint);font-weight:400">（与账号绑定，退出即清除）</span></label><input class="cd" id="ck" placeholder="sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" type="password"><span class="ht">从服务商官网获取</span></div>
+<div class="cf"><label>API Base URL</label><input id="cb2" placeholder="https://api.deepseek.com/v1"><span class="ht">大模型 API 地址</span></div>
+<div class="cf"><label>模型名称</label><input id="cm" placeholder="deepseek-chat"><span class="ht">如 deepseek-chat / gpt-3.5-turbo</span></div>
+<div class="tr" id="tr3"></div>
+<div style="display:flex;gap:10px"><button class="btn-sm amber" style="flex:1;justify-content:center;height:44px;font-size:14px" onclick="tc()">🔌 测试</button><button class="btn-sm blue" style="flex:1;justify-content:center;height:44px;font-size:14px" onclick="sc()">💾 保存</button></div></div></section>
+
+<section id="screen-generate" class="screen"><header class="topbar"><button class="cb" onclick="showScreen('list')">←</button><h2>生成题目</h2></header>
+<div class="gb"><div class="mch"><span>📄</span><span id="gfn">加载中...</span></div>
+<div><p class="sl">题型（可多选混合出题）</p><div class="tg" id="tg"><div class="tc sel" data-t="choice" onclick="selt(this,'choice')"><span class="ck">✓</span><span class="tn">单选题</span><span class="td">四选一</span></div><div class="tc" data-t="multi_choice" onclick="selt(this,'multi_choice')"><span class="ck">✓</span><span class="tn">多选题</span><span class="td">多选多</span></div><div class="tc" data-t="true_false" onclick="selt(this,'true_false')"><span class="ck">✓</span><span class="tn">判断题</span><span class="td">对/错</span></div><div class="tc" data-t="fill" onclick="selt(this,'fill')"><span class="ck">✓</span><span class="tn">填空题</span><span class="td">手动输入</span></div><div class="tc" data-t="subjective" onclick="selt(this,'subjective')"><span class="ck">✓</span><span class="tn">主观题</span><span class="td">简答/论述</span></div></div></div>
+<div><p class="sl">目标群体</p><select class="as" id="as2"><option value="通用">通用</option><option value="小学1-2年级">小学1-2年级</option><option value="小学3-4年级">小学3-4年级</option><option value="小学5-6年级">小学5-6年级</option><option value="初中">初中</option><option value="高中">高中</option><option value="大学生/成人">大学生/成人</option></select></div>
+<div><p class="sl" style="text-align:center">题目数量</p><div class="stp"><button class="stb" onclick="ac(-1)">−</button><span class="sn" id="sn">5</span><button class="stb" onclick="ac(1)">＋</button></div></div>
+<button class="btn btn-pri" id="gb2" onclick="gq()">生成题目</button></div></section>
+
+<section id="screen-practice" class="screen"><header class="topbar"><button class="cb" onclick="cex()">←</button><span style="font-size:14px;font-weight:700;color:var(--blue)" id="pt">1 / 5</span><span style="display:flex;align-items:center;gap:4px;font-size:13px;font-weight:800;color:var(--amber);background:#FFFBEB;padding:4px 9px;border-radius:999px">🔥 <span id="sn2">0</span></span></header>
+<div class="pr" id="pd"></div>
+<div class="qp" id="qv"><div class="qc" id="qc"><p class="qtg" id="qtg">第 1 题</p><span class="qb" id="qbadge">单选题</span><p class="qtx" id="qtx">加载中...</p><div class="sl" id="stl"></div></div>
+<div class="opts" id="ow"></div><div id="fa"></div>
+<button class="btn btn-pri" id="sb2" onclick="sa()" disabled>提交答案</button>
+<button class="btn btn-pri" id="nb2" style="display:none" onclick="nq()">下一题</button></div>
+<div class="cv" id="cv" style="display:none"><div class="cl" id="cl2"></div><div style="font-size:52px">🎉</div>
+<div class="rw"><svg viewBox="0 0 160 160"><circle cx="80" cy="80" r="68" fill="none" stroke="#E2E8F0" stroke-width="14"/><circle cx="80" cy="80" r="68" fill="none" stroke="#10B981" stroke-width="14" stroke-linecap="round" id="rf" stroke-dasharray="427" stroke-dashoffset="427"/></svg><div class="sp" id="sp">0%</div></div>
+<p class="ss2" id="ss2">0 / 0 题正确</p>
+<button class="btn btn-pri" onclick="rq()">再来一轮</button>
+<button class="btn btn-sec" onclick="showScreen('list')">返回主页</button></div></section>
+
+<section id="screen-history" class="screen"><header class="topbar-plain"><h2>练习历史</h2><p class="sub">按教材分组</p></header><div class="hb" id="hb"><div style="text-align:center;padding:60px 0;color:var(--faint)" id="he">暂无记录</div></div></section>
+<section id="screen-wrong" class="screen"><header class="topbar-plain"><h2>错题本</h2><p class="sub">按教材分类，可重练</p></header><div class="wb" id="wb"><div style="text-align:center;padding:60px 0;color:var(--faint)" id="we">暂无错题！🎉</div></div></section>
+<section id="screen-stats" class="screen"><header class="topbar-plain"><h2>学习统计</h2><p class="sub">追踪你的进步</p></header>
+<div class="sb" id="sb2"><div class="bsc"><div style="position:relative;width:120px;height:120px;margin:0 auto"><svg width="120" height="120" viewBox="0 0 120 120"><circle cx="60" cy="60" r="50" fill="none" stroke="#E2E8F0" stroke-width="12"/><circle cx="60" cy="60" r="50" fill="none" stroke="#2563EB" stroke-width="12" stroke-linecap="round" id="sr" stroke-dasharray="314" stroke-dashoffset="314"/></svg><div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:800" id="sp2">0%</div></div><p style="font-size:13px;font-weight:600;margin:10px 0 2px;color:var(--muted)">总正确率</p><p style="font-size:12px;color:var(--faint);margin:0" id="ss3">0 / 0 题正确</p></div>
+<div class="dc"><div class="dr"><span>📝 累计做题</span><b id="st1">0</b></div><div class="dr"><span>✅ 正确题数</span><b class="grn" id="st2">0</b></div><div class="dr"><span>🔄 练习次数</span><b id="st3">0</b></div><div class="dr"><span>🕐 最近练习</span><b id="st4" style="font-size:12px;font-weight:600">暂无</b></div></div></div></section>
+
+<nav class="bnav" id="bnav"><button class="nb act" data-s="list" onclick="sn('list')">📚<span>主页</span></button><button class="nb" data-s="history" onclick="sn('history')">📋<span>历史</span></button><button class="nb" data-s="wrong" onclick="sn('wrong')">📕<span>错题本</span></button><button class="nb" data-s="stats" onclick="sn('stats')">📊<span>统计</span></button></nav>
+<div class="modal-overlay hidden" id="mo"><div class="modal-card"><h3 id="mt"></h3><p id="mb"></p><div class="modal-actions"><button class="m-cancel" id="mc2">取消</button><button class="m-confirm" id="mc3">确定</button></div></div></div>
+<input type="file" id="fi" accept=".pdf,.docx,.txt" style="display:none"></div>
+
+<script>
+const AB='http://localhost:8000';let TK=localStorage.getItem('tk')||'',UID=localStorage.getItem('uid')||'';
+let mats=[],qts=new Set(['choice']),qc=5,qs=null;
+function tt(m,d){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');clearTimeout(t._timer);t._timer=setTimeout(()=>t.classList.remove('show'),d||2000);}
+
+function nk(r){return UID?'ai_'+UID+'_'+r:'ai_'+r;}
+function clearAllKeys(){['tk','uid'].forEach(k=>localStorage.removeItem(k));const prefix='ai_';Object.keys(localStorage).filter(k=>k.startsWith(prefix)).forEach(k=>localStorage.removeItem(k));}
+function logout(){TK='';UID='';clearAllKeys();showScreen('login');}
+
+async function api(p,o={}){
+  const h={'Content-Type':'application/json'};if(TK)h['Authorization']='Bearer '+TK;
+  const r=await fetch(AB+p,{...o,headers:h});
+  if(r.status===401){logout();throw new Error('登录过期');}
+  const d=await r.json();if(!r.ok)throw new Error(Array.isArray(d.detail)?d.detail.map(x=>x.msg||String(x)).join('; '):(d.detail||'请求失败'));return d;
+}
+
+function showScreen(id){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.getElementById('screen-'+id).classList.add('active');
+  const ns=['list','history','wrong','stats'],nav=document.getElementById('bnav');
+  nav.classList.toggle('hid',!ns.includes(id));
+  document.querySelectorAll('.nb').forEach(b=>b.classList.toggle('act',b.dataset.s===id));
+  if(id==='stats')loadStats();if(id==='list')loadMats();if(id==='history')loadHist();if(id==='wrong')loadWrong();
+  if(id==='config')loadCfg();
+}
+function sn(id){showScreen(id);}
+function om(o){
+  document.getElementById('mt').textContent=o.t;document.getElementById('mb').textContent=o.b;
+  document.getElementById('mc2').textContent=o.c2||'取消';document.getElementById('mc3').textContent=o.c3||'确定';
+  document.getElementById('mc3').className='m-confirm'+(o.dg?' danger':'');
+  const ml=document.getElementById('mo');ml.classList.remove('hidden');
+  ml.onclick=e=>{if(e.target===ml)cm();};
+  document.getElementById('mc2').onclick=cm;
+  document.getElementById('mc3').onclick=()=>{cm();o.cb&&o.cb();};
+}
+function cm(){document.getElementById('mo').classList.add('hidden');}
+
+// ====== 登录 ======
+let ilt=true;
+function st(i){ilt=i===0;document.querySelectorAll('.auth-tabs .tab').forEach((t,j)=>t.classList.toggle('active',j===i));document.getElementById('ti').classList.toggle('r',i===1);document.getElementById('lb').textContent=i===0?'登录':'注册';document.getElementById('le').classList.remove('show');}
+async function ha(){
+  const e=document.getElementById('ei').value.trim()||'u_'+Date.now(),p=document.getElementById('pi').value||'123456';
+  const btn=document.getElementById('lb');btn.disabled=true;btn.textContent='处理中...';
+  try{const d=await api('/api/auth/'+(ilt?'login':'register'),{method:'POST',body:JSON.stringify({email:e,password:p})});TK=d.access_token;UID=d.user_id;localStorage.setItem('tk',TK);localStorage.setItem('uid',String(UID));showScreen('list');checkApi();}
+  catch(e2){const el=document.getElementById('le');el.textContent=(e2&&e2.message)||String(e2)||'操作失败';el.classList.add('show');}
+  finally{btn.disabled=false;btn.textContent=ilt?'登录':'注册';}
+}
+if(TK){document.getElementById('lb').textContent='验证中...';document.getElementById('lb').disabled=true;api('/api/auth/me').then(u=>{UID=u.id;localStorage.setItem('uid',String(UID));showScreen('list');checkApi();}).catch(()=>{logout();document.getElementById('lb').textContent='登录';document.getElementById('lb').disabled=false;});}
+
+// ====== 电池 + 资料 ======
+async function checkApi(){try{const c=await api('/api/config/config');const btn=document.getElementById('bb');btn.classList.toggle('ok',c.configured);const d=document.createElement('span');d.className='dot '+(c.configured?'on':'off');btn.innerHTML='🔋';btn.appendChild(d);}catch(e){}}
+async function loadMats(){try{mats=await api('/api/materials');renderMats();}catch(e){tt(e.message);}}
+function renderMats(){
+  const el=document.getElementById('ml'),em=document.getElementById('le2');
+  if(!mats.length){el.innerHTML='';em.style.display='flex';return;}
+  em.style.display='none';
+  el.innerHTML=mats.map(m=>{const e=(m.filename||'').toLowerCase().split('.').pop();const t=e==='pdf'?'pdf':(e==='docx'||e==='doc')?'word':'txt';const l=t==='pdf'?'PDF':t==='word'?'W':'TXT';return `<div class="mc"><div class="fi ${t}">${l}</div><div class="mi"><div class="mn">${m.filename}</div><div class="mt">${fd(m.created_at)}</div></div><div class="ma"><button class="ga" onclick="og(${m.id},'${(m.filename||'').replace(/'/g,"\\'")}')">出题</button><button class="da" onclick="dm(${m.id})">✕</button></div></div>`;}).join('');
+}
+function fd(d){if(!d)return '';const dt=new Date(d);return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')} ${String(dt.getHours()).padStart(2,'0')}:${String(dt.getMinutes()).padStart(2,'0')}`;}
+function uf(){document.getElementById('fi').click();}
+document.getElementById('fi').onchange=async function(e){
+  const f=e.target.files[0];if(!f)return;
+  const b=document.getElementById('ub');b.className='ub load show';document.getElementById('bt').textContent='上传中...';
+  const fd2=new FormData();fd2.append('file',f);
+  try{const r=await fetch(AB+'/api/materials/upload',{method:'POST',headers:{'Authorization':'Bearer '+TK},body:fd2});if(!r.ok){const d=await r.json();throw new Error(Array.isArray(d.detail)?d.detail.map(x=>x.msg||String(x)).join('; '):(d.detail||'上传失败'));}await r.json();b.className='ub ok show';document.getElementById('bt').textContent='✅ 上传成功';setTimeout(()=>b.classList.remove('show'),2000);await loadMats();}
+  catch(e2){b.className='ub ok show';document.getElementById('bt').textContent='❌ '+e2.message;setTimeout(()=>b.classList.remove('show'),3000);}
+  e.target.value='';
+};
+async function dm(id){const m=mats.find(x=>x.id===id);if(!m)return;om({t:'删除资料',b:'确定删除「'+m.filename+'」吗？',c3:'删除',dg:true,cb:async()=>{try{await api('/api/materials/'+id,{method:'DELETE'});await loadMats();tt('已删除');}catch(e2){tt(e2.message);}}});}
+
+// ====== API配置 ======
+const PROVS={deepseek:{name:'DeepSeek',base:'https://api.deepseek.com/v1',model:'deepseek-chat'},siliconflow:{name:'SiliconFlow',base:'https://api.siliconflow.cn/v1',model:'Qwen/Qwen2.5-7B-Instruct'},openai:{name:'OpenAI',base:'https://api.openai.com/v1',model:'gpt-3.5-turbo'},tongyi:{name:'通义千问',base:'https://dashscope.aliyuncs.com/compatible-mode/v1',model:'qwen-turbo'},zhipu:{name:'智谱清言',base:'https://open.bigmodel.cn/api/paas/v4',model:'glm-4-flash'},custom:{name:'自定义',base:'',model:''}};
+let cp='custom';
+async function loadCfg(){
+  const g=document.getElementById('pg');
+  g.innerHTML=Object.entries(PROVS).map(([k,v])=>`<div class="pc ${k===cp?'sel':''}" data-p="${k}" onclick="sp('${k}')"><div class="pn">${v.name}</div><div class="pd">${v.model||'手动填写'}</div></div>`).join('');
+  try{const c=await api('/api/config/config');if(c.configured){cp=c.provider||'custom';document.getElementById('ck').value='';document.getElementById('cb2').value=c.api_base;document.getElementById('cm').value=c.model_name;setStat('ok','🟢 已配置',c.api_base+' · '+c.model_name);document.querySelectorAll('.pc').forEach(x=>x.classList.toggle('sel',x.dataset.p===c.provider));}else setStat('no','🔴 未配置','请填入 API Key');}catch(e2){setStat('no','🔴 加载失败',e2.message);}
+}
+function sp(k){cp=k;document.querySelectorAll('.pc').forEach(x=>x.classList.toggle('sel',x.dataset.p===k));const p=PROVS[k];if(k!=='custom'){document.getElementById('cb2').value=p.base;document.getElementById('cm').value=p.model;}document.getElementById('tr3').className='tr';}
+function setStat(t,ti,de){document.getElementById('csd').className='csd '+t;document.getElementById('cstt').textContent=ti;document.getElementById('csdd').textContent=de;}
+async function tc(){
+  const k=document.getElementById('ck').value.trim(),b=document.getElementById('cb2').value.trim(),m=document.getElementById('cm').value.trim();
+  if(!k||!b||!m){tt('请完整填写');return;}const tr=document.getElementById('tr3');tr.className='tr show';tr.innerHTML='⏳ 测试中...';
+  try{const r=await api('/api/config/test',{method:'POST',body:JSON.stringify({api_key:k,api_base:b,model_name:m})});tr.className='tr show '+(r.success?'suc':'fail');tr.innerHTML=(r.success?'✅ ':'❌ ')+r.message;}catch(e2){tr.className='tr show fail';tr.innerHTML='❌ '+e2.message;}
+}
+async function sc(){
+  const k=document.getElementById('ck').value.trim(),b=document.getElementById('cb2').value.trim(),m=document.getElementById('cm').value.trim();
+  if(!k||!b||!m){tt('请完整填写');return;}
+  try{await api('/api/config/config',{method:'POST',body:JSON.stringify({provider:cp,api_key:k,api_base:b,model_name:m})});tt('✅ 已保存');setStat('ok','🟢 已配置',b+' · '+m);checkApi();}catch(e2){tt('❌ '+e2.message);}
+}
+
+// ====== 退出按钮 ======
+setTimeout(()=>{const h=document.querySelector('#screen-list .topbar');if(h){const a=h.lastElementChild;if(a){const l=document.createElement('button');l.className='cb';l.style.cssText='border:none;background:none;font-size:18px;cursor:pointer;color:var(--muted)';l.textContent='⇥';l.title='退出';l.onclick=()=>om({t:'退出登录',b:'退出后当前账号的API配置将被清除，确定退出吗？',c3:'退出',dg:true,cb:()=>logout()});a.parentNode.insertBefore(l,a.nextSibling);}}},100);
+
+// ====== 生成题目（混合题型） ======
+let gmi=0;
+function og(id,nm){gmi=id;document.getElementById('gfn').textContent=nm;qts=new Set(['choice']);document.querySelectorAll('#tg .tc').forEach(c=>c.classList.toggle('sel',c.dataset.t==='choice'));showScreen('generate');}
+function selt(el,t){
+  if(qts.has(t)){if(qts.size>1){qts.delete(t);el.classList.remove('sel');}}else{qts.add(t);el.classList.add('sel');}
+}
+function ac(d){const n=qc+d;if(n<1||n>20)return;qc=n;document.getElementById('sn').textContent=n;}
+async function gq(){
+  if(qts.size===0){tt('请至少选择一种题型');return;}
+  const btn=document.getElementById('gb2');btn.disabled=true;btn.innerHTML='<span class="spin" style="margin-right:8px"></span>AI 出题中...';
+  const types=Array.from(qts).join(',');const audience=document.getElementById('as2').value;
+  try{
+    // 一次请求出混合题型（后端用逗号分隔，如 "choice,fill"）
+    const data=await api('/api/questions/generate',{method:'POST',body:JSON.stringify({material_id:gmi,question_type:types,question_count:qc,target_audience:audience})});
+    startQuiz(data);showScreen('practice');
+  }catch(e2){tt(e2.message);}
+  finally{btn.disabled=false;btn.textContent='生成题目';}
+}
+
+// ====== 答题 ======
+const TLBL={choice:'单选题',multi_choice:'多选题',true_false:'判断题',fill:'填空题',subjective:'主观题'};
+let ms=[];
+function startQuiz(d){
+  qs={bankId:d.bank_id,questions:d.questions,idx:0,score:0,streak:0,answered:false,selected:null,qtype:null,total:d.questions.length,wrongs:[]};
+  document.getElementById('qv').style.display='';document.getElementById('cv').style.display='none';
+  document.getElementById('pd').innerHTML=Array.from({length:qs.total},()=>'<span></span>').join('');rq2();
+}
+function gqt(q){
+  // 优先使用后端标注的题型
+  if(q.question_type) return q.question_type;
+  if(q.options===undefined||!q.options||!q.options.length) return 'subjective';
+  if(q.options.length===2){const t=(q.options[0]||'');if(t.startsWith('正确')||t.startsWith('对')||t.startsWith('True'))return 'true_false';}
+  return 'choice';
+}
+function rq2(){
+  const q=qs.questions[qs.idx];let qq=q.question_type||gqt(q);
+  qs.qtype=qq;
+  document.getElementById('pt').textContent=`${qs.idx+1} / ${qs.total}`;
+  document.getElementById('qtg').textContent=`第 ${qs.idx+1} 题`;
+  document.getElementById('qbadge').textContent=TLBL[qq]||'题目';
+  document.getElementById('qtx').textContent=q.question;
+  document.getElementById('sn2').textContent=qs.streak;
+  const w=document.getElementById('ow');ms=[];qs.selected=null;
+  if(qq==='subjective'){w.className='opts';w.innerHTML='<textarea id="si2" placeholder="输入你的答案..." style="border:1.5px solid var(--line);border-radius:10px;padding:12px;font-size:14.5px;outline:none;background:#fff;width:100%;min-height:100px;resize:vertical;font-family:inherit"></textarea>';document.getElementById('si2').oninput=function(){qs.selected=this.value.trim()||null;document.getElementById('sb2').disabled=!this.value.trim();};}
+  else if(qq==='true_false'){w.className='opts';w.innerHTML='<button class="opt" data-v="正确">正确</button><button class="opt" data-v="错误">错误</button>';w.querySelectorAll('.opt').forEach(b=>{b.onclick=()=>{if(qs.answered)return;w.querySelectorAll('.opt').forEach(o=>o.classList.remove('sel'));b.classList.add('sel');qs.selected=b.dataset.v;document.getElementById('sb2').disabled=false;};});}
+  else if(q.options&&q.options.length){
+    w.className='opts';
+    if(qq==='multi_choice'){w.innerHTML=q.options.map((o,i)=>`<button class="opt" data-i="${i}"><span class="cm">□</span>${o}</button>`).join('');w.querySelectorAll('.opt').forEach(b=>{b.onclick=()=>{if(qs.answered)return;const i=parseInt(b.dataset.i);const idx=ms.indexOf(i);if(idx>=0){ms.splice(idx,1);b.classList.remove('ms');b.querySelector('.cm').textContent='□';}else{ms.push(i);ms.sort();b.classList.add('ms');b.querySelector('.cm').textContent='✓';}qs.selected=ms.length?ms.map(j=>String.fromCharCode(65+j)).join(','):null;document.getElementById('sb2').disabled=!ms.length;};});}
+    else{w.innerHTML=q.options.map((o,i)=>`<button class="opt" data-i="${i}">${o}</button>`).join('');w.querySelectorAll('.opt').forEach(b=>{b.onclick=()=>{if(qs.answered)return;w.querySelectorAll('.opt').forEach(o=>o.classList.remove('sel'));b.classList.add('sel');qs.selected=String.fromCharCode(65+parseInt(b.dataset.i));document.getElementById('sb2').disabled=false;};});}}
+  else{w.className='opts';w.innerHTML='<textarea id="si2" placeholder="输入你的答案..." style="border:1.5px solid var(--line);border-radius:10px;padding:12px;font-size:14.5px;outline:none;background:#fff;width:100%;min-height:80px;resize:vertical;font-family:inherit"></textarea>';document.getElementById('si2').oninput=function(){qs.selected=this.value.trim()||null;document.getElementById('sb2').disabled=!this.value.trim();};}
+  qs.answered=false;document.getElementById('fa').innerHTML='';document.getElementById('sb2').style.display='';document.getElementById('sb2').disabled=true;
+  document.getElementById('nb2').style.display='none';document.getElementById('stl').innerHTML='';
+  document.querySelectorAll('#pd span').forEach((s,i)=>s.classList.toggle('cur',i===qs.idx));
+}
+async function sa(){if(qs.answered||qs.selected==null)return;qs.answered=true;
+  try{const r=await api('/api/practice/submit',{method:'POST',body:JSON.stringify({bank_id:qs.bankId,question_index:qs.idx,user_answer:qs.selected})});const cor=r.is_correct;if(cor){qs.score++;qs.streak++;}else{qs.streak=0;qs.wrongs.push(qs.idx);}document.getElementById('sn2').textContent=qs.streak;spSt(cor);const w=document.getElementById('ow');w.classList.add('lk');
+    // 仅选择题/多选题/判断题做选项高亮，填空和主观题不需要
+    if(qs.qtype==='multi_choice'&&r.correct_answer&&Array.isArray(r.correct_answer)){const cl=r.correct_answer.map(c=>String(c).charCodeAt(0)-65);cl.forEach(ci=>{if(w.children[ci])w.children[ci].classList.add('cor');});ms.forEach(si=>{if(!cl.includes(si))w.children[si]?.classList.add('wro');});}
+    else if(qs.qtype==='true_false'){const ci=r.correct_answer==='正确'?0:1;w.children[ci]?.classList.add('cor');const si=['正确','错误'].indexOf(qs.selected);if(si>=0&&si!==ci)w.children[si]?.classList.add('wro');}
+    else if(qs.qtype==='choice'&&r.correct_answer&&typeof r.correct_answer==='string'){const ci=r.correct_answer.charCodeAt(0)-65;if(ci>=0&&w.children[ci])w.children[ci].classList.add('cor');if(!cor&&qs.selected.length===1){const si=qs.selected.charCodeAt(0)-65;if(si>=0&&w.children[si])w.children[si].classList.add('wro');}}
+    if(!cor){document.getElementById('qc').classList.add('shk');setTimeout(()=>document.getElementById('qc').classList.remove('shk'),400);}
+    const fb=document.getElementById('fa');
+    const subjEnd=qs.qtype==='subjective'?' 参考答案如下：':(cor?' 答对了！🎉':' 看看解析吧');fb.innerHTML='<div class="rb '+(cor?'gd':'bd')+'">'+(cor?'✅ 正确！':'❌ 答错了')+subjEnd+'</div>'+(r.correct_answer?'<p class="ca">答案：'+(Array.isArray(r.correct_answer)?r.correct_answer.join(', '):r.correct_answer)+'</p>':'')+(r.explanation?'<div class="ec"><p class="el">💡 解析</p><p class="et">'+r.explanation+'</p></div>':'');
+    const dots=document.querySelectorAll('#pd span');dots[qs.idx].classList.remove('cur');dots[qs.idx].classList.add(cor?'gd':'bd');document.getElementById('sb2').style.display='none';document.getElementById('nb2').style.display='';}catch(e2){tt(e2.message);qs.answered=false;}}
+function spSt(c){const l=document.getElementById('stl');const r=(Math.random()*16-8).toFixed(1)+'deg';const cl=c?'#10B981':'#EF4444';l.innerHTML='<div class="stmp" style="--rot:'+r+'"><svg viewBox="0 0 92 92" width="84" height="84"><circle cx="46" cy="46" r="38" fill="none" stroke="'+cl+'" stroke-width="6"/>'+(c?'<path d="M22 46 L38 62 L70 26" stroke="'+cl+'" stroke-width="9" fill="none" stroke-linecap="round" stroke-linejoin="round"/>':'<g stroke="'+cl+'" stroke-width="9" stroke-linecap="round"><line x1="26" y1="26" x2="66" y2="66"/><line x1="66" y1="26" x2="26" y2="66"/></g>')+'</svg></div>';for(let i=0;i<6;i++){const a=Math.random()*Math.PI*2,d=26+Math.random()*46;const p=document.createElement('span');p.style.cssText='position:absolute;top:46px;right:46px;width:6px;height:6px;border-radius:50%;background:'+cl+';animation:ik .65s ease-out forwards;--dx:'+Math.cos(a)*d+'px;--dy:'+Math.sin(a)*d+'px';l.appendChild(p);setTimeout(()=>p.remove(),700);}setTimeout(()=>{const s=l.querySelector('.stmp');if(s)s.remove();},1400);}
+function nq(){qs.idx++;if(qs.idx>=qs.total){showComplete();return;}rq2();}
+async function showComplete(){document.getElementById('qv').style.display='none';document.getElementById('cv').style.display='flex';const p=Math.round(qs.score/qs.total*100);document.getElementById('ss2').textContent=`${qs.score} / ${qs.total} 题正确`;const ring=document.getElementById('rf');const len=2*Math.PI*68;ring.style.strokeDasharray=len;setTimeout(()=>{ring.style.strokeDashoffset=len*(1-p/100);},50);anim(document.getElementById('sp'),p,'%');confetti();try{await api('/api/practice/complete',{method:'POST',body:JSON.stringify({bank_id:qs.bankId,total_questions:qs.total,correct_count:qs.score,wrong_indices:qs.wrongs})});}catch(e){}}
+function rq(){qs.idx=0;qs.score=0;qs.streak=0;qs.wrongs=[];document.getElementById('rf').style.strokeDashoffset=2*Math.PI*68;document.getElementById('cv').style.display='none';document.getElementById('qv').style.display='';document.getElementById('pd').innerHTML=Array.from({length:qs.total},()=>'<span></span>').join('');rq2();}
+function cex(){om({t:'退出答题？',b:'当前进度不会保存。',c3:'退出',dg:true,cb:()=>showScreen('list')});}
+function anim(el,t,s){let cur=0;const step=Math.max(1,Math.round(t/28));const i=setInterval(()=>{cur+=step;if(cur>=t){cur=t;clearInterval(i);}el.textContent=cur+s;},22);}
+function confetti(){const l=document.getElementById('cl2');l.innerHTML='';const cs=['#2563EB','#10B981','#F59E0B','#EF4444','#93C5FD'];for(let i=0;i<26;i++){const b=document.createElement('span');b.className='cfp';b.style.left=Math.random()*100+'%';b.style.background=cs[i%5];b.style.animationDuration=(1.6+Math.random()*1.2)+'s';b.style.animationDelay=Math.random()*0.6+'s';l.appendChild(b);}setTimeout(()=>l.innerHTML='',3200);}
+async function loadHist(){const body=document.getElementById('hb');try{const d=await api('/api/practice/history');if(!d||!d.length){body.innerHTML='<div style="text-align:center;padding:60px 0;color:var(--faint)">暂无记录</div>';return;}body.innerHTML=d.map(h=>{const pct=h.accuracy;const t=(h.material_name||'未知').replace(/\.[^/.]+$/,'')+' #'+h.sequence;return `<div class="hc"><div class="hr"><h4>📝 ${t}</h4><span class="hp" style="color:${pct>=60?'var(--green)':'var(--red)'}">${pct}%</span></div><div class="hd"><span>✅ ${h.correct_count}/${h.total_questions}</span><span>❌ ${h.wrong_count}错</span><span>🕐 ${fd(h.completed_at)}</span></div></div>`;}).join('');}catch(e){}}
+async function loadWrong(){const body=document.getElementById('wb');try{const g=await api('/api/practice/wrong');if(!g||!g.length){body.innerHTML='<div style="text-align:center;padding:60px 0;color:var(--faint)">暂无错题！🎉</div>';return;}body.innerHTML=g.map(gr=>{const nm=(gr.material_name||'未知').replace(/\.[^/.]+$/,'');const items=gr.questions.map((w,i)=>`<div class="wi"><div class="wit">${TLBL[w.question_type]||'题'} · 第${w.question_index+1}题</div><div class="wiq">${i+1}. ${w.question}</div>${w.options&&w.options.length?'<div style="font-size:12px;color:var(--muted);margin-bottom:4px">'+w.options.join(' · ')+'</div>':''}<div class="wia">✅ ${Array.isArray(w.answer)?w.answer.join(', '):w.answer}</div>${w.explanation?'<div class="wie">💡 '+w.explanation+'</div>':''}</div>`).join('');return `<div class="wg"><div class="wh"><h4>📕 ${nm}</h4><div><span class="wgb">${gr.wrong_count}错</span><button class="btn-sm red" style="margin-left:6px" onclick="rw(${gr.bank_id})">重练</button></div></div>${items}</div>`;}).join('');}catch(e){}}
+async function rw(bankId){try{const ws=await api('/api/practice/wrong');const g=ws.find(x=>x.bank_id===bankId);if(!g||!g.questions.length){tt('没有错题');return;}startQuiz({bank_id:bankId,questions:g.questions});showScreen('practice');}catch(e){tt(e.message);}}
+async function loadStats(){try{const s=await api('/api/stats');document.getElementById('st1').textContent=s.total_questions;document.getElementById('st2').textContent=s.correct_count;document.getElementById('st3').textContent=s.practice_count;document.getElementById('st4').textContent=s.last_practice_time?fd(s.last_practice_time):'暂无';document.getElementById('ss3').textContent=`${s.correct_count} / ${s.total_questions} 题正确`;const pct=s.total_questions?Math.round(s.correct_count/s.total_questions*100):0;const ring=document.getElementById('sr');const len=2*Math.PI*50;ring.style.strokeDasharray=len;setTimeout(()=>{ring.style.strokeDashoffset=len*(1-pct/100);},100);anim(document.getElementById('sp2'),pct,'%');}catch(e){}}
+const stl2=document.createElement('style');stl2.textContent='@keyframes ik{0%{transform:translate(0,0)scale(1);opacity:.85}100%{transform:translate(var(--dx),var(--dy))scale(0);opacity:0}}';document.head.appendChild(stl2);
+</script>
+</body>
+</html>
