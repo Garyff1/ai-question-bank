@@ -281,7 +281,7 @@ async function api(p,o={}){
   const h={'Content-Type':'application/json'};if(TK)h['Authorization']='Bearer '+TK;
   const r=await fetch(AB+p,{...o,h});
   if(r.status===401){logout();throw new Error('登录过期');}
-  const d=await r.json();if(!r.ok)throw new Error(d.detail||'请求失败');return d;
+  const d=await r.json();if(!r.ok)throw new Error(Array.isArray(d.detail)?d.detail.map(x=>x.msg||String(x)).join('; '):(d.detail||'请求失败'));return d;
 }
 
 function showScreen(id){
@@ -312,7 +312,7 @@ async function ha(){
   const e=document.getElementById('ei').value.trim()||'u_'+Date.now(),p=document.getElementById('pi').value||'123456';
   const btn=document.getElementById('lb');btn.disabled=true;btn.textContent='处理中...';
   try{const d=await api('/api/auth/'+(ilt?'login':'register'),{method:'POST',body:JSON.stringify({email:e,password:p})});TK=d.access_token;UID=d.user_id;localStorage.setItem('tk',TK);localStorage.setItem('uid',String(UID));showScreen('list');checkApi();}
-  catch(e2){const el=document.getElementById('le');el.textContent=e2.message;el.classList.add('show');}
+  catch(e2){const el=document.getElementById('le');el.textContent=(e2&&e2.message)||String(e2)||'操作失败';el.classList.add('show');}
   finally{btn.disabled=false;btn.textContent=ilt?'登录':'注册';}
 }
 if(TK){api('/api/auth/me').then(u=>{UID=u.id;localStorage.setItem('uid',String(UID));showScreen('list');checkApi();}).catch(()=>logout());}
@@ -332,7 +332,7 @@ document.getElementById('fi').onchange=async function(e){
   const f=e.target.files[0];if(!f)return;
   const b=document.getElementById('ub');b.className='ub load show';document.getElementById('bt').textContent='上传中...';
   const fd2=new FormData();fd2.append('file',f);
-  try{const r=await fetch(AB+'/api/materials/upload',{method:'POST',headers:{'Authorization':'Bearer '+TK},body:fd2});if(!r.ok){const d=await r.json();throw new Error(d.detail||'上传失败');}await r.json();b.className='ub ok show';document.getElementById('bt').textContent='✅ 上传成功';setTimeout(()=>b.classList.remove('show'),2000);await loadMats();}
+  try{const r=await fetch(AB+'/api/materials/upload',{method:'POST',headers:{'Authorization':'Bearer '+TK},body:fd2});if(!r.ok){const d=await r.json();throw new Error(Array.isArray(d.detail)?d.detail.map(x=>x.msg||String(x)).join('; '):(d.detail||'上传失败'));}await r.json();b.className='ub ok show';document.getElementById('bt').textContent='✅ 上传成功';setTimeout(()=>b.classList.remove('show'),2000);await loadMats();}
   catch(e2){b.className='ub ok show';document.getElementById('bt').textContent='❌ '+e2.message;setTimeout(()=>b.classList.remove('show'),3000);}
   e.target.value='';
 };
