@@ -411,9 +411,10 @@ function rq2(){
 }
 async function sa(){if(qs.answered||qs.selected==null)return;qs.answered=true;
   try{const r=await api('/api/practice/submit',{method:'POST',body:JSON.stringify({bank_id:qs.bankId,question_index:qs.idx,user_answer:qs.selected})});const cor=r.is_correct;if(cor){qs.score++;qs.streak++;}else{qs.streak=0;qs.wrongs.push(qs.idx);}document.getElementById('sn2').textContent=qs.streak;spSt(cor);const w=document.getElementById('ow');w.classList.add('lk');
-    if(qs.qtype==='multi_choice'){const cl=r.correct_answer?r.correct_answer.map(c=>c.charCodeAt(0)-65):[];cl.forEach(ci=>{if(w.children[ci])w.children[ci].classList.add('cor');});ms.forEach(si=>{if(!cl.includes(si))w.children[si]?.classList.add('wro');});}
+    // 仅选择题/多选题/判断题做选项高亮，填空和主观题不需要
+    if(qs.qtype==='multi_choice'&&r.correct_answer&&Array.isArray(r.correct_answer)){const cl=r.correct_answer.map(c=>String(c).charCodeAt(0)-65);cl.forEach(ci=>{if(w.children[ci])w.children[ci].classList.add('cor');});ms.forEach(si=>{if(!cl.includes(si))w.children[si]?.classList.add('wro');});}
     else if(qs.qtype==='true_false'){const ci=r.correct_answer==='正确'?0:1;w.children[ci]?.classList.add('cor');const si=['正确','错误'].indexOf(qs.selected);if(si>=0&&si!==ci)w.children[si]?.classList.add('wro');}
-    else{const ci=r.correct_answer?r.correct_answer.charCodeAt(0)-65:-1;if(ci>=0)w.children[ci]?.classList.add('cor');if(!cor&&qs.selected.length===1){const si=qs.selected.charCodeAt(0)-65;if(si>=0)w.children[si]?.classList.add('wro');}}
+    else if(qs.qtype==='choice'&&r.correct_answer&&typeof r.correct_answer==='string'){const ci=r.correct_answer.charCodeAt(0)-65;if(ci>=0&&w.children[ci])w.children[ci].classList.add('cor');if(!cor&&qs.selected.length===1){const si=qs.selected.charCodeAt(0)-65;if(si>=0&&w.children[si])w.children[si].classList.add('wro');}}
     if(!cor){document.getElementById('qc').classList.add('shk');setTimeout(()=>document.getElementById('qc').classList.remove('shk'),400);}
     const fb=document.getElementById('fa');
     const subjEnd=qs.qtype==='subjective'?' 参考答案如下：':(cor?' 答对了！🎉':' 看看解析吧');fb.innerHTML='<div class="rb '+(cor?'gd':'bd')+'">'+(cor?'✅ 正确！':'❌ 答错了')+subjEnd+'</div>'+(r.correct_answer?'<p class="ca">答案：'+(Array.isArray(r.correct_answer)?r.correct_answer.join(', '):r.correct_answer)+'</p>':'')+(r.explanation?'<div class="ec"><p class="el">💡 解析</p><p class="et">'+r.explanation+'</p></div>':'');
