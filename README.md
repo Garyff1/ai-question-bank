@@ -40,6 +40,11 @@ pip install -r requirements.txt
 python main.py
 ```
 
+> ⚠️ **如果提示 `ModuleNotFoundError`**（如 `No module named 'uvicorn'`），说明终端里的 `python` 指向的不是你安装依赖的那个 Python。在 PowerShell 里运行 `where.exe python` 看看有几个 Python，然后用**完整路径**启动，例如：
+> ```powershell
+> C:\Users\你的用户名\AppData\Local\Programs\Python\Python311\python.exe main.py
+> ```
+
 看到以下输出表示启动成功：
 
 ```
