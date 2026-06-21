@@ -13,7 +13,7 @@ class Settings:
     OPENAI_API_BASE: str = os.getenv("OPENAI_API_BASE", "https://api.openai.com/v1")
     AI_MODEL: str = os.getenv("AI_MODEL", "gpt-3.5-turbo")
 
-    MAX_FILE_SIZE: int = 20 * 1024 * 1024  # 20MB
+    MAX_FILE_SIZE: int = 50 * 1024 * 1024  # 50MB
 
 
 settings = Settings()
