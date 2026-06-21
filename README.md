@@ -17,23 +17,28 @@
 
 ## 📦 快速上手
 
+**第一步**：启动后端
 ```bash
-# 1️⃣ 下载
 git clone https://github.com/Garyff1/ai-question-bank.git
-cd ai-question-bank
-
-# 2️⃣ 启动后端（所有前端共用）
-cd backend
+cd ai-question-bank/backend
 pip install -r requirements.txt
 python main.py
-
-# 3️⃣ 选一个前端打开
-# 浏览器打开 web/index.html，挑选你喜欢的版本
 ```
+
+**第二步**：打开前端
+
+| 使用场景 | 方式 |
+|----------|------|
+| 💻 **本机使用** | 浏览器打开 `web/index.html` 挑选前端版本 |
+| 📱 **手机使用** | 手机和电脑**同一 WiFi** → 手机浏览器访问 `http://电脑IP:8000/web/` |
 
 > ⏳ 后端启动后访问 http://localhost:8000 可确认运行状态
 >
-> 🔑 默认账号：`admin` / `123456`
+> 📱 第一次使用需先注册账号，然后点右上角 🔋 配置你的 API Key
+>
+> 💡 查看电脑 IP：Windows 按 `Win+R` → 输入 `cmd` → 输入 `ipconfig` → 找 IPv4 地址（如 `192.168.1.105`）
+>
+> 📱 手机浏览器访问：`http://192.168.1.105:8000/web/`
 
 ---
 

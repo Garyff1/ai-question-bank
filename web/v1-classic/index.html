@@ -262,7 +262,7 @@ body{font-family:"PingFang SC","Microsoft YaHei",sans-serif;background:#F4F6FB;c
 <input type="file" id="fi" accept=".pdf,.docx,.txt" style="display:none"></div>
 
 <script>
-const AB='http://localhost:8000';let TK=localStorage.getItem('tk')||'',UID=localStorage.getItem('uid')||'';
+const AB=location.port==='8000'?'':'http://localhost:8000';let TK=localStorage.getItem('tk')||'',UID=localStorage.getItem('uid')||'';
 let mats=[],qts=new Set(['choice']),qc=5,qs=null;
 function tt(m,d){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');clearTimeout(t._timer);t._timer=setTimeout(()=>t.classList.remove('show'),d||2000);}
 
