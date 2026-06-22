@@ -174,6 +174,8 @@ button,input,select{font-family:inherit}button{cursor:pointer}
 .cfp2{position:absolute;top:-20px;width:9px;height:15px;opacity:0;border-radius:2px}
 .cfp2.go{animation:cf 1.6s ease-in forwards}
 @keyframes cf{0%{transform:translateY(-20px)rotate(0deg);opacity:1}100%{transform:translateY(100vh)rotate(540deg);opacity:0}}
+@keyframes shk{0%,100%{transform:translateX(0)}20%{transform:translateX(-8px)rotate(-1deg)}40%{transform:translateX(7px)rotate(1deg)}60%{transform:translateX(-5px)}80%{transform:translateX(3px)}}
+.shk{animation:shk .5s ease}
 .rem{font-size:52px;margin-bottom:8px;z-index:1}
 .rtt{font-size:24px;font-weight:800;color:var(--ink);margin-bottom:8px;z-index:1}
 .rst{font-size:14px;color:var(--muted);margin-bottom:32px;z-index:1;line-height:1.65;max-width:360px}
@@ -295,7 +297,7 @@ button,input,select{font-family:inherit}button{cursor:pointer}
 const AB=location.port==='8000'?'':'http://localhost:8000';let TK=localStorage.getItem('tk')||'',UID=localStorage.getItem('uid')||'';
 let mats=[],gQT='choice',gQCount=5,gMID=0,quiz=null,delId=null,gQT_set=new Set(['choice']);
 function toast(m,d){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');clearTimeout(t._timer);t._timer=setTimeout(()=>t.classList.remove('show'),d||1800);}
-function logout(){TK='';UID='';['tk','uid'].forEach(k=>localStorage.removeItem(k));Object.keys(localStorage).filter(k=>k.startsWith('ai_')).forEach(k=>localStorage.removeItem(k));hideOverlay('loginSk');document.getElementById('loginScreen').classList.add('active');document.getElementById('userAv').textContent='?';document.getElementById('userName').textContent='未登录';document.getElementById('userRole').textContent='点击进入';}
+function logout(){TK='';UID='';['tk','uid'].forEach(k=>localStorage.removeItem(k));Object.keys(localStorage).filter(k=>k.startsWith('ai_')).forEach(k=>localStorage.removeItem(k));document.getElementById('loginScreen').classList.add('active');document.getElementById('userAv').textContent='?';document.getElementById('userName').textContent='未登录';document.getElementById('userRole').textContent='点击进入';}
 async function api(p,o={}){const h={'Content-Type':'application/json'};if(TK)h['Authorization']='Bearer '+TK;const r=await fetch(AB+p,{...o,headers:h});if(r.status===401){logout();throw new Error('登录过期');}const d=await r.json();if(!r.ok)throw new Error(Array.isArray(d.detail)?d.detail.map(x=>x.msg||String(x)).join('; '):(d.detail||'请求失败'));return d;}
 function showPage(id){document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));document.getElementById('page-'+id).classList.add('active');document.querySelectorAll('#sbNav button').forEach(b=>b.classList.toggle('act',b.dataset.page===id));if(id==='home')loadMats();if(id==='history')loadHist();if(id==='wrongbook')loadWrong();if(id==='stats')loadStats();window.scrollTo(0,0);document.getElementById('quizScreen').classList.remove('active');document.getElementById('resultScreen').classList.remove('active');}
 function hideOverlay(id){document.getElementById(id).classList.remove('active');}
@@ -406,8 +408,7 @@ document.addEventListener('keydown',function(e){
   }
 });
 
-// === 初始化 ===
-loadMats();
+// === 初始化：不加载资料，等登录后再加载 ===
 </script>
 </body>
 </html>
