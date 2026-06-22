@@ -294,29 +294,102 @@ button,input,select{font-family:inherit}button{cursor:pointer}
   <div class="sheet-overlay" id="uploadSheet"><div class="sheet"><h3>上传学习资料</h3><div class="ss2">支持 PDF、Word、TXT，≤50MB</div><div class="uprog" id="uploadProg"><span class="spn spn-d"></span><span id="uploadProgText">解析中...</span></div><div class="dropzone"><div class="dz-title">点击选择文件</div><div class="dz-sub">或将文件拖拽到此处</div><input type="file" accept=".pdf,.doc,.docx,.txt" onchange="handleUpload(event)"></div></div></div>
 </div>
 <script>
-const AB=location.port==='8000'?'':'http://localhost:8000';let TK=localStorage.getItem('tk')||'',UID=localStorage.getItem('uid')||'';
-let mats=[],gQT='choice',gQCount=5,gMID=0,quiz=null,delId=null,gQT_set=new Set(['choice']);
-function toast(m,d){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');clearTimeout(t._timer);t._timer=setTimeout(()=>t.classList.remove('show'),d||1800);}
-function logout(){TK='';UID='';['tk','uid'].forEach(k=>localStorage.removeItem(k));Object.keys(localStorage).filter(k=>k.startsWith('ai_')).forEach(k=>localStorage.removeItem(k));document.getElementById('loginScreen').classList.add('active');document.getElementById('userAv').textContent='?';document.getElementById('userName').textContent='未登录';document.getElementById('userRole').textContent='点击进入';}
-async function api(p,o={}){const h={'Content-Type':'application/json'};if(TK)h['Authorization']='Bearer '+TK;const r=await fetch(AB+p,{...o,headers:h});if(r.status===401){logout();throw new Error('登录过期');}const d=await r.json();if(!r.ok)throw new Error(Array.isArray(d.detail)?d.detail.map(x=>x.msg||String(x)).join('; '):(d.detail||'请求失败'));return d;}
-function showPage(id){document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));document.getElementById('page-'+id).classList.add('active');document.querySelectorAll('#sbNav button').forEach(b=>b.classList.toggle('act',b.dataset.page===id));if(id==='home')loadMats();if(id==='history')loadHist();if(id==='wrongbook')loadWrong();if(id==='stats')loadStats();window.scrollTo(0,0);document.getElementById('quizScreen').classList.remove('active');document.getElementById('resultScreen').classList.remove('active');}
-function hideOverlay(id){document.getElementById(id).classList.remove('active');}
-function openMod(id){document.getElementById(id).classList.add('open')}
-function closeMod(id){document.getElementById(id).classList.remove('open')}
-function fd(d){if(!d)return'';const dt=new Date(d);return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')} ${String(dt.getHours()).padStart(2,'0')}:${String(dt.getMinutes()).padStart(2,'0')}`;}
+console.log('v2-desktop JS loading...');
+const AB=location.port==='8000'?'':'http://localhost:8000';
+var TK=localStorage.getItem('tk')||'', UID=localStorage.getItem('uid')||'';
+var mats=[], gQCount=5, gMID=0, quiz=null, delId=null;
+var gQT_set=new Set(['choice']);
+
+function toast(m,d){
+  var t=document.getElementById('toast'); t.textContent=m; t.classList.add('show');
+  clearTimeout(t._timer); t._timer=setTimeout(function(){t.classList.remove('show');}, d||1800);
+}
+
+function logout(){
+  TK=''; UID='';
+  ['tk','uid'].forEach(function(k){localStorage.removeItem(k);});
+  var keys=Object.keys(localStorage).filter(function(k){return k.startsWith('ai_');});
+  keys.forEach(function(k){localStorage.removeItem(k);});
+  var ls=document.getElementById('loginScreen'); if(ls)ls.classList.add('active');
+  var av=document.getElementById('userAv'); if(av)av.textContent='?';
+  var nm=document.getElementById('userName'); if(nm)nm.textContent='未登录';
+  var rl=document.getElementById('userRole'); if(rl)rl.textContent='点击进入';
+}
+
+
+// 拉平 api: 先取 json，再判断
+function api2(p, o){
+  o=o||{};
+  var hd={'Content-Type':'application/json'};
+  if(TK)hd['Authorization']='Bearer '+TK;
+  return fetch(AB+p, Object.assign({}, o, {headers:hd})).then(async function(r){
+    var d=await r.json();
+    if(r.status===401){logout();throw new Error('登录过期');}
+    if(!r.ok)throw new Error(Array.isArray(d.detail)?d.detail.map(function(x){return x.msg||String(x);}).join('; '):(d.detail||'请求失败'));
+    return d;
+  });
+}
+
+function showPage(id){
+  document.querySelectorAll('.page').forEach(function(p){p.classList.remove('active');});
+  var pg=document.getElementById('page-'+id); if(pg)pg.classList.add('active');
+  document.querySelectorAll('#sbNav button').forEach(function(b){b.classList.toggle('act', b.dataset.page===id);});
+  if(id==='home')loadMats(); if(id==='history')loadHist(); if(id==='wrongbook')loadWrong(); if(id==='stats')loadStats();
+  window.scrollTo(0,0);
+  var qs=document.getElementById('quizScreen'); if(qs)qs.classList.remove('active');
+  var rs=document.getElementById('resultScreen'); if(rs)rs.classList.remove('active');
+}
+
+function openMod(id){var m=document.getElementById(id); if(m)m.classList.add('open');}
+function closeMod(id){var m=document.getElementById(id); if(m)m.classList.remove('open');}
+function fd(d){if(!d)return'';var dt=new Date(d);return dt.getFullYear()+'-'+String(dt.getMonth()+1).padStart(2,'0')+'-'+String(dt.getDate()).padStart(2,'0')+' '+String(dt.getHours()).padStart(2,'0')+':'+String(dt.getMinutes()).padStart(2,'0');}
 
 // === 登录 ===
-let ilt=true;
-function setLoginTab(t){ilt=t==='login';document.getElementById('tabLg').classList.toggle('act',ilt);document.getElementById('tabRg').classList.toggle('act',!ilt);document.getElementById('loginIndicator2').style.transform=ilt?'translateX(0)':'translateX(100%)';document.getElementById('loginSubBtn').textContent=ilt?'登录':'注册';document.getElementById('loginErr2').classList.remove('show');}
-async function doLogin(){const e=document.getElementById('loginAcc').value.trim()||'u_'+Date.now(),p=document.getElementById('loginPw').value||'123456';const btn=document.getElementById('loginSubBtn');btn.disabled=true;btn.innerHTML='<span class="spn"></span>';try{const d=await api('/api/auth/'+(ilt?'login':'register'),{method:'POST',body:JSON.stringify({email:e,password:p})});TK=d.access_token;UID=d.user_id;localStorage.setItem('tk',TK);localStorage.setItem('uid',String(UID));document.getElementById('loginScreen').classList.remove('active');document.getElementById('userAv').textContent=(e[0]||'?').toUpperCase();document.getElementById('userName').textContent=e;document.getElementById('userRole').textContent='已登录';showPage('home');checkApi();}catch(e2){const el=document.getElementById('loginErr2');el.textContent=(e2&&e2.message)||String(e2);el.classList.add('show');}finally{btn.disabled=false;btn.textContent=ilt?'登录':'注册';}}
-if(TK){api('/api/auth/me').then(u=>{UID=u.id;localStorage.setItem('uid',String(UID));document.getElementById('loginScreen').classList.remove('active');showPage('home');checkApi();}).catch(()=>logout());}
-function confirmLogout(){closeMod('modalLogout');logout()}
+var ilt=true;
+function setLoginTab(t){
+  ilt=(t==='login');
+  var lg=document.getElementById('tabLg'); if(lg)lg.classList.toggle('act',ilt);
+  var rg=document.getElementById('tabRg'); if(rg)rg.classList.toggle('act',!ilt);
+  var ind=document.getElementById('loginIndicator2'); if(ind)ind.style.transform=ilt?'translateX(0)':'translateX(100%)';
+  var btn=document.getElementById('loginSubBtn'); if(btn)btn.textContent=ilt?'登录':'注册';
+  var er=document.getElementById('loginErr2'); if(er)er.classList.remove('show');
+}
+
+async function doLogin(){
+  var acc=document.getElementById('loginAcc'), pw=document.getElementById('loginPw');
+  var e=(acc?acc.value.trim():'')||'user_'+Date.now(), p=pw?pw.value:'123456';
+  var btn=document.getElementById('loginSubBtn'); btn.disabled=true; btn.innerHTML='<span class="spn"></span>';
+  try{
+    var apiPath='/api/auth/'+(ilt?'login':'register');
+    var d=await api2(apiPath, {method:'POST', body:JSON.stringify({email:e,password:p})});
+    TK=d.access_token; UID=d.user_id;
+    localStorage.setItem('tk',TK); localStorage.setItem('uid',String(UID));
+    var ls=document.getElementById('loginScreen'); if(ls)ls.classList.remove('active');
+    var av=document.getElementById('userAv'); if(av)av.textContent=(e[0]||'?').toUpperCase();
+    var nm=document.getElementById('userName'); if(nm)nm.textContent=e;
+    var rl=document.getElementById('userRole'); if(rl)rl.textContent='已登录';
+    showPage('home'); checkApi();
+  }catch(e2){
+    var el=document.getElementById('loginErr2');
+    if(el){ el.textContent=(e2&&e2.message)||String(e2); el.classList.add('show'); }
+  }
+  btn.disabled=false; btn.textContent=ilt?'登录':'注册';
+}
+// 自动登录
+if(TK){
+  api2('/api/auth/me').then(function(u){
+    UID=u.id; localStorage.setItem('uid',String(UID));
+    var ls=document.getElementById('loginScreen'); if(ls)ls.classList.remove('active');
+    showPage('home'); checkApi();
+  }).catch(function(){logout();});
+}
+function confirmLogout(){closeMod('modalLogout');logout();}
 
 // === 电池检查 ===
-async function checkApi(){try{const c=await api('/api/config/config');const dot=document.createElement('span');dot.style.cssText='display:inline-block;width:8px;height:8px;border-radius:50%;margin-left:6px;background:'+(c.configured?'var(--green)':'var(--red)');const el=document.querySelector('.sb-up');if(el.querySelector('span:last-child'))el.querySelector('span:last-child').after(dot);}catch(e){}}
+async function checkApi(){try{const c=await api2('/api/config/config');const dot=document.createElement('span');dot.style.cssText='display:inline-block;width:8px;height:8px;border-radius:50%;margin-left:6px;background:'+(c.configured?'var(--green)':'var(--red)');const el=document.querySelector('.sb-up');if(el.querySelector('span:last-child'))el.querySelector('span:last-child').after(dot);}catch(e){}}
 
 // === 资料列表 ===
-async function loadMats(){try{mats=await api('/api/materials');renderMats();}catch(e){toast(e.message);}}
+async function loadMats(){try{mats=await api2('/api/materials');renderMats();}catch(e){toast(e.message);}}
 function renderMats(){const el=document.getElementById('materialGrid'),em=document.getElementById('emptyState');if(!mats.length){el.innerHTML='';em.style.display='flex';return;}em.style.display='none';el.innerHTML=mats.map(m=>{const e=(m.filename||'').toLowerCase().split('.').pop();const t=e==='pdf'?'pdf':(e==='docx'||e==='doc')?'word':'txt';const l=t==='pdf'?'PDF':t==='word'?'DOC':'TXT';return `<div class="mcard"><div class="mct"><div class="mci ${t}">${l}</div><div class="mcb"><div class="mcn">${m.filename}</div><div class="mcti">${fd(m.created_at)}</div></div></div><div class="mca"><button class="bq" onclick="goGen('${m.id}','${(m.filename||'').replace(/'/g,"\\'")}')">出题</button><button class="bd" onclick="askDel('${m.id}')">✕ 删除</button></div></div>`;}).join('');}
 
 // === 上传 ===
@@ -326,13 +399,13 @@ async function handleUpload(e){const f=e.target.files[0];if(!f)return;const prog
 
 // === 删除 ===
 function askDel(id){delId=id;const m=mats.find(x=>x.id===String(id));document.getElementById('delName').textContent=m?m.filename:'';openMod('modalDelete');}
-async function confirmDeleteMaterial(){try{await api('/api/materials/'+delId,{method:'DELETE'});closeMod('modalDelete');toast('已删除');await loadMats();}catch(e){toast(e.message);}}
+async function confirmDeleteMaterial(){try{await api2('/api/materials/'+delId,{method:'DELETE'});closeMod('modalDelete');toast('已删除');await loadMats();}catch(e){toast(e.message);}}
 
 // === 生成题目 ===
 function goGen(id,nm){gMID=id;document.getElementById('genChip').innerHTML=`<div class="ci mci pdf">📄</div><div class="cn">${nm}</div>`;gQT_set=new Set(['choice']);document.querySelectorAll('.tcard').forEach(c=>c.classList.toggle('sel',c.dataset.t==='choice'));showPage('generate');}
 function selType(el,t){if(gQT_set.has(t)){if(gQT_set.size>1){gQT_set.delete(t);el.classList.remove('sel');}}else{gQT_set.add(t);el.classList.add('sel');}}
 function stepCount(d){const n=gQCount+d;if(n<1||n>20)return;gQCount=n;document.getElementById('stpVal').textContent=n;document.getElementById('stpMinus').disabled=n<=1;document.getElementById('stpPlus').disabled=n>=20;}
-async function runGen(){if(gQT_set.size===0){toast('请至少选一种题型');return;}const btn=document.getElementById('genBtn');btn.disabled=true;btn.innerHTML='<span class="spn"></span> AI 正在出题...';try{const types=Array.from(gQT_set).join(',');const d=await api('/api/questions/generate',{method:'POST',body:JSON.stringify({material_id:gMID,question_type:types,question_count:gQCount,target_audience:document.getElementById('audience').value})});startQuiz(d);}catch(e){toast(e.message);}finally{btn.disabled=false;btn.textContent='生成题目';}}
+async function runGen(){if(gQT_set.size===0){toast('请至少选一种题型');return;}const btn=document.getElementById('genBtn');btn.disabled=true;btn.innerHTML='<span class="spn"></span> AI 正在出题...';try{const types=Array.from(gQT_set).join(',');const d=await api2('/api/questions/generate',{method:'POST',body:JSON.stringify({material_id:gMID,question_type:types,question_count:gQCount,target_audience:document.getElementById('audience').value})});startQuiz(d);}catch(e){toast(e.message);}finally{btn.disabled=false;btn.textContent='生成题目';}}
 
 // === 答题 ===
 const TLBL={choice:'单选题',multi_choice:'多选题',true_false:'判断题',fill:'填空题',subjective:'主观题'};
@@ -350,7 +423,7 @@ function selOpt(i){if(quiz.answered)return;document.querySelectorAll('#answerAre
 function selTF(v){if(quiz.answered)return;document.querySelectorAll('#answerArea .opt2').forEach(o=>o.classList.remove('sel'));document.querySelector('#answerArea .opt2[data-v="'+v+'"]').classList.add('sel');quiz.selected=v;}
 function selMC(i){if(quiz.answered)return;const idx=ms.indexOf(i);if(idx>=0){ms.splice(idx,1);document.getElementById('opt'+i).classList.remove('sel');}else{ms.push(i);ms.sort();document.getElementById('opt'+i).classList.add('sel');}quiz.selected=ms.length?ms.map(j=>String.fromCharCode(65+j)).join(','):null;}
 async function submitFill(){const inp=document.getElementById('fillInput');if(!inp||!inp.value.trim()){inp&&inp.focus();return;}quiz.selected=inp.value.trim();quiz.answered=true;await doSubmit();}
-async function doSubmit(){if(quiz.answered&&quiz.selected!==null)return;if(quiz.selected===null){toast('请先选择/输入答案');return;}quiz.answered=true;const ans=quiz.selected;try{const r=await api('/api/practice/submit',{method:'POST',body:JSON.stringify({bank_id:quiz.bankId,question_index:quiz.idx,user_answer:ans})});const cor=r.is_correct;if(cor){quiz.score++;quiz.streak++;}else{quiz.streak=0;quiz.wrongs.push(quiz.idx);}document.getElementById('streakVal').textContent=quiz.streak;fireStamp(cor);const w=document.getElementById('answerArea');w.querySelectorAll('.opt2, .inp, .btn-p').forEach(o=>{o.style.pointerEvents='none';o.disabled=true;});
+async function doSubmit(){if(quiz.answered&&quiz.selected!==null)return;if(quiz.selected===null){toast('请先选择/输入答案');return;}quiz.answered=true;const ans=quiz.selected;try{const r=await api2('/api/practice/submit',{method:'POST',body:JSON.stringify({bank_id:quiz.bankId,question_index:quiz.idx,user_answer:ans})});const cor=r.is_correct;if(cor){quiz.score++;quiz.streak++;}else{quiz.streak=0;quiz.wrongs.push(quiz.idx);}document.getElementById('streakVal').textContent=quiz.streak;fireStamp(cor);const w=document.getElementById('answerArea');w.querySelectorAll('.opt2, .inp, .btn-p').forEach(o=>{o.style.pointerEvents='none';o.disabled=true;});
   if(quiz.qtype==='multi_choice'){const cl=r.correct_answer?r.correct_answer.map(c=>String(c).charCodeAt(0)-65):[];cl.forEach(ci=>{const e=document.getElementById('opt'+ci);if(e)e.classList.add('cor');});ms.forEach(si=>{if(!cl.includes(si)){const e=document.getElementById('opt'+si);if(e)e.classList.add('wro');}});}
   else if(quiz.qtype==='true_false'){const ci=r.correct_answer==='正确'?0:1;document.getElementById('optTF'+ci)?.classList.add('cor');const si=['正确','错误'].indexOf(ans);if(si>=0&&si!==ci)document.getElementById('optTF'+si)?.classList.add('wro');}
   else{const ci=r.correct_answer?String(r.correct_answer).charCodeAt(0)-65:-1;if(ci>=0){const e2=document.getElementById('opt'+ci);if(e2)e2.classList.add('cor');}if(!cor&&quiz.qtype==='choice'&&quiz.selectedIdx>=0){document.getElementById('opt'+quiz.selectedIdx)?.classList.add('wro');}}
@@ -369,7 +442,7 @@ function fireStamp(cor){const s=document.getElementById('stampEl');s.className='
 function nextQuestion(){quiz.idx++;if(quiz.idx>=quiz.total){finishQuiz();return;}rq();}
 function exitQuizConfirm(){if(quiz&&!quiz.answered){openMod('modalExit');}else{openMod('modalExit');}}
 function confirmExitQuiz(){closeMod('modalExit');document.getElementById('quizScreen').classList.remove('active');showPage('home');}
-async function finishQuiz(){const total=quiz.total,correct=quiz.score,wrong=total-correct;const pct=Math.round(correct/total*100);document.getElementById('resCorrect').textContent=correct;document.getElementById('resTotal').textContent=total;document.getElementById('resWrong').textContent=wrong;let em,tit,sub;if(pct>=80){em='🎉';tit='太棒了，继续保持！';sub='资料已经被你拿下啦！';}else if(pct>=50){em='👍';tit='不错，还有提升空间';sub='错题已收录到错题本，找时间重练吧';}else{em='💪';tit='没关系，这是进步的开始';sub='错题已收录到错题本，针对薄弱点多练习';}document.getElementById('resEmoji').textContent=em;document.getElementById('resTitle').textContent=tit;document.getElementById('resSub').textContent=sub;document.getElementById('quizScreen').classList.remove('active');document.getElementById('resultScreen').classList.add('active');animateRing('ringFgRes','ringValRes',pct);confetti();try{await api('/api/practice/complete',{method:'POST',body:JSON.stringify({bank_id:quiz.bankId,total_questions:total,correct_count:correct,wrong_indices:quiz.wrongs})});}catch(e){}}
+async function finishQuiz(){const total=quiz.total,correct=quiz.score,wrong=total-correct;const pct=Math.round(correct/total*100);document.getElementById('resCorrect').textContent=correct;document.getElementById('resTotal').textContent=total;document.getElementById('resWrong').textContent=wrong;let em,tit,sub;if(pct>=80){em='🎉';tit='太棒了，继续保持！';sub='资料已经被你拿下啦！';}else if(pct>=50){em='👍';tit='不错，还有提升空间';sub='错题已收录到错题本，找时间重练吧';}else{em='💪';tit='没关系，这是进步的开始';sub='错题已收录到错题本，针对薄弱点多练习';}document.getElementById('resEmoji').textContent=em;document.getElementById('resTitle').textContent=tit;document.getElementById('resSub').textContent=sub;document.getElementById('quizScreen').classList.remove('active');document.getElementById('resultScreen').classList.add('active');animateRing('ringFgRes','ringValRes',pct);confetti();try{await api2('/api/practice/complete',{method:'POST',body:JSON.stringify({bank_id:quiz.bankId,total_questions:total,correct_count:correct,wrong_indices:quiz.wrongs})});}catch(e){}}
 function replayQuiz(){const q=quiz;q.idx=0;q.score=0;q.streak=0;q.wrongs=[];q.answered=false;q.selected=null;document.getElementById('streakVal').textContent='0';document.getElementById('resultScreen').classList.remove('active');document.getElementById('quizScreen').classList.add('active');document.getElementById('progressDots').innerHTML=Array.from({length:quiz.total},()=>'<span class="dot"></span>').join('');rq();}
 function goHomeFromResult(){document.getElementById('resultScreen').classList.remove('active');showPage('home');}
 
@@ -379,10 +452,10 @@ function animateRing(rid,vid,target){const ring=document.getElementById(rid),val
 function confetti(){const l=document.getElementById('confettiL');l.innerHTML='';const cs=['#2563EB','#10B981','#F59E0B','#EF4444','#93C5FD'];for(let i=0;i<42;i++){const p=document.createElement('span');p.className='cfp2';p.style.left=Math.random()*100+'%';p.style.background=cs[i%5];p.style.borderRadius=Math.random()>.5?'2px':'50%';p.style.animationDuration=(1.6+Math.random()*1.2)+'s';p.style.animationDelay=Math.random()*0.5+'s';l.appendChild(p);requestAnimationFrame(()=>p.classList.add('go'));setTimeout(()=>p.remove(),3600);}}
 
 // === 历史 / 错题 / 统计 ===
-async function loadHist(){const body=document.getElementById('historyBody');const empty=document.getElementById('histEmpty');try{const d=await api('/api/practice/history');if(!d||!d.length){body.innerHTML='';empty.style.display='flex';return;}empty.style.display='none';body.innerHTML=d.map(h=>{const pct=h.accuracy;const cls=pct>=80?'hi-hi':(pct>=50?'hi-md':'hi-lo');return `<div class="hi"><div class="hi-acc ${cls}">${pct}%</div><div class="hi-bd"><div class="hi-nm">${(h.material_name||'未知').replace(/\.[^/.]+$/,'')} #${h.sequence}</div><div class="hi-mt"><span>✅ ${h.correct_count}/${h.total_questions}</span><span>❌ ${h.wrong_count}</span></div><div class="hi-tm">${fd(h.completed_at)}</div></div></div>`;}).join('');}catch(e){body.innerHTML='';empty.style.display='flex';}}
-async function loadWrong(){const body=document.getElementById('wrongbookBody');const empty=document.getElementById('wbEmpty');try{const gs=await api('/api/practice/wrong');if(!gs||!gs.length){body.innerHTML='';empty.style.display='flex';return;}empty.style.display='none';body.innerHTML=gs.map(g=>{const nm=(g.material_name||'未知').replace(/\.[^/.]+$/,'');const items=g.questions.map((w,i)=>{if(w.options&&w.options.length){const ops=w.options.map((o,oi)=>`<div class="wop ${Array.isArray(w.answer)?(w.answer.includes(o.charAt(0))?'cr':''):(o.charAt(0)===String(w.answer).charAt(0)?'cr':'')}">${o}</div>`).join('');return `<div class="wi2"><div class="wq">${i+1}. ${w.question}</div><div class="wo">${ops}</div><div class="we">💡 ${w.explanation||''}</div></div>`;}const ans=Array.isArray(w.answer)?w.answer.join(', '):w.answer;return `<div class="wi2"><div class="wq">${i+1}. ${w.question}</div><div class="wa">✅ ${ans}</div><div class="we">💡 ${w.explanation||''}</div></div>`;}).join('');return `<div class="wg2"><div class="wh2"><div class="wt"><span>📕 ${nm}</span><span class="wc">${g.wrong_count}题</span></div><button class="btn btn-o btn-sm" onclick="retry(${g.bank_id})">重练</button></div><div class="wgg">${items}</div></div>`;}).join('');}catch(e){body.innerHTML='';empty.style.display='flex';}}
-async function retry(bankId){try{const ws=await api('/api/practice/wrong');const g=ws.find(x=>x.bank_id===bankId);if(!g||!g.questions.length){toast('没有错题');return;}startQuiz({bank_id:bankId,questions:g.questions});}catch(e){toast(e.message);}}
-async function loadStats(){try{const s=await api('/api/stats');const pct=s.total_questions?Math.round(s.correct_count/s.total_questions*100):0;animateRing('ringFg2','ringVal2',pct);document.getElementById('statsTiles').innerHTML=`<div class="stile"><div class="si b2">📄</div><div class="sv">${s.total_questions}</div><div class="sn2">累计做题（题）</div></div><div class="stile"><div class="si g2">✅</div><div class="sv">${s.correct_count}</div><div class="sn2">正确题数（题）</div></div><div class="stile"><div class="si a2">🔥</div><div class="sv">${s.practice_count}</div><div class="sn2">练习次数（次）</div></div><div class="stile"><div class="si s2">🕐</div><div class="sv" style="font-size:14px">${s.last_practice_time?fd(s.last_practice_time):'--'}</div><div class="sn2">最近练习时间</div></div>`;}catch(e){}}
+async function loadHist(){const body=document.getElementById('historyBody');const empty=document.getElementById('histEmpty');try{const d=await api2('/api/practice/history');if(!d||!d.length){body.innerHTML='';empty.style.display='flex';return;}empty.style.display='none';body.innerHTML=d.map(h=>{const pct=h.accuracy;const cls=pct>=80?'hi-hi':(pct>=50?'hi-md':'hi-lo');return `<div class="hi"><div class="hi-acc ${cls}">${pct}%</div><div class="hi-bd"><div class="hi-nm">${(h.material_name||'未知').replace(/\.[^/.]+$/,'')} #${h.sequence}</div><div class="hi-mt"><span>✅ ${h.correct_count}/${h.total_questions}</span><span>❌ ${h.wrong_count}</span></div><div class="hi-tm">${fd(h.completed_at)}</div></div></div>`;}).join('');}catch(e){body.innerHTML='';empty.style.display='flex';}}
+async function loadWrong(){const body=document.getElementById('wrongbookBody');const empty=document.getElementById('wbEmpty');try{const gs=await api2('/api/practice/wrong');if(!gs||!gs.length){body.innerHTML='';empty.style.display='flex';return;}empty.style.display='none';body.innerHTML=gs.map(g=>{const nm=(g.material_name||'未知').replace(/\.[^/.]+$/,'');const items=g.questions.map((w,i)=>{if(w.options&&w.options.length){const ops=w.options.map((o,oi)=>`<div class="wop ${Array.isArray(w.answer)?(w.answer.includes(o.charAt(0))?'cr':''):(o.charAt(0)===String(w.answer).charAt(0)?'cr':'')}">${o}</div>`).join('');return `<div class="wi2"><div class="wq">${i+1}. ${w.question}</div><div class="wo">${ops}</div><div class="we">💡 ${w.explanation||''}</div></div>`;}const ans=Array.isArray(w.answer)?w.answer.join(', '):w.answer;return `<div class="wi2"><div class="wq">${i+1}. ${w.question}</div><div class="wa">✅ ${ans}</div><div class="we">💡 ${w.explanation||''}</div></div>`;}).join('');return `<div class="wg2"><div class="wh2"><div class="wt"><span>📕 ${nm}</span><span class="wc">${g.wrong_count}题</span></div><button class="btn btn-o btn-sm" onclick="retry(${g.bank_id})">重练</button></div><div class="wgg">${items}</div></div>`;}).join('');}catch(e){body.innerHTML='';empty.style.display='flex';}}
+async function retry(bankId){try{const ws=await api2('/api/practice/wrong');const g=ws.find(x=>x.bank_id===bankId);if(!g||!g.questions.length){toast('没有错题');return;}startQuiz({bank_id:bankId,questions:g.questions});}catch(e){toast(e.message);}}
+async function loadStats(){try{const s=await api2('/api/stats');const pct=s.total_questions?Math.round(s.correct_count/s.total_questions*100):0;animateRing('ringFg2','ringVal2',pct);document.getElementById('statsTiles').innerHTML=`<div class="stile"><div class="si b2">📄</div><div class="sv">${s.total_questions}</div><div class="sn2">累计做题（题）</div></div><div class="stile"><div class="si g2">✅</div><div class="sv">${s.correct_count}</div><div class="sn2">正确题数（题）</div></div><div class="stile"><div class="si a2">🔥</div><div class="sv">${s.practice_count}</div><div class="sn2">练习次数（次）</div></div><div class="stile"><div class="si s2">🕐</div><div class="sv" style="font-size:14px">${s.last_practice_time?fd(s.last_practice_time):'--'}</div><div class="sn2">最近练习时间</div></div>`;}catch(e){}}
 
 // === 键盘快捷键 ===
 document.addEventListener('keydown',function(e){
