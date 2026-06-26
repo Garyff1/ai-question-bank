@@ -2,90 +2,337 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>AI题库 · 前端选择器</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI题库 · AI出题网站</title>
+<link rel="stylesheet" href="https://db.onlinewebfonts.com/c/a64ff11d2c24584c767f6257e880dc65?family=Helvetica+Regular">
 <style>
-*{box-sizing:border-box;margin:0;padding:0}
-body{font-family:"PingFang SC","Microsoft YaHei",sans-serif;background:#F4F6FB;color:#1E293B;min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:40px 20px 60px}
-:root{--blue:#2563EB;--bluelight:#EFF6FF;--green:#10B981;--greenlight:#ECFDF5;--amber:#F59E0B;--ink:#1E293B;--muted:#64748B;--faint:#94A3B8}
-.container{max-width:640px;width:100%}
-.brand{text-align:center;margin-bottom:40px}
-.brand h1{font-size:32px;font-weight:800;color:var(--blue);letter-spacing:2px;margin-bottom:6px}
-.brand p{font-size:14px;color:var(--muted)}
-.brand .badge{display:inline-block;background:var(--bluelight);color:var(--blue);font-size:11px;font-weight:700;padding:3px 10px;border-radius:999px;margin-top:8px}
-.card{background:#fff;border-radius:16px;padding:24px;box-shadow:0 10px 24px -14px rgba(15,23,42,.18);margin-bottom:16px;transition:.2s;cursor:pointer;display:flex;gap:16px;align-items:start;border:2px solid transparent}
-.card:hover{border-color:var(--blue);transform:translateY(-2px);box-shadow:0 16px 32px -14px rgba(37,99,235,.25)}
-.card .icon{width:48px;height:48px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0}
-.card .icon.classic{background:var(--bluelight)}
-.card .icon.design{background:var(--greenlight)}
-.card .icon.coming{background:#F1F5F9}
-.card .info{flex:1}
-.card .info h3{margin:0;font-size:16px;font-weight:700;margin-bottom:4px}
-.card .info p{margin:0;font-size:13px;color:var(--muted);line-height:1.6}
-.card .info .tags{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}
-.tag{display:inline-block;font-size:10px;font-weight:700;padding:2px 8px;border-radius:999px}
-.tag.blue{background:var(--bluelight);color:var(--blue)}
-.tag.green{background:var(--greenlight);color:var(--green)}
-.tag.amber{background:#FEF3C7;color:#D97706}
-.tag.gray{background:#F1F5F9;color:var(--muted)}
-.footer{text-align:center;padding:24px 0 0;font-size:12px;color:var(--faint)}
-.footer a{color:var(--blue);text-decoration:none}
+*{box-sizing:border-box}
+html{font-family:'Helvetica Regular',Helvetica,Arial,sans-serif;height:100%;overflow:hidden;background:#05070d}
+body{height:100%;margin:0;overflow:hidden;color:#fff;background:#05070d}
+button,a{font:inherit}
+a{color:inherit;text-decoration:none}
+.app-shell{position:relative;height:100vh;width:100%;overflow:hidden;background:#05070d}
+.boomerang-bg{position:absolute;inset:0;z-index:0;overflow:hidden;transform:scale(1.08);transform-origin:center}
+.boomerang-bg video,.boomerang-bg canvas{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.boomerang-bg canvas{display:none}
+.ambient-shade{position:absolute;inset:0;z-index:1;pointer-events:none;background:radial-gradient(circle at 52% 34%,rgba(255,255,255,.08),transparent 34%),linear-gradient(180deg,rgba(4,7,13,.34) 0%,rgba(4,7,13,.12) 34%,rgba(4,7,13,.46) 100%)}
+.liquid-glass{background:rgba(255,255,255,.01);background-blend-mode:luminosity;backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);border:none;box-shadow:inset 0 1px 1px rgba(255,255,255,.1);position:relative;overflow:hidden}
+.liquid-glass::before{content:'';position:absolute;inset:0;border-radius:inherit;padding:1.4px;background:linear-gradient(180deg,rgba(255,255,255,.45) 0%,rgba(255,255,255,.15) 20%,rgba(255,255,255,0) 40%,rgba(255,255,255,0) 60%,rgba(255,255,255,.15) 80%,rgba(255,255,255,.45) 100%);-webkit-mask:linear-gradient(#fff 0 0) content-box,linear-gradient(#fff 0 0);-webkit-mask-composite:xor;mask-composite:exclude;pointer-events:none}
+@keyframes fade-up{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:none}}
+.animate-fade-up{animation:fade-up .7s cubic-bezier(.22,1,.36,1) backwards}
+.delay-1{animation-delay:.1s}.delay-2{animation-delay:.25s}.delay-3{animation-delay:.4s}.delay-4{animation-delay:.55s}.delay-5{animation-delay:.75s}
+@media (prefers-reduced-motion:reduce){.animate-fade-up{animation:none}}
+.site-header{position:absolute;left:0;right:0;top:0;z-index:20;padding:18px 16px 0}
+.header-row{display:flex;align-items:center;justify-content:space-between;gap:20px}
+.brand{display:flex;align-items:center;gap:10px;min-width:162px;color:#fff}
+.brand svg{height:20px;width:20px;flex:none;fill:currentColor}
+.brand span{font-size:16px;line-height:1;letter-spacing:-.02em}
+.desktop-nav{display:none;align-items:center;gap:32px}
+.desktop-nav a{font-size:14px;color:rgba(255,255,255,.9);transition:color .2s ease}
+.desktop-nav a:hover{color:#fff}
+.header-actions{display:flex;align-items:center;justify-content:flex-end;gap:10px;min-width:162px}
+.cart-btn{display:inline-flex;align-items:center;gap:8px;border:0;border-radius:12px;background:#fff;color:#111827;padding:4px 12px 4px 4px;cursor:pointer;transition:transform .2s ease}
+.cart-btn:hover,.glass-toggle:hover,.hero-btn:hover,.player-btn:hover{transform:scale(1.05)}
+.cart-btn:active,.glass-toggle:active,.hero-btn:active,.player-btn:active{transform:scale(.95)}
+.cart-icon{display:grid;height:28px;width:28px;place-items:center;border-radius:9px;background:#1d4ed8;color:#fff}
+.icon{display:block;height:1em;width:1em;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;fill:none}
+.cart-icon .icon{height:14px;width:14px}
+.cart-text-full{display:none;font-size:14px}
+.cart-text-short{font-size:14px}
+.glass-toggle{display:grid;height:36px;width:36px;place-items:center;border:0;border-radius:12px;color:#fff;cursor:pointer;transition:transform .2s ease}
+.glass-toggle .icon{height:18px;width:18px}
+.hidden{display:none!important}
+.mobile-nav{display:none;margin:12px 0 0;border-radius:16px;padding:8px}
+.mobile-nav.is-open{display:grid}
+.mobile-nav a{border-radius:12px;padding:12px 16px;font-size:14px;color:rgba(255,255,255,.9);transition:background .2s ease,color .2s ease}
+.mobile-nav a:hover{background:rgba(255,255,255,.1);color:#fff}
+.hero{position:relative;z-index:10;display:flex;height:100%;flex-direction:column;align-items:center;text-align:center;padding:112px 16px 24px}
+.tag-badge{display:inline-flex;align-items:center;justify-content:center;border-radius:8px;padding:6px 16px;font-size:12px;line-height:1.2;color:#fff;background:rgba(255,255,255,.16)!important;margin-bottom:20px}
+.headline{max-width:768px;margin:0;color:#fff;font-size:40px;font-weight:400;line-height:1.1;letter-spacing:-.055em}
+.subtext{max-width:448px;margin:20px 0 0;color:rgba(255,255,255,.9);font-size:14px;line-height:1.7}
+.hero-actions{display:flex;flex-direction:column;align-items:center;gap:12px;margin-top:32px}
+.hero-btn{display:inline-flex;align-items:center;justify-content:center;border:0;border-radius:12px;padding:10px 28px;font-size:14px;line-height:1.3;cursor:pointer;transition:transform .2s ease}
+.hero-btn.primary{background:#fff;color:#111827}
+.hero-btn.secondary{color:#fff;background:rgba(255,255,255,.05)}
+.player{position:absolute;right:16px;bottom:16px;z-index:20;width:min(270px,calc(100% - 32px))}
+.track-card{display:flex;align-items:center;gap:12px;border-radius:16px;background:#fff;color:#111827;padding:10px 16px 10px 10px;box-shadow:0 18px 40px rgba(0,0,0,.18)}
+.track-icon{display:grid;height:44px;width:44px;flex:none;place-items:center;border-radius:12px;background:#1d4ed8;color:#fff}
+.track-icon .icon{height:20px;width:20px;stroke-width:2.5}
+.track-meta{min-width:0;flex:1}
+.track-title{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px;color:#111827}
+.progress{height:4px;margin-top:8px;overflow:hidden;border-radius:999px;background:#e5e7eb}
+.progress span{display:block;height:100%;width:30%;border-radius:inherit;background:#1d4ed8}
+.times{display:flex;justify-content:space-between;margin-top:5px;font-size:10px;color:#6b7280}
+.controls{display:flex;align-items:center;gap:8px;margin-top:8px}
+.player-btn{border:0;background:#fff;color:#111827;box-shadow:0 18px 40px rgba(0,0,0,.18);cursor:pointer;transition:transform .2s ease}
+.player-btn.text{flex:1;border-radius:16px;padding:8px 0;font-size:14px}
+.player-btn.heart{display:grid;height:40px;width:40px;place-items:center;border-radius:999px;color:#1d4ed8}
+.player-btn.heart .icon{height:16px;width:16px}
+.player-btn.heart.is-liked .icon{fill:currentColor}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+@media (min-width:640px){
+  .site-header{padding:24px 24px 0}
+  .cart-btn{padding-right:16px}
+  .cart-text-full{display:inline}.cart-text-short{display:none}
+  .hero{padding-top:144px;padding-left:24px;padding-right:24px}
+  .tag-badge{font-size:14px;margin-bottom:24px}
+  .headline{font-size:56px}
+  .subtext{margin-top:24px;font-size:16px}
+  .hero-actions{flex-direction:row}
+  .player{right:24px;bottom:24px;width:288px}
+}
+@media (min-width:768px){
+  .desktop-nav{display:flex}
+  .glass-toggle{display:none}
+  .mobile-nav{display:none!important}
+  .hero{padding-top:176px}
+  .headline{font-size:64px}
+  .subtext{font-size:18px}
+  .player{right:40px;bottom:32px}
+}
+@media (min-width:1024px){
+  .headline{font-size:72px}
+}
 </style>
 </head>
 <body>
-<div class="container">
-  <div class="brand">
-    <h1>🧠 AI题库</h1>
-    <p>选择你喜欢的前端版本开始使用</p>
-    <div class="badge">📦 2 个前端</div>
-  </div>
+<main class="app-shell" aria-label="AI题库 AI出题网站首页">
+  <section class="boomerang-bg" data-boomerang-bg aria-hidden="true">
+    <video autoplay muted playsinline crossorigin="anonymous" preload="auto" src="https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260611_183632_c311af08-e4b7-458f-81e7-79847a49b3d3.mp4"></video>
+    <canvas></canvas>
+  </section>
+  <div class="ambient-shade" aria-hidden="true"></div>
 
-  <div class="card" onclick="location.href='v1-classic/index.html'">
-    <div class="icon classic">📱</div>
-    <div class="info">
-      <h3>v1 · 经典版 <span style="font-size:11px;font-weight:400;color:var(--green)">推荐</span></h3>
-      <p>移动端优先的全功能版本。含答题、错题本、历史记录、学习统计、5种题型、混合出题、API配置管理。</p>
-      <div class="tags">
-        <span class="tag blue">移动优先</span>
-        <span class="tag green">全功能</span>
-        <span class="tag amber">推荐</span>
+  <header class="site-header">
+    <div class="header-row">
+      <a class="brand animate-fade-up delay-1" href="#" aria-label="AI题库首页">
+        <svg viewBox="0 0 256 256" aria-hidden="true">
+          <path d="M 256 256 L 128 256 C 198.692 256 256 198.692 256 128 C 256 57.308 198.692 0 128 0 C 57.308 0 0 57.308 0 128 C 0 198.692 57.308 256 128 256 L 0 256 L 0 0 L 256 0 Z M 128 104 C 141.255 104 152 114.745 152 128 C 152 141.255 141.255 152 128 152 C 114.745 152 104 141.255 104 128 C 104 114.745 114.745 104 128 104 Z"></path>
+        </svg>
+        <span>AI题库</span>
+      </a>
+      <nav class="desktop-nav animate-fade-up delay-2" aria-label="Main navigation">
+        <a href="#">题库版本</a>
+        <a href="#">智能出题</a>
+        <a href="#">学习记录</a>
+        <a href="#">API 配置</a>
+      </nav>
+      <div class="header-actions animate-fade-up delay-2">
+        <button class="cart-btn" type="button" aria-label="打开我的题库">
+          <span class="cart-icon" aria-hidden="true">
+            <svg class="icon" viewBox="0 0 24 24">
+              <circle cx="8" cy="21" r="1"></circle>
+              <circle cx="19" cy="21" r="1"></circle>
+              <path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"></path>
+            </svg>
+          </span>
+          <span class="cart-text-full">我的题库 (0)</span>
+          <span class="cart-text-short">(0)</span>
+        </button>
+        <button class="glass-toggle liquid-glass" type="button" aria-expanded="false" aria-controls="mobileNav" aria-label="打开菜单">
+          <svg class="icon menu-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M4 12h16"></path>
+            <path d="M4 6h16"></path>
+            <path d="M4 18h16"></path>
+          </svg>
+          <svg class="icon close-icon hidden" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M18 6 6 18"></path>
+            <path d="m6 6 12 12"></path>
+          </svg>
+        </button>
       </div>
     </div>
-  </div>
+    <nav id="mobileNav" class="mobile-nav liquid-glass" aria-label="Mobile navigation">
+      <a href="#">题库版本</a>
+      <a href="#">智能出题</a>
+      <a href="#">学习记录</a>
+      <a href="#">API 配置</a>
+    </nav>
+  </header>
 
-  <div class="card" onclick="location.href='v2-desktop/index.html'">
-    <div class="icon" style="background:var(--greenlight)">🖥️</div>
-    <div class="info">
-      <h3>v2 · 桌面版 <span style="font-size:11px;font-weight:400;color:var(--green)">NEW</span></h3>
-      <p>PC 端大屏优化版本，深色侧边栏导航，网格资料卡片，键盘快捷键，分屏登录。</p>
-      <div class="tags">
-        <span class="tag green">桌面优化</span>
-        <span class="tag blue">快捷键</span>
+  <section class="hero">
+    <div class="tag-badge liquid-glass animate-fade-up delay-1">AI题库 · 智能出题网站</div>
+    <h1 class="headline animate-fade-up delay-2">用 AI 出题，<br>把资料变成练习。</h1>
+    <p class="subtext animate-fade-up delay-3">上传课件、笔记或资料，AI 自动生成选择题、填空题、简答题和混合练习，帮你高效复习、巩固错题。</p>
+    <div class="hero-actions animate-fade-up delay-4">
+      <a class="hero-btn primary" href="v2-desktop/index.html">进入桌面版</a>
+      <a class="hero-btn secondary liquid-glass" href="v1-classic/index.html">打开经典版</a>
+    </div>
+  </section>
+
+  <aside class="player animate-fade-up delay-5" aria-label="学习进度">
+    <div class="track-card">
+      <div class="track-icon" aria-hidden="true">
+        <svg class="icon" viewBox="0 0 24 24">
+          <path d="M3 3v18h18"></path>
+          <path d="M18 17V9"></path>
+          <path d="M13 17V5"></path>
+          <path d="M8 17v-3"></path>
+        </svg>
+      </div>
+      <div class="track-meta">
+        <div class="track-title">AI 出题引擎 — 今日练习</div>
+        <div class="progress" aria-hidden="true"><span></span></div>
+        <div class="times"><span>0:33</span><span>-1:21</span></div>
       </div>
     </div>
-  </div>
-
-  <div class="card" style="opacity:0.6;cursor:default">
-    <div class="icon coming">🎨</div>
-    <div class="info">
-      <h3>v3 · 极简版 <span style="font-size:11px;font-weight:400;color:var(--faint)">开发中</span></h3>
-      <p>轻量级界面，仅保留核心出题和答题功能。适合低配设备或追求极致简洁的用户。</p>
-      <div class="tags">
-        <span class="tag gray">即将推出</span>
-      </div>
+    <div class="controls">
+      <button class="player-btn text" type="button">上一题</button>
+      <button class="player-btn heart" type="button" aria-pressed="false" aria-label="收藏练习">
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.29 1.51 4.04 3 5.5l7 7Z"></path>
+        </svg>
+      </button>
+      <button class="player-btn text" type="button">下一题</button>
     </div>
-  </div>
+  </aside>
+</main>
 
-  <div style="background:#FFFBEB;border-radius:12px;padding:16px;font-size:13px;color:#92400E;line-height:1.6;margin-top:24px">
-    <strong>💡 所有前端共用同一个后端</strong><br>
-    启动后端后，任选一个前端打开即可使用。<br>
-    后端启动：<code style="background:#FEF3C7;padding:2px 6px;border-radius:4px;font-size:12px">cd backend &amp;&amp; python main.py</code>
-  </div>
+<script>
+(function(){
+  const root=document.querySelector('[data-boomerang-bg]');
+  if(!root)return;
+  const video=root.querySelector('video');
+  const canvas=root.querySelector('canvas');
+  const ctx=canvas.getContext('2d');
+  const frames=[];
+  const maxWidth=960;
+  let stopped=false;
+  let rafId=0;
+  let frameLoopStarted=false;
 
-  <div class="footer">
-    <a href="https://github.com/Garyff1/ai-question-bank" target="_blank">GitHub 仓库</a> ·
-    提交 <a href="https://github.com/Garyff1/ai-question-bank/issues" target="_blank">Issue</a> 建议新版本
-  </div>
-</div>
+  function resizeCanvas(){
+    const dpr=Math.min(window.devicePixelRatio||1,2);
+    const width=Math.max(1,Math.floor(root.clientWidth*dpr));
+    const height=Math.max(1,Math.floor(root.clientHeight*dpr));
+    if(canvas.width!==width||canvas.height!==height){
+      canvas.width=width;
+      canvas.height=height;
+    }
+  }
+
+  function captureFrame(){
+    if(stopped||!video.videoWidth||!video.videoHeight||video.readyState<2)return;
+    const scale=Math.min(1,maxWidth/video.videoWidth);
+    const width=Math.max(1,Math.round(video.videoWidth*scale));
+    const height=Math.max(1,Math.round(video.videoHeight*scale));
+    const frame=document.createElement('canvas');
+    frame.width=width;
+    frame.height=height;
+    const frameCtx=frame.getContext('2d');
+    try{
+      frameCtx.drawImage(video,0,0,width,height);
+      frames.push(frame);
+    }catch(error){
+      stopped=true;
+      frames.length=0;
+    }
+  }
+
+  function scheduleCapture(){
+    if(stopped||video.ended)return;
+    if('requestVideoFrameCallback' in video){
+      video.requestVideoFrameCallback(function(){
+        captureFrame();
+        scheduleCapture();
+      });
+    }else{
+      rafId=requestAnimationFrame(function(){
+        captureFrame();
+        scheduleCapture();
+      });
+    }
+  }
+
+  function drawCover(frame){
+    resizeCanvas();
+    const cw=canvas.width;
+    const ch=canvas.height;
+    const scale=Math.max(cw/frame.width,ch/frame.height);
+    const dw=frame.width*scale;
+    const dh=frame.height*scale;
+    const dx=(cw-dw)/2;
+    const dy=(ch-dh)/2;
+    ctx.clearRect(0,0,cw,ch);
+    ctx.drawImage(frame,dx,dy,dw,dh);
+  }
+
+  function startBoomerang(){
+    if(frameLoopStarted)return;
+    frameLoopStarted=true;
+    if(frames.length<2||stopped){
+      video.loop=true;
+      video.currentTime=0;
+      video.play().catch(function(){});
+      return;
+    }
+    video.style.display='none';
+    canvas.style.display='block';
+    let index=0;
+    let direction=1;
+    let last=0;
+    function tick(now){
+      if(now-last>=1000/30){
+        drawCover(frames[index]);
+        index+=direction;
+        if(index>=frames.length-1){
+          index=frames.length-1;
+          direction=-1;
+        }else if(index<=0){
+          index=0;
+          direction=1;
+        }
+        last=now;
+      }
+      rafId=requestAnimationFrame(tick);
+    }
+    rafId=requestAnimationFrame(tick);
+  }
+
+  video.addEventListener('loadedmetadata',function(){
+    video.play().catch(function(){});
+    scheduleCapture();
+  },{once:true});
+  video.addEventListener('ended',startBoomerang,{once:true});
+  video.addEventListener('error',function(){
+    root.style.background='linear-gradient(135deg,#0b1020,#1d4ed8 52%,#020617)';
+  });
+  video.autoplay=true;
+  video.muted=true;
+  video.playsInline=true;
+  video.load();
+  video.play().catch(function(){});
+  window.addEventListener('resize',resizeCanvas);
+  window.addEventListener('beforeunload',function(){
+    stopped=true;
+    cancelAnimationFrame(rafId);
+  });
+})();
+
+(function(){
+  const menuButton=document.querySelector('.glass-toggle');
+  const menu=document.querySelector('#mobileNav');
+  const menuIcon=document.querySelector('.menu-icon');
+  const closeIcon=document.querySelector('.close-icon');
+  const heart=document.querySelector('.player-btn.heart');
+  if(menuButton&&menu){
+    menuButton.addEventListener('click',function(){
+      const open=!menu.classList.contains('is-open');
+      menu.classList.toggle('is-open',open);
+      menuButton.setAttribute('aria-expanded',String(open));
+      menuButton.setAttribute('aria-label',open?'关闭菜单':'打开菜单');
+      menuIcon.classList.toggle('hidden',open);
+      closeIcon.classList.toggle('hidden',!open);
+    });
+  }
+  if(heart){
+    heart.addEventListener('click',function(){
+      const liked=!heart.classList.contains('is-liked');
+      heart.classList.toggle('is-liked',liked);
+      heart.setAttribute('aria-pressed',String(liked));
+    });
+  }
+})();
+</script>
 </body>
 </html>

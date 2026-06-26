@@ -83,13 +83,15 @@ button,input,select{font-family:inherit}button{cursor:pointer}
 .chip .ci{width:24px;height:24px;border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:8px;font-weight:800;color:#fff}
 .chip .cn{font-size:13px;font-weight:700;max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .fs{margin-bottom:26px}.fsl{font-size:13px;font-weight:800;color:var(--ink);margin-bottom:10px;display:block}
-.trw{display:flex;gap:12px}
-.tcard{flex:1;border:1.6px solid var(--line);background:#fff;border-radius:14px;padding:20px 14px;display:flex;flex-direction:column;align-items:center;gap:9px;cursor:pointer;transition:.15s}
-.tcard:hover{border-color:var(--bs)}
+.trw{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 14px}
+.tcard{position:relative;min-height:104px;border:1.6px solid var(--line);background:#fff;border-radius:16px;padding:22px 14px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;text-align:center;cursor:pointer;transition:border-color .15s,background .15s,transform .15s,box-shadow .15s}
+.tcard:hover{border-color:var(--bs);box-shadow:0 10px 22px -16px rgba(15,23,42,.28)}
 .tcard:active{transform:scale(.97)}
 .tcard.sel{border-color:var(--blue);background:var(--bl)}
-.tcard .tl{font-size:14px;font-weight:800}
-.tcard .td{font-size:11.5px;color:var(--faint)}
+.tcard .ck{position:absolute;top:10px;right:11px;width:22px;height:22px;border-radius:50%;background:var(--blue);color:#fff;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:900;line-height:1;opacity:0;transform:scale(.72);transition:.15s}
+.tcard.sel .ck{opacity:1;transform:scale(1)}
+.tcard .tl{font-size:16px;font-weight:900;color:#0f172a}
+.tcard .td{font-size:12.5px;color:var(--muted)}
 .f2{display:grid;grid-template-columns:1fr 1fr;gap:18px}
 .fsel{width:100%;padding:13px 14px;background:#fff;border:1.5px solid var(--line);border-radius:var(--rb);font-size:14px;font-weight:700;color:var(--ink);cursor:pointer;outline:none}
 .fsel:focus{border-color:var(--blue)}
@@ -321,6 +323,61 @@ button,input,select{font-family:inherit}button{cursor:pointer}
 .sheet-demo-link{display:block;text-align:center;font-size:12.5px;color:var(--muted);font-weight:700;text-decoration:underline;text-underline-offset:2px;background:none;border:none;width:100%;padding:6px 0}
 .sheet-demo-link:hover{color:var(--blue)}
 .dropzone svg{width:32px;height:32px;color:var(--blue)}
+
+/* === API 配置页 === */
+.config-wrap{max-width:1040px}
+.config-header{margin-bottom:24px}
+.config-layout{display:grid;grid-template-columns:minmax(0,1fr) 280px;gap:22px;align-items:start}
+.config-card,.config-side-card{background:#fff;border:1px solid rgba(226,232,240,.9);border-radius:18px;box-shadow:0 14px 34px -18px rgba(15,23,42,.24)}
+.config-card{padding:26px}
+.config-side{display:flex;flex-direction:column;gap:14px}
+.config-side-card{padding:19px}
+.config-side-card.tip{background:linear-gradient(145deg,#fffbeb,#fff);border-color:#fde68a}
+.config-side-card.security{background:linear-gradient(145deg,#eff6ff,#fff);border-color:#bfdbfe}
+.config-side-icon{width:38px;height:38px;border-radius:11px;display:flex;align-items:center;justify-content:center;font-size:18px;margin-bottom:13px}
+.config-side-card.tip .config-side-icon{background:#fef3c7}
+.config-side-card.security .config-side-icon{background:#dbeafe}
+.config-side-title{font-size:14px;font-weight:800;margin-bottom:6px}
+.config-side-desc{font-size:12.5px;color:var(--muted);line-height:1.7}
+.config-status{display:flex;align-items:flex-start;gap:11px}
+.config-status-dot{width:10px;height:10px;border-radius:50%;background:var(--amber);flex-shrink:0;margin-top:5px;box-shadow:0 0 0 4px rgba(245,158,11,.12)}
+.config-status-title{font-size:14px;font-weight:800;margin-bottom:4px}
+.config-status-desc{font-size:12px;color:var(--muted);line-height:1.55;overflow-wrap:anywhere}
+.config-section+.config-section{border-top:1px solid var(--line);margin-top:25px;padding-top:25px}
+.config-section-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:15px}
+.config-section-title{font-size:15px;font-weight:800;color:var(--ink)}
+.config-section-sub{font-size:12px;color:var(--faint);margin-top:4px;line-height:1.5}
+.provider-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.provider-card{position:relative;min-height:94px;text-align:left;border:1.5px solid var(--line);background:#fff;border-radius:13px;padding:14px;display:flex;align-items:flex-start;gap:11px;transition:border-color .15s,background .15s,box-shadow .15s,transform .15s}
+.provider-card:hover{border-color:var(--bs);transform:translateY(-1px)}
+.provider-card.sel{border-color:var(--blue);background:var(--bl);box-shadow:0 0 0 3px rgba(37,99,235,.08)}
+.provider-logo{width:34px;height:34px;border-radius:10px;background:var(--bg);color:var(--blue);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:900;flex-shrink:0}
+.provider-card.sel .provider-logo{background:var(--blue);color:#fff}
+.provider-copy{min-width:0;padding-right:12px}
+.provider-name{display:block;font-size:13px;font-weight:800;line-height:1.3}
+.provider-model{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;font-size:11px;color:var(--faint);line-height:1.45;margin-top:5px;overflow-wrap:anywhere}
+.provider-check{position:absolute;top:10px;right:10px;width:18px;height:18px;border-radius:50%;background:var(--blue);color:#fff;display:none;align-items:center;justify-content:center;font-size:11px;font-weight:900}
+.provider-card.sel .provider-check{display:flex}
+.config-fields{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+.config-field{min-width:0}
+.config-field.full{grid-column:1/-1}
+.config-label-row{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:8px}
+.config-label{font-size:13px;font-weight:800}
+.config-required{font-size:10.5px;color:var(--faint);font-weight:600}
+.config-input-wrap{position:relative}
+.config-input{height:48px;padding:12px 14px}
+.config-input.has-action{padding-right:48px}
+.config-input-action{position:absolute;right:7px;top:7px;width:34px;height:34px;border:none;border-radius:9px;background:var(--bg);color:var(--muted);display:flex;align-items:center;justify-content:center}
+.config-input-action:hover{background:var(--bl);color:var(--blue)}
+.config-input-action svg{width:17px;height:17px}
+.config-help{font-size:11.5px;color:var(--faint);line-height:1.55;margin-top:7px}
+.config-result{padding:12px 14px;border-radius:11px;font-size:12.5px;line-height:1.6;display:none;margin-top:18px}
+.config-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:22px;padding-top:20px;border-top:1px solid var(--line)}
+.config-actions .btn{min-width:150px;height:44px}
+.config-actions .btn svg{width:16px;height:16px}
+.config-actions .btn.loading{pointer-events:none;opacity:.72}
+.config-saved-badge{display:inline-flex;align-items:center;gap:6px;padding:5px 9px;border-radius:999px;background:var(--gl);color:#047857;font-size:11px;font-weight:800}
+.config-saved-badge span{width:6px;height:6px;border-radius:50%;background:var(--green)}
 @media(max-width:980px){
   .sidebar{width:80px;padding:20px 10px}
   .sb-b{justify-content:center;padding:4px 0 24px}
@@ -328,6 +385,17 @@ button,input,select{font-family:inherit}button{cursor:pointer}
   .sb-n button,.sb-up{justify-content:center}
   .main{margin-left:80px}
   .page{padding:28px 22px 56px}
+  .config-layout{grid-template-columns:1fr}
+  .config-side{display:grid;grid-template-columns:repeat(3,1fr);order:-1}
+}
+@media(max-width:760px){
+  .config-card{padding:20px}
+  .config-side{grid-template-columns:1fr}
+  .provider-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .config-fields{grid-template-columns:1fr}
+  .config-field.full{grid-column:auto}
+  .config-actions{flex-direction:column-reverse}
+  .config-actions .btn{width:100%}
 }
 @media(prefers-reduced-motion:reduce){
   *{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important}
@@ -369,9 +437,12 @@ button,input,select{font-family:inherit}button{cursor:pointer}
         <button class="pback" onclick="showPage('home')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:15px;height:15px"><path d="M15 5l-7 7 7 7"/></svg>返回我的资料</button>
         <div class="ph"><div><div class="pt">生成题目</div><div class="ps">设置题型、群体与数量，AI 将基于资料内容出题</div></div></div>
         <div class="chip" id="genChip"></div>
-        <div class="fs"><span class="fsl">题型选择</span><div class="trw">
-          <button class="tcard sel" id="typeChoice" data-t="choice" onclick="selType(this,'choice')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="7" r="2"/><circle cx="6" cy="14" r="2"/><circle cx="6" cy="21" r="2"/><path d="M11 7h9M11 14h9M11 21h9"/></svg><span class="tl">选择题</span><span class="td">四选一</span></button>
-          <button class="tcard" id="typeFill" data-t="fill" onclick="selType(this,'fill')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19h5l11-11-5-5L4 14v5z"/><path d="M14 4l5 5"/></svg><span class="tl">填空题</span><span class="td">手动输入</span></button>
+        <div class="fs"><span class="fsl">题型（可多选混合出题）</span><div class="trw">
+          <button type="button" class="tcard sel" id="typeChoice" data-t="choice" aria-pressed="true" onclick="selType(this,'choice')"><span class="ck">✓</span><span class="tl">单选题</span><span class="td">四选一</span></button>
+          <button type="button" class="tcard" id="typeMultiChoice" data-t="multi_choice" aria-pressed="false" onclick="selType(this,'multi_choice')"><span class="ck">✓</span><span class="tl">多选题</span><span class="td">多选多</span></button>
+          <button type="button" class="tcard" id="typeTrueFalse" data-t="true_false" aria-pressed="false" onclick="selType(this,'true_false')"><span class="ck">✓</span><span class="tl">判断题</span><span class="td">对/错</span></button>
+          <button type="button" class="tcard" id="typeFill" data-t="fill" aria-pressed="false" onclick="selType(this,'fill')"><span class="ck">✓</span><span class="tl">填空题</span><span class="td">手动输入</span></button>
+          <button type="button" class="tcard" id="typeSubjective" data-t="subjective" aria-pressed="false" onclick="selType(this,'subjective')"><span class="ck">✓</span><span class="tl">主观题</span><span class="td">简答/论述</span></button>
         </div></div>
         <div class="f2">
           <div class="fs"><span class="fsl">目标群体</span><div class="dropdown" id="audienceDropdown"><button class="dropdown__trigger" onclick="toggleAudienceMenu(event)"><span id="audienceValue">通用</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button><div class="dropdown__menu" id="audienceMenu"></div></div></div>
@@ -383,7 +454,92 @@ button,input,select{font-family:inherit}button{cursor:pointer}
     <section class="page" id="page-history"><div class="pi"><div class="ph"><div><div class="pt">练习历史</div><div class="ps">按时间倒序展示每一次练习的成绩</div></div></div><div class="hl" id="historyBody"></div><div class="empty" id="histEmpty"><h3>还没有练习记录</h3><p>完成一次答题后，记录会出现在这里</p></div></div></section>
     <section class="page" id="page-wrongbook"><div class="pi"><div class="ph"><div><div class="pt">错题本</div><div class="ps">按资料分组收录错题，可一键专项重练</div></div></div><div id="wrongbookBody"></div><div class="empty" id="wbEmpty"><h3>错题本是空的</h3><p>坚持练习，错题会被自动收录在这里</p></div></div></section>
     <section class="page" id="page-stats"><div class="pi"><div class="ph"><div><div class="pt">学习统计</div><div class="ps">查看你的整体练习数据</div></div></div><div class="sd2"><div class="sr"><div class="rw2"><svg viewBox="0 0 120 120"><circle class="rbg" cx="60" cy="60" r="52"></circle><circle class="rfg" id="ringFg2" cx="60" cy="60" r="52" stroke-dasharray="326.7" stroke-dashoffset="326.7"></circle></svg><div class="rc"><div class="rv" id="ringVal2">0%</div><div class="rl2">总正确率</div></div></div><div style="font-size:12.5px;color:var(--muted);font-weight:600;text-align:center">所有练习记录的综合正确率</div></div><div class="stiles" id="statsTiles"></div></div></div></section>
-    <section class="page" id="page-config"><div class="pi-n"><div class="ph"><div><div class="pt">API 配置</div><div class="ps">需要接入大模型 API 才能出题，每个账号独立保存</div></div></div><div class="fs" style="background:#FFFBEB;border-radius:12px;padding:14px 16px;font-size:13px;color:#92400E;line-height:1.6"><strong>🔋 "躯壳与电池"</strong> — 请填入你的 API Key</div><div class="fs" style="display:flex;align-items:center;gap:10px;background:var(--bg);border-radius:12px;padding:14px 16px;font-size:13px;margin-bottom:26px"><span id="cfgDot" style="width:10px;height:10px;border-radius:50%;background:var(--amber);flex-shrink:0"></span><div style="flex:1"><strong id="cfgTitle">未检测</strong><br><span id="cfgDesc" style="font-size:12px;color:var(--muted)">点击「测试连接」检查</span></div></div><div class="fs"><span class="fsl">选择服务商</span><div class="trw" id="providerGrid" style="margin-top:8px;flex-wrap:wrap"></div></div><div class="f2"><div class="fs"><span class="fsl">API Key</span><input class="inp" id="cfgKey" placeholder="sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" style="font-family:monospace;font-size:13px"><div class="sth">从服务商官网获取的密钥</div></div><div class="fs"><span class="fsl">API Base URL</span><input class="inp" id="cfgBase" placeholder="https://api.deepseek.com/v1"><div class="sth">大模型 API 地址，一般以 /v1 结尾</div></div></div><div class="fs"><span class="fsl">模型名称</span><input class="inp" id="cfgModel" placeholder="deepseek-chat"><div class="sth">如 deepseek-chat / gpt-3.5-turbo / qwen-turbo</div></div><div id="testResult" style="padding:12px 14px;border-radius:10px;font-size:13px;line-height:1.5;display:none"></div><div style="display:flex;gap:10px;margin-top:8px"><button class="btn btn-o btn-sm" style="flex:1;justify-content:center;height:44px;font-size:14px" onclick="testConnection()">🔌 测试连接</button><button class="btn btn-p btn-sm" style="flex:1;justify-content:center;height:44px;font-size:14px" onclick="saveConfig()">💾 保存配置</button></div></div></section>
+    <section class="page" id="page-config">
+      <div class="config-wrap">
+        <div class="ph config-header">
+          <div>
+            <div class="pt">API 配置</div>
+            <div class="ps">连接大模型服务，为 AI 出题提供能力。配置仅保存在当前账号中。</div>
+          </div>
+          <div class="config-saved-badge" id="cfgHeaderBadge" style="display:none"><span></span>配置已保存</div>
+        </div>
+        <div class="config-layout">
+          <div class="config-card">
+            <div class="config-section">
+              <div class="config-section-head">
+                <div>
+                  <div class="config-section-title">选择服务商</div>
+                  <div class="config-section-sub">选择后会自动填写推荐的接口地址和模型名称</div>
+                </div>
+              </div>
+              <div class="provider-grid" id="providerGrid"></div>
+            </div>
+            <div class="config-section">
+              <div class="config-section-head">
+                <div>
+                  <div class="config-section-title">连接信息</div>
+                  <div class="config-section-sub">请从对应服务商控制台获取 API Key</div>
+                </div>
+              </div>
+              <div class="config-fields">
+                <div class="config-field full">
+                  <div class="config-label-row"><label class="config-label" for="cfgKey">API Key</label><span class="config-required">必填 · 加密保存</span></div>
+                  <div class="config-input-wrap">
+                    <input class="inp config-input has-action" id="cfgKey" type="password" autocomplete="off" placeholder="输入服务商提供的 API Key" style="font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:13px">
+                    <button class="config-input-action" type="button" onclick="toggleConfigKey()" aria-label="显示 API Key" id="cfgKeyToggle">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12z"/><circle cx="12" cy="12" r="2.5"/></svg>
+                    </button>
+                  </div>
+                  <div class="config-help">密钥不会显示在页面中；重新保存配置时需要再次填写。</div>
+                </div>
+                <div class="config-field">
+                  <div class="config-label-row"><label class="config-label" for="cfgBase">API Base URL</label><span class="config-required">必填</span></div>
+                  <input class="inp config-input" id="cfgBase" placeholder="https://api.deepseek.com/v1">
+                  <div class="config-help">兼容 OpenAI 格式的接口地址，通常以 /v1 结尾。</div>
+                </div>
+                <div class="config-field">
+                  <div class="config-label-row"><label class="config-label" for="cfgModel">模型名称</label><span class="config-required">必填</span></div>
+                  <input class="inp config-input" id="cfgModel" placeholder="deepseek-chat">
+                  <div class="config-help">例如 deepseek-chat、qwen-turbo 或 glm-4-flash。</div>
+                </div>
+              </div>
+              <div class="config-result" id="testResult"></div>
+              <div class="config-actions">
+                <button class="btn btn-o btn-sm" id="testConfigBtn" onclick="testConnection()">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2v6M15 2v6M7 8h10v3a5 5 0 01-5 5v5M9 21h6"/></svg>
+                  <span>测试连接</span>
+                </button>
+                <button class="btn btn-p btn-sm" id="saveConfigBtn" onclick="saveConfig()">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3h12l2 2v16H5z"/><path d="M8 3v6h8V3M8 21v-7h8v7"/></svg>
+                  <span>保存配置</span>
+                </button>
+              </div>
+            </div>
+          </div>
+          <aside class="config-side">
+            <div class="config-side-card">
+              <div class="config-status">
+                <span class="config-status-dot" id="cfgDot"></span>
+                <div>
+                  <div class="config-status-title" id="cfgTitle">正在读取配置</div>
+                  <div class="config-status-desc" id="cfgDesc">请稍候…</div>
+                </div>
+              </div>
+            </div>
+            <div class="config-side-card tip">
+              <div class="config-side-icon">🔋</div>
+              <div class="config-side-title">为题库装上“电池”</div>
+              <div class="config-side-desc">配置成功后，AI 才能读取你的学习资料并生成题目。</div>
+            </div>
+            <div class="config-side-card security">
+              <div class="config-side-icon">🔒</div>
+              <div class="config-side-title">账号独立保存</div>
+              <div class="config-side-desc">不同账号的配置互不影响。请勿在公共设备上保存个人密钥。</div>
+            </div>
+          </aside>
+        </div>
+      </div>
+    </section>
   </main>
   <!-- 登录 -->
   <div class="login active" id="loginScreen"><div class="ls"><div class="lb1 a"></div><div class="lb1 b"></div><div class="lmk"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="9"/></svg></div><div class="lti">AI题库</div><div class="ltg">把你的学习资料变成专属智能题库。上传一份 PDF 或笔记，剩下的交给 AI。</div><div class="lfts"><div class="lft"><span class="fi">📄</span>上传资料，AI 生成题目</div><div class="lft"><span class="fi">✅</span>逐题作答，盖章式反馈</div><div class="lft"><span class="fi">📊</span>错题自动收录，专项重练</div></div></div><div class="lf"><div class="lfc"><div class="leye">欢迎使用</div><div class="lfti">登录开始智能出题</div><div class="ltabs"><div class="lti2" id="loginIndicator2"></div><button class="act" onclick="setLoginTab('login')" id="tabLg">登录</button><button onclick="setLoginTab('register')" id="tabRg">注册</button></div><div class="lfo"><input class="inp" id="loginAcc" placeholder="输入账号"><input class="inp" id="loginPw" type="password" placeholder="输入密码"><p class="e2" id="loginErr2"></p><button class="btn btn-p btn-blk" id="loginSubBtn" onclick="doLogin()">登录</button><div class="lhint">随意填写账号密码即可 · 后期升级云端版</div></div></div></div></div>
@@ -545,17 +701,123 @@ function confirmLogout(){closeMod('modalLogout');logout();}
 async function checkApi(){
   try{var c=await api2('/api/config/config');var dot=document.getElementById('apiStatusDot');if(dot){dot.style.display='inline-block';dot.style.background=c.configured?'var(--green)':'var(--red)';}}catch(e){}
 }
-var PROVS={deepseek:{name:'DeepSeek',base:'https://api.deepseek.com/v1',model:'deepseek-chat'},siliconflow:{name:'SiliconFlow',base:'https://api.siliconflow.cn/v1',model:'Qwen/Qwen2.5-7B-Instruct'},openai:{name:'OpenAI',base:'https://api.openai.com/v1',model:'gpt-3.5-turbo'},tongyi:{name:'通义千问',base:'https://dashscope.aliyuncs.com/compatible-mode/v1',model:'qwen-turbo'},zhipu:{name:'智谱清言',base:'https://open.bigmodel.cn/api/paas/v4',model:'glm-4-flash'},custom:{name:'自定义',base:'',model:''}};
-var curProv='custom';
-async function loadConfigPage(){
-  var grid=document.getElementById('providerGrid'); if(!grid)return;
-  grid.innerHTML=Object.entries(PROVS).map(function(e){var k=e[0],v=e[1];return '<div class="tcard '+(k===curProv?'sel':'')+'" style="padding:12px 8px" onclick="selectProvider(\''+k+'\')"><div class="tl" style="font-size:12px">'+v.name+'</div><div class="td">'+v.model+'</div></div>';}).join('');
-  try{var c=await api2('/api/config/config');if(c.configured){curProv=c.provider||'custom';document.getElementById('cfgKey').value='';document.getElementById('cfgBase').value=c.api_base;document.getElementById('cfgModel').value=c.model_name;setCfgStatus('ok','var(--green)','已配置',c.api_base+' · '+c.model_name);}else{setCfgStatus('no','var(--red)','未配置','请填入 API Key');}}catch(e){setCfgStatus('no','var(--red)','加载失败',e.message);}
+var PROVS={
+  deepseek:{name:'DeepSeek',mark:'DS',base:'https://api.deepseek.com/v1',model:'deepseek-chat'},
+  siliconflow:{name:'SiliconFlow',mark:'SF',base:'https://api.siliconflow.cn/v1',model:'Qwen/Qwen2.5-7B-Instruct'},
+  openai:{name:'OpenAI',mark:'AI',base:'https://api.openai.com/v1',model:'gpt-3.5-turbo'},
+  tongyi:{name:'通义千问',mark:'QW',base:'https://dashscope.aliyuncs.com/compatible-mode/v1',model:'qwen-turbo'},
+  zhipu:{name:'智谱清言',mark:'GLM',base:'https://open.bigmodel.cn/api/paas/v4',model:'glm-4-flash'},
+  custom:{name:'自定义',mark:'···',base:'',model:'自行填写接口信息'}
+};
+var curProv='deepseek';
+function renderProviderGrid(){
+  var grid=document.getElementById('providerGrid');if(!grid)return;
+  grid.innerHTML=Object.entries(PROVS).map(function(entry){
+    var key=entry[0],provider=entry[1];
+    return '<button type="button" class="provider-card '+(key===curProv?'sel':'')+'" data-provider="'+key+'" onclick="selectProvider(\''+key+'\')">'
+      +'<span class="provider-logo">'+provider.mark+'</span>'
+      +'<span class="provider-copy"><span class="provider-name">'+provider.name+'</span><span class="provider-model">'+provider.model+'</span></span>'
+      +'<span class="provider-check">✓</span></button>';
+  }).join('');
 }
-function selectProvider(k){curProv=k;document.querySelectorAll('#providerGrid .tcard').forEach(function(c){c.classList.toggle('sel',c.textContent.indexOf(PROVS[k].name)>-1);});var p=PROVS[k];if(k!=='custom'){document.getElementById('cfgBase').value=p.base;document.getElementById('cfgModel').value=p.model;}document.getElementById('testResult').style.display='none';}
-function setCfgStatus(type,color,title,desc){var dot=document.getElementById('cfgDot');if(dot)dot.style.background=color;var t=document.getElementById('cfgTitle');if(t)t.textContent=title;var d=document.getElementById('cfgDesc');if(d)d.textContent=desc;}
-async function testConnection(){var key=document.getElementById('cfgKey').value.trim();var base=document.getElementById('cfgBase').value.trim();var model=document.getElementById('cfgModel').value.trim();if(!key||!base||!model){toast('请完整填写');return;}var tr=document.getElementById('testResult');tr.style.display='block';tr.style.cssText='padding:12px 14px;border-radius:10px;font-size:13px;line-height:1.5;display:block';tr.style.background='var(--bg)';tr.style.color='var(--ink)';tr.innerHTML='⏳ 测试中...';try{var r=await api2('/api/config/test',{method:'POST',body:JSON.stringify({api_key:key,api_base:base,model_name:model})});tr.style.background=r.success?'var(--gl)':'var(--rl)';tr.style.color=r.success?'var(--green)':'var(--red)';tr.innerHTML=(r.success?'✅ ':'❌ ')+r.message;}catch(e){tr.style.background='var(--rl)';tr.style.color='var(--red)';tr.innerHTML='❌ '+e.message;}}
-async function saveConfig(){var key=document.getElementById('cfgKey').value.trim();var base=document.getElementById('cfgBase').value.trim();var model=document.getElementById('cfgModel').value.trim();if(!key||!base||!model){toast('请完整填写');return;}try{await api2('/api/config/config',{method:'POST',body:JSON.stringify({provider:curProv,api_key:key,api_base:base,model_name:model})});toast('✅ 配置已保存');setCfgStatus('ok','var(--green)','已配置',base+' · '+model);checkApi();}catch(e){toast('❌ '+e.message);}}
+async function loadConfigPage(){
+  try{
+    var c=await api2('/api/config/config');
+    if(c.configured){
+      curProv=c.provider||'custom';
+      document.getElementById('cfgKey').value='';
+      document.getElementById('cfgBase').value=c.api_base;
+      document.getElementById('cfgModel').value=c.model_name;
+      setCfgStatus('ok','var(--green)','配置已生效',c.api_base+' · '+c.model_name);
+    }else{
+      curProv='deepseek';
+      document.getElementById('cfgKey').value='';
+      document.getElementById('cfgBase').value=PROVS.deepseek.base;
+      document.getElementById('cfgModel').value=PROVS.deepseek.model;
+      setCfgStatus('no','var(--amber)','等待配置','填写 API Key 后测试并保存');
+    }
+  }catch(e){
+    setCfgStatus('error','var(--red)','加载失败',e.message);
+  }
+  document.getElementById('testResult').style.display='none';
+  renderProviderGrid();
+}
+function selectProvider(k){
+  curProv=k;
+  document.querySelectorAll('#providerGrid .provider-card').forEach(function(card){card.classList.toggle('sel',card.dataset.provider===k);});
+  var provider=PROVS[k];
+  if(k!=='custom'){
+    document.getElementById('cfgBase').value=provider.base;
+    document.getElementById('cfgModel').value=provider.model;
+  }else{
+    document.getElementById('cfgBase').value='';
+    document.getElementById('cfgModel').value='';
+    document.getElementById('cfgBase').focus();
+  }
+  markConfigDirty();
+}
+function setCfgStatus(type,color,title,desc){
+  var dot=document.getElementById('cfgDot');
+  if(dot){
+    dot.style.background=color;
+    dot.style.boxShadow='0 0 0 4px '+((type==='ok'||type==='tested')?'rgba(16,185,129,.12)':type==='no'?'rgba(245,158,11,.12)':'rgba(239,68,68,.12)');
+  }
+  var titleEl=document.getElementById('cfgTitle');if(titleEl)titleEl.textContent=title;
+  var descEl=document.getElementById('cfgDesc');if(descEl)descEl.textContent=desc;
+  var badge=document.getElementById('cfgHeaderBadge');if(badge)badge.style.display=type==='ok'?'inline-flex':'none';
+}
+function markConfigDirty(){
+  document.getElementById('testResult').style.display='none';
+  setCfgStatus('no','var(--amber)','有未保存更改','测试并保存后，新配置才会生效');
+}
+function toggleConfigKey(){
+  var input=document.getElementById('cfgKey'),button=document.getElementById('cfgKeyToggle');
+  var show=input.type==='password';input.type=show?'text':'password';
+  button.setAttribute('aria-label',show?'隐藏 API Key':'显示 API Key');
+}
+function setConfigButtonLoading(id,loading,label){
+  var button=document.getElementById(id);if(!button)return;
+  button.classList.toggle('loading',loading);button.disabled=loading;
+  var span=button.querySelector('span');if(span)span.textContent=loading?'处理中…':label;
+}
+async function testConnection(){
+  var key=document.getElementById('cfgKey').value.trim(),base=document.getElementById('cfgBase').value.trim(),model=document.getElementById('cfgModel').value.trim();
+  if(!key||!base||!model){toast('请完整填写连接信息');return;}
+  var result=document.getElementById('testResult');
+  result.style.display='block';result.style.background='var(--bg)';result.style.color='var(--ink)';result.textContent='正在连接模型服务，请稍候…';
+  setConfigButtonLoading('testConfigBtn',true,'测试连接');
+  try{
+    var response=await api2('/api/config/test',{method:'POST',body:JSON.stringify({api_key:key,api_base:base,model_name:model})});
+    result.style.background=response.success?'var(--gl)':'var(--rl)';
+    result.style.color=response.success?'#047857':'var(--red)';
+    result.textContent=(response.success?'✓ ':'✕ ')+response.message;
+    if(response.success)setCfgStatus('tested','var(--green)','连接测试通过','现在可以保存这组配置');
+  }catch(error){
+    result.style.background='var(--rl)';result.style.color='var(--red)';result.textContent='✕ '+error.message;
+  }finally{
+    setConfigButtonLoading('testConfigBtn',false,'测试连接');
+  }
+}
+async function saveConfig(){
+  var key=document.getElementById('cfgKey').value.trim(),base=document.getElementById('cfgBase').value.trim(),model=document.getElementById('cfgModel').value.trim();
+  if(!key||!base||!model){toast('请完整填写连接信息');return;}
+  setConfigButtonLoading('saveConfigBtn',true,'保存配置');
+  try{
+    await api2('/api/config/config',{method:'POST',body:JSON.stringify({provider:curProv,api_key:key,api_base:base,model_name:model})});
+    toast('✓ 配置已保存');
+    setCfgStatus('ok','var(--green)','配置已生效',base+' · '+model);
+    document.getElementById('cfgKey').value='';
+    document.getElementById('cfgKey').type='password';
+    checkApi();
+  }catch(error){
+    toast('✕ '+error.message);
+  }finally{
+    setConfigButtonLoading('saveConfigBtn',false,'保存配置');
+  }
+}
+['cfgKey','cfgBase','cfgModel'].forEach(function(id){
+  var input=document.getElementById(id);if(input)input.addEventListener('input',markConfigDirty);
+});
 
 // === 资料列表 ===
 async function loadMats(){try{mats=await api2('/api/materials');renderMats();}catch(e){toast(e.message);}}
@@ -608,7 +870,7 @@ function goGen(id){
   const type=ext==='pdf'?'pdf':(ext==='docx'||ext==='doc')?'word':'txt';
   const label=type==='pdf'?'PDF':type==='word'?'DOC':'TXT';
   document.getElementById('genChip').innerHTML=`<div class="ci mci ${type}">${label}</div><div class="cn">${escapeHtml(m?m.filename:'')}</div>`;
-  document.querySelectorAll('.tcard').forEach(function(card){card.classList.toggle('sel',card.dataset.t==='choice');});
+  syncTypeCards();
   document.getElementById('stpVal').textContent='5';
   document.getElementById('stpMinus').disabled=false;
   document.getElementById('stpPlus').disabled=false;
@@ -616,11 +878,20 @@ function goGen(id){
   document.getElementById('audienceMenu').innerHTML=AUDIENCE_OPTIONS.map(function(a){return `<div class="dropdown__option ${a===gAudience?'selected':''}" onclick="setAudience('${a}')">${a}</div>`;}).join('');
   showPage('generate');
 }
-function selType(el,t){gQT_set=new Set([t]);document.querySelectorAll('.tcard').forEach(function(card){card.classList.toggle('sel',card===el);});}
+function syncTypeCards(){document.querySelectorAll('.tcard').forEach(function(card){const on=gQT_set.has(card.dataset.t);card.classList.toggle('sel',on);card.setAttribute('aria-pressed',String(on));});}
+function selType(el,t){
+  if(gQT_set.has(t)){
+    if(gQT_set.size<=1){toast('请至少选择一种题型');return;}
+    gQT_set.delete(t);
+  }else{
+    gQT_set.add(t);
+  }
+  syncTypeCards();
+}
 function toggleAudienceMenu(event){event.stopPropagation();document.getElementById('audienceDropdown').classList.toggle('open');}
 function setAudience(a){gAudience=a;document.getElementById('audienceValue').textContent=a;document.getElementById('audienceDropdown').classList.remove('open');document.querySelectorAll('#audienceMenu .dropdown__option').forEach(function(option){option.classList.toggle('selected',option.textContent===a);});}
 function stepCount(d){const n=gQCount+d;if(n<1||n>20)return;gQCount=n;document.getElementById('stpVal').textContent=n;document.getElementById('stpMinus').disabled=n<=1;document.getElementById('stpPlus').disabled=n>=20;}
-async function runGen(){const btn=document.getElementById('genBtn');btn.disabled=true;btn.innerHTML='<span class="spn"></span> AI 正在出题...';try{const types=Array.from(gQT_set).join(',');const d=await api2('/api/questions/generate',{method:'POST',body:JSON.stringify({material_id:Number(gMID),question_type:types,question_count:gQCount,target_audience:gAudience})});startQuiz(d);}catch(e){toast(e.message);}finally{btn.disabled=false;btn.textContent='生成题目';}}
+async function runGen(){if(gQT_set.size===0){toast('请至少选择一种题型');return;}const btn=document.getElementById('genBtn');btn.disabled=true;btn.innerHTML='<span class="spn"></span> AI 正在出题...';try{const types=Array.from(gQT_set).join(',');const d=await api2('/api/questions/generate',{method:'POST',body:JSON.stringify({material_id:Number(gMID),question_type:types,question_count:gQCount,target_audience:gAudience})});startQuiz(d);}catch(e){toast(e.message);}finally{btn.disabled=false;btn.textContent='生成题目';}}
 
 // === 答题 ===
 const TLBL={choice:'单选题',multi_choice:'多选题',true_false:'判断题',fill:'填空题',subjective:'主观题'};
