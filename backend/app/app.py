@@ -1,12 +1,15 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
+import mimetypes
 from pathlib import Path
 
 from app.database import engine, Base
 from app.routers import auth, materials, questions, practice, stats, api_config
 
 Base.metadata.create_all(bind=engine)
+
+mimetypes.add_type("application/vnd.android.package-archive", ".apk")
 
 app = FastAPI(
     title="AI题库 API",
