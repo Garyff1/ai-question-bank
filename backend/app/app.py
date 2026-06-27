@@ -1,6 +1,6 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from pathlib import Path
 
 from app.database import engine, Base
@@ -33,10 +33,22 @@ app.include_router(api_config.router, prefix="/api/config", tags=["API配置"])
 web_path = Path(__file__).resolve().parent.parent.parent / "web"
 if not web_path.exists():
     web_path = Path(__file__).resolve().parent.parent / "web"
-if web_path.exists():
-    app.mount("/web", StaticFiles(directory=str(web_path), html=True), name="web")
 
 
-@app.get("/")
-async def root():
+@app.get("/api/status")
+async def api_status():
     return {"message": "AI题库 API 服务运行中", "version": "1.0.0"}
+
+
+@app.api_route("/{path:path}", methods=["GET", "HEAD"])
+async def serve_static(path: str):
+    """兜底路由：API 之外的路径走静态文件，SPA 友好"""
+    target = web_path / path if path else web_path
+    if target.is_file():
+        return FileResponse(str(target))
+    # 目录 => 找 index.html
+    idx = target / "index.html"
+    if idx.is_file():
+        return FileResponse(str(idx))
+    # 兜底 => 返回首页（SPA 支持）
+    return FileResponse(str(web_path / "index.html"))
