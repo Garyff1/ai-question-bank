@@ -82,16 +82,20 @@ button,input,select{font-family:inherit}button{cursor:pointer}
 .chip{display:inline-flex;align-items:center;gap:8px;background:#fff;border:1px solid var(--line);border-radius:999px;padding:7px 13px 7px 7px;margin-bottom:28px;box-shadow:0 10px 26px -8px rgba(15,23,42,.16)}
 .chip .ci{width:24px;height:24px;border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:8px;font-weight:800;color:#fff}
 .chip .cn{font-size:13px;font-weight:700;max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.fs{margin-bottom:26px}.fsl{font-size:13px;font-weight:800;color:var(--ink);margin-bottom:10px;display:block}
+.generate-file{display:flex;width:100%;border-radius:16px;background:#eef6ff;border:0;box-shadow:none;padding:17px 24px;margin-bottom:28px}
+.generate-file .ci{width:24px;height:24px;background:transparent!important;color:#c4b5fd}
+.generate-file .ci svg{width:19px;height:19px;display:block}
+.generate-file .cn{font-size:17px;color:var(--blue);font-weight:900;max-width:100%}
+.fs{margin-bottom:26px}.fsl{font-size:13px;font-weight:800;color:#52637a;margin-bottom:10px;display:block}
 .trw{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 14px}
-.tcard{position:relative;min-height:104px;border:1.6px solid var(--line);background:#fff;border-radius:16px;padding:22px 14px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;text-align:center;cursor:pointer;transition:border-color .15s,background .15s,transform .15s,box-shadow .15s}
+.tcard{position:relative;min-height:104px;border:1.6px solid var(--line);background:#fff;border-radius:16px;padding:23px 16px 22px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;text-align:center;cursor:pointer;transition:border-color .15s,background .15s,transform .15s,box-shadow .15s}
 .tcard:hover{border-color:var(--bs);box-shadow:0 10px 22px -16px rgba(15,23,42,.28)}
 .tcard:active{transform:scale(.97)}
-.tcard.sel{border-color:var(--blue);background:var(--bl)}
-.tcard .ck{position:absolute;top:10px;right:11px;width:22px;height:22px;border-radius:50%;background:var(--blue);color:#fff;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:900;line-height:1;opacity:0;transform:scale(.72);transition:.15s}
+.tcard.sel{border-color:var(--blue);background:var(--bl);box-shadow:inset 0 0 0 .4px var(--blue)}
+.tcard .ck{position:absolute;top:10px;right:11px;width:24px;height:24px;border-radius:50%;background:var(--blue);color:#fff;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:900;line-height:1;opacity:0;transform:scale(.72);transition:.15s}
 .tcard.sel .ck{opacity:1;transform:scale(1)}
-.tcard .tl{font-size:16px;font-weight:900;color:#0f172a}
-.tcard .td{font-size:12.5px;color:var(--muted)}
+.tcard .tl{font-size:16px;font-weight:900;color:#0f172a;line-height:1.25}
+.tcard .td{font-size:12.5px;color:#52637a;line-height:1.3}
 .f2{display:grid;grid-template-columns:1fr 1fr;gap:18px}
 .fsel{width:100%;padding:13px 14px;background:#fff;border:1.5px solid var(--line);border-radius:var(--rb);font-size:14px;font-weight:700;color:var(--ink);cursor:pointer;outline:none}
 .fsel:focus{border-color:var(--blue)}
@@ -311,6 +315,11 @@ button,input,select{font-family:inherit}button{cursor:pointer}
 @keyframes streakPop{0%{transform:scale(1)}45%{transform:scale(1.45) rotate(-8deg)}100%{transform:scale(1)}}
 @keyframes streakFizzle{0%{transform:scale(1);filter:grayscale(0) opacity(1)}50%{transform:scale(.55) rotate(10deg);filter:grayscale(1) opacity(.4)}100%{transform:scale(1);filter:grayscale(0) opacity(1)}}
 .generate-submit{margin-top:10px}
+#page-generate .pi-n{max-width:654px}
+#page-generate .ph{margin-bottom:20px}
+#page-generate .ps{display:none}
+#page-generate .f2{gap:22px}
+#page-generate .generate-submit{width:154px;height:68px;margin-top:16px;border-radius:16px;font-size:18px}
 .qcard2.thud{animation:cardThud .4s ease}
 @keyframes cardThud{0%,55%{transform:scale(1)}65%{transform:scale(.978)}100%{transform:scale(1)}}
 .splat{position:absolute;border-radius:50%;opacity:0;transform:scale(0)}
@@ -436,13 +445,13 @@ button,input,select{font-family:inherit}button{cursor:pointer}
       <div class="pi-n">
         <button class="pback" onclick="showPage('home')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:15px;height:15px"><path d="M15 5l-7 7 7 7"/></svg>返回我的资料</button>
         <div class="ph"><div><div class="pt">生成题目</div><div class="ps">设置题型、群体与数量，AI 将基于资料内容出题</div></div></div>
-        <div class="chip" id="genChip"></div>
+        <div class="chip generate-file" id="genChip"></div>
         <div class="fs"><span class="fsl">题型（可多选混合出题）</span><div class="trw">
-          <button type="button" class="tcard sel" id="typeChoice" data-t="choice" aria-pressed="true" onclick="selType(this,'choice')"><span class="ck">✓</span><span class="tl">单选题</span><span class="td">四选一</span></button>
-          <button type="button" class="tcard" id="typeMultiChoice" data-t="multi_choice" aria-pressed="false" onclick="selType(this,'multi_choice')"><span class="ck">✓</span><span class="tl">多选题</span><span class="td">多选多</span></button>
-          <button type="button" class="tcard" id="typeTrueFalse" data-t="true_false" aria-pressed="false" onclick="selType(this,'true_false')"><span class="ck">✓</span><span class="tl">判断题</span><span class="td">对/错</span></button>
-          <button type="button" class="tcard" id="typeFill" data-t="fill" aria-pressed="false" onclick="selType(this,'fill')"><span class="ck">✓</span><span class="tl">填空题</span><span class="td">手动输入</span></button>
-          <button type="button" class="tcard" id="typeSubjective" data-t="subjective" aria-pressed="false" onclick="selType(this,'subjective')"><span class="ck">✓</span><span class="tl">主观题</span><span class="td">简答/论述</span></button>
+          <button type="button" class="tcard sel" id="typeChoice" data-t="choice" role="checkbox" aria-checked="true" aria-pressed="true" onclick="selType(this,'choice')"><span class="ck">✓</span><span class="tl">单选题</span><span class="td">四选一</span></button>
+          <button type="button" class="tcard" id="typeMultiChoice" data-t="multi_choice" role="checkbox" aria-checked="false" aria-pressed="false" onclick="selType(this,'multi_choice')"><span class="ck">✓</span><span class="tl">多选题</span><span class="td">多选多</span></button>
+          <button type="button" class="tcard" id="typeTrueFalse" data-t="true_false" role="checkbox" aria-checked="false" aria-pressed="false" onclick="selType(this,'true_false')"><span class="ck">✓</span><span class="tl">判断题</span><span class="td">对/错</span></button>
+          <button type="button" class="tcard" id="typeFill" data-t="fill" role="checkbox" aria-checked="false" aria-pressed="false" onclick="selType(this,'fill')"><span class="ck">✓</span><span class="tl">填空题</span><span class="td">手动输入</span></button>
+          <button type="button" class="tcard" id="typeSubjective" data-t="subjective" role="checkbox" aria-checked="false" aria-pressed="false" onclick="selType(this,'subjective')"><span class="ck">✓</span><span class="tl">主观题</span><span class="td">简答/论述</span></button>
         </div></div>
         <div class="f2">
           <div class="fs"><span class="fsl">目标群体</span><div class="dropdown" id="audienceDropdown"><button class="dropdown__trigger" onclick="toggleAudienceMenu(event)"><span id="audienceValue">通用</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button><div class="dropdown__menu" id="audienceMenu"></div></div></div>
@@ -869,7 +878,7 @@ function goGen(id){
   const ext=((m&&m.filename)||'').toLowerCase().split('.').pop();
   const type=ext==='pdf'?'pdf':(ext==='docx'||ext==='doc')?'word':'txt';
   const label=type==='pdf'?'PDF':type==='word'?'DOC':'TXT';
-  document.getElementById('genChip').innerHTML=`<div class="ci mci ${type}">${label}</div><div class="cn">${escapeHtml(m?m.filename:'')}</div>`;
+  document.getElementById('genChip').innerHTML=`<div class="ci mci ${type}" aria-label="${label}"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6 2h7l5 5v13a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2Zm7 1.8V8h4.2L13 3.8Z"/></svg></div><div class="cn">${escapeHtml(m?m.filename:'')}</div>`;
   syncTypeCards();
   document.getElementById('stpVal').textContent='5';
   document.getElementById('stpMinus').disabled=false;
@@ -878,7 +887,7 @@ function goGen(id){
   document.getElementById('audienceMenu').innerHTML=AUDIENCE_OPTIONS.map(function(a){return `<div class="dropdown__option ${a===gAudience?'selected':''}" onclick="setAudience('${a}')">${a}</div>`;}).join('');
   showPage('generate');
 }
-function syncTypeCards(){document.querySelectorAll('.tcard').forEach(function(card){const on=gQT_set.has(card.dataset.t);card.classList.toggle('sel',on);card.setAttribute('aria-pressed',String(on));});}
+function syncTypeCards(){document.querySelectorAll('.tcard').forEach(function(card){const on=gQT_set.has(card.dataset.t);card.classList.toggle('sel',on);card.setAttribute('aria-pressed',String(on));card.setAttribute('aria-checked',String(on));});}
 function selType(el,t){
   if(gQT_set.has(t)){
     if(gQT_set.size<=1){toast('请至少选择一种题型');return;}
