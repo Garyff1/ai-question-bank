@@ -29,7 +29,6 @@ ai-question-bank/
 │  ├─ v1-classic/
 │  ├─ v2-desktop/
 │  ├─ assets/
-│  └─ downloads/
 ├─ src-tauri/               # Tauri 桌面壳
 ├─ scripts/
 │  └─ build-backend.ps1     # 构建 backend.exe 并复制为 Tauri sidecar
@@ -153,11 +152,30 @@ npm run desktop:bundle:msi
 静态官网只负责：
 
 - 展示产品介绍。
-- 提供“桌面版即将开放下载”占位入口。
+- 提供 Android APK 下载入口。
+- 提供“桌面版内测中”占位入口。
 - 提供“查看 GitHub”入口。
 - 提供“观看演示”入口。
 
-注意：官网里的 `v1-classic` 和 `v2-desktop` 功能页仍然需要后端 API。正式用户建议下载桌面版使用，因为桌面版会自动启动内置后端。
+注意：官网里的 `v1-classic` 和 `v2-desktop` 功能页仍然需要后端 API。当前对外体验优先走 Android APK；Windows 桌面版继续内测优化。
+
+## Android 早期测试版
+
+当前公开下载版本：
+
+- 版本：Android v1.0.2
+- 状态：早期测试版
+- 下载链接：[ai-question-bank-android-v1.0.2.apk](https://github.com/Garyff1/ai-question-bank/releases/download/android-v1.0.2/ai-question-bank-android-v1.0.2.apk)
+- Release 页面：[AI题库 Android v1.0.2](https://github.com/Garyff1/ai-question-bank/releases/tag/android-v1.0.2)
+- SHA-256：`9C459AC45A5626DDE206A84D4E56DB107F9ECDCE4DCCC4CD1C9E6C5624DB501C`
+
+安装提示：
+
+1. 在安卓手机或平板上下载 APK。
+2. 下载完成后打开安装包。
+3. 如果提示“禁止安装未知来源应用”，按系统提示允许当前浏览器或文件管理器安装。
+4. 安装后首次使用需要配置自己的大模型 API Key。
+5. 建议保留原安装包，后续版本可能需要手动下载新版 APK 覆盖安装。
 
 ## API_BASE 规则
 
@@ -195,4 +213,4 @@ npm run desktop:bundle:msi
 
 静态官网发布时，将 `web/` 目录作为站点根目录即可。Cloudflare Pages 的推荐配置见 [DEPLOYMENT.md](DEPLOYMENT.md)。
 
-桌面安装包不要放入 `web/`。请先上传到 GitHub Releases、Cloudflare R2、OSS 等下载源，再把官网按钮替换成真实下载链接。
+Android APK 和桌面安装包都不要放入 `web/`。Android 当前通过 GitHub Releases 分发；桌面版暂不公开下载，后续稳定后再上传到 GitHub Releases、Cloudflare R2、OSS 等下载源。

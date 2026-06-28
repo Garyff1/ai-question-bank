@@ -65,15 +65,25 @@ Cloudflare Pages 单个静态资源限制为 25 MiB。桌面版 zip 和 Android 
 
 - `web/downloads/*.zip` 不进入 Pages。
 - `web/downloads/*.apk` 不进入 Pages。
-- 首页按钮临时显示“即将开放下载”。
+- Android APK 通过 GitHub Releases 分发。
+- 桌面版仍显示“内测中”，暂不公开下载。
 
-后续推荐任选一种方式发布安装包：
+当前 Android 下载：
+
+```text
+版本：Android v1.0.2
+Release：https://github.com/Garyff1/ai-question-bank/releases/tag/android-v1.0.2
+APK：https://github.com/Garyff1/ai-question-bank/releases/download/android-v1.0.2/ai-question-bank-android-v1.0.2.apk
+SHA-256：9C459AC45A5626DDE206A84D4E56DB107F9ECDCE4DCCC4CD1C9E6C5624DB501C
+```
+
+后续桌面版或新版安装包推荐任选一种方式发布：
 
 1. GitHub Releases：适合开源项目，维护简单。
 2. Cloudflare R2：适合和 Cloudflare Pages 放在同一体系。
 3. 阿里云 OSS / 腾讯云 COS：适合国内访问优化。
 
-拿到安装包外链后，再把 `web/index.html` 中的“即将开放下载”按钮改成真实下载链接。
+拿到安装包外链后，再把 `web/index.html` 中对应按钮改成真实下载链接。
 
 ## 部署前检查
 

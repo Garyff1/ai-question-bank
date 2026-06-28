@@ -103,7 +103,13 @@ a{color:inherit}
 .vtags{display:flex;gap:6px;margin-bottom:19px;flex-wrap:wrap}.tg{font-size:10.5px;font-weight:900;padding:3px 9px;border-radius:999px}
 .tg-b{background:var(--bl);color:var(--blue)}.tg-g{background:var(--gl);color:var(--green)}.tg-gray{background:#F1F5F9;color:var(--faint)}
 .vbtn{width:100%;margin-top:auto}.tag-mono{background:var(--bl);color:var(--blue);padding:1px 6px;border-radius:5px;font-size:12px}
+.apkmeta{background:var(--bl);border:1px solid var(--bs);border-radius:12px;padding:10px 12px;margin:0 0 16px;font-size:11.5px;color:var(--muted);line-height:1.65}
+.apkmeta b{display:block;color:var(--blue);font-size:12.5px}.apkmeta code{display:block;margin-top:3px;color:#475569;word-break:break-all}
 .vfoot{text-align:center;font-size:13px;color:var(--muted);margin-top:38px}.vfoot a{color:var(--blue);font-weight:800;text-decoration:none;margin-left:4px}.vfoot a:hover{text-decoration:underline}
+.install-tips{margin:34px auto 0;background:#fff;border:1px solid var(--line);border-radius:18px;padding:24px;box-shadow:0 10px 24px -18px rgba(15,23,42,.22)}
+.install-tips h3{font-size:18px;font-weight:900;margin-bottom:12px}.install-tips ul{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;list-style:none}
+.install-tips li{background:#F8FAFC;border:1px solid var(--line);border-radius:13px;padding:14px 15px;font-size:12.5px;color:var(--muted);line-height:1.65}
+.install-tips li b{display:block;color:var(--ink);font-size:13px;margin-bottom:4px}
 
 /* 智能出题 */
 .steps{display:grid;grid-template-columns:repeat(4,1fr);margin-bottom:56px}
@@ -142,7 +148,7 @@ a{color:inherit}
 
 @media(max-width:980px){
   .hero{padding:76px 0 84px}.hero-grid{grid-template-columns:1fr;gap:34px}.video-card{max-width:520px;margin:0 auto}.hero-copy{margin-left:0;justify-self:center}.hero h1{font-size:38px}
-  .vgrid,.rgrid,.provgrid{grid-template-columns:1fr}.steps{grid-template-columns:repeat(2,1fr);row-gap:30px}.step:nth-child(2)::after{display:none}.sechead h2{font-size:28px}.wrap{padding:0 22px}
+  .vgrid,.rgrid,.provgrid{grid-template-columns:1fr}.install-tips ul{grid-template-columns:1fr}.steps{grid-template-columns:repeat(2,1fr);row-gap:30px}.step:nth-child(2)::after{display:none}.sechead h2{font-size:28px}.wrap{padding:0 22px}
 }
 @media(max-width:680px){
   .links{display:none}.cart{padding:8px 12px}.cart span{display:none}.hero h1{font-size:32px}.hero p{font-size:14px}.herobtns,.apicta{flex-direction:column;width:100%}.herobtns .btn,.apicta .btn{width:100%}.sec{padding:72px 0}.steps{grid-template-columns:1fr}.step::after{display:none!important}
@@ -191,7 +197,7 @@ a{color:inherit}
       <h1 class="reveal" style="transition-delay:.08s">用 AI 出题，<br>把资料变成练习。</h1>
       <p class="reveal" style="transition-delay:.16s">上传课件、笔记或资料，AI 自动生成选择题、填空题、简答题和混合练习，帮你高效复习、巩固错题。</p>
       <div class="herobtns reveal" style="transition-delay:.24s">
-        <button class="btn btn-p" type="button" disabled title="安装包将通过 GitHub Releases 或对象存储提供下载">桌面版即将开放下载</button>
+        <a class="btn btn-p" href="https://github.com/Garyff1/ai-question-bank/releases/download/android-v1.0.2/ai-question-bank-android-v1.0.2.apk">下载安卓版 APK</a>
         <a class="btn btn-o-dark" href="https://github.com/Garyff1/ai-question-bank" target="_blank" rel="noopener">查看 GitHub</a>
         <a class="btn btn-gh-dark" href="#demo">观看演示</a>
       </div>
@@ -218,21 +224,22 @@ a{color:inherit}
           <li>直接配置 API Key，打开即可出题</li>
           <li>无账号登录，资料和记录保存在本机</li>
         </ul>
+        <div class="apkmeta"><b>Android v1.0.2 · 早期测试版</b>建议保留原安装包，后续版本可能需要手动更新。<code>SHA-256：9C459AC45A5626DDE206A84D4E56DB107F9ECDCE4DCCC4CD1C9E6C5624DB501C</code></div>
         <div class="vtags"><span class="tg tg-b">APK 安装</span><span class="tg tg-g">一体化</span></div>
-        <button class="btn btn-o vbtn" type="button" disabled title="APK 将通过 GitHub Releases 或对象存储提供下载">安卓版即将开放下载</button>
+        <a class="btn btn-o vbtn" href="https://github.com/Garyff1/ai-question-bank/releases/download/android-v1.0.2/ai-question-bank-android-v1.0.2.apk">下载安卓版 APK →</a>
       </article>
       <article class="vcard reveal" style="transition-delay:.08s">
-        <span class="vtag vtag-new">NEW</span>
+        <span class="vtag vtag-new">内测中</span>
         <div class="vicon">🖥️</div>
         <h3>v2 · 桌面版</h3>
-        <p class="vdesc">PC 大屏优化，深色侧边栏导航</p>
+        <p class="vdesc">Windows 桌面版正在继续优化本地后端启动、安装体验和稳定性。</p>
         <ul class="vfeat">
           <li>网格资料卡 · 多栏布局</li>
           <li>题型可多选，支持混合出题</li>
           <li><span class="tag-mono">Enter</span> 下一题 · <span class="tag-mono">Esc</span> 退出</li>
         </ul>
         <div class="vtags"><span class="tg tg-g">桌面优化</span><span class="tg tg-b">快捷键</span></div>
-        <a class="btn btn-o vbtn" href="v2-desktop/index.html">进入桌面版 →</a>
+        <button class="btn btn-o vbtn" type="button" disabled>桌面版内测中</button>
       </article>
       <article class="vcard vcard-soon reveal" style="transition-delay:.16s">
         <span class="vtag vtag-soon">开发中</span>
@@ -247,6 +254,14 @@ a{color:inherit}
         <div class="vtags"><span class="tg tg-gray">即将推出</span></div>
         <button class="btn btn-gh vbtn" disabled>敬请期待</button>
       </article>
+    </div>
+    <div class="install-tips reveal">
+      <h3>安卓安装提示</h3>
+      <ul>
+        <li><b>1. 下载 APK</b>用安卓手机访问本站，点击“下载安卓版 APK”，下载完成后直接打开安装包。</li>
+        <li><b>2. 允许安装</b>如果提示“禁止安装未知来源应用”，按系统提示允许当前浏览器或文件管理器安装。</li>
+        <li><b>3. 配置 API Key</b>安装后首次使用需要填入你自己的大模型 API Key，才能生成题目。</li>
+      </ul>
     </div>
     <p class="vfoot">想贡献新前端？在 <span class="tag-mono">web/</span> 目录新建文件夹，写好 <span class="tag-mono">index.html</span> 接入同一个后端即可。<a href="https://github.com/Garyff1/ai-question-bank" target="_blank" rel="noopener">查看 GitHub 仓库 ↗</a></p>
   </div>
@@ -349,7 +364,8 @@ a{color:inherit}
       <div class="step"><div class="sn">4</div><h4 style="margin-top:8px">测试连接</h4></div>
     </div>
     <div class="apicta">
-      <button class="btn btn-p" type="button" disabled title="安装包将通过 GitHub Releases 或对象存储提供下载">桌面版即将开放下载</button>
+      <a class="btn btn-p" href="https://github.com/Garyff1/ai-question-bank/releases/download/android-v1.0.2/ai-question-bank-android-v1.0.2.apk">下载安卓版 APK</a>
+      <button class="btn btn-o-dark" type="button" disabled>桌面版内测中</button>
       <a class="btn btn-o-dark" href="#demo">观看演示</a>
       <a class="btn btn-gh-dark" href="https://github.com/Garyff1/ai-question-bank" target="_blank" rel="noopener">查看 GitHub 仓库 ↗</a>
     </div>
