@@ -10,6 +10,9 @@ backend/build/
 backend/dist/
 src-tauri/target/
 src-tauri/binaries/*.exe
+web/downloads/*.zip
+web/downloads/*.apk
+artifacts/
 node_modules/
 
 # IDE

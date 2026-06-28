@@ -24,6 +24,7 @@ a{color:inherit}
 .btn{font-size:14.5px;font-weight:800;border:none;border-radius:12px;padding:13px 22px;display:inline-flex;align-items:center;justify-content:center;gap:7px;cursor:pointer;transition:.15s;text-decoration:none;white-space:nowrap}
 .btn:active{transform:scale(.97)}
 .btn:disabled{opacity:.45;cursor:not-allowed}
+.btn:disabled:hover{transform:none}
 .btn-p{background:var(--blue);color:#fff;box-shadow:0 12px 24px -10px rgba(37,99,235,.65)}
 .btn-p:hover{background:#1d4ed8;transform:translateY(-1px)}
 .btn-o{background:#fff;color:var(--blue);border:1.5px solid var(--bs)}
@@ -190,7 +191,7 @@ a{color:inherit}
       <h1 class="reveal" style="transition-delay:.08s">用 AI 出题，<br>把资料变成练习。</h1>
       <p class="reveal" style="transition-delay:.16s">上传课件、笔记或资料，AI 自动生成选择题、填空题、简答题和混合练习，帮你高效复习、巩固错题。</p>
       <div class="herobtns reveal" style="transition-delay:.24s">
-        <a class="btn btn-p" href="downloads/ai-question-bank-desktop-windows.zip" download>下载桌面版</a>
+        <button class="btn btn-p" type="button" disabled title="安装包将通过 GitHub Releases 或对象存储提供下载">桌面版即将开放下载</button>
         <a class="btn btn-o-dark" href="https://github.com/Garyff1/ai-question-bank" target="_blank" rel="noopener">查看 GitHub</a>
         <a class="btn btn-gh-dark" href="#demo">观看演示</a>
       </div>
@@ -218,7 +219,7 @@ a{color:inherit}
           <li>无账号登录，资料和记录保存在本机</li>
         </ul>
         <div class="vtags"><span class="tg tg-b">APK 安装</span><span class="tg tg-g">一体化</span></div>
-        <a class="btn btn-o vbtn" href="downloads/ai-question-bank-android-v1.0.2.apk" download>下载安卓版 →</a>
+        <button class="btn btn-o vbtn" type="button" disabled title="APK 将通过 GitHub Releases 或对象存储提供下载">安卓版即将开放下载</button>
       </article>
       <article class="vcard reveal" style="transition-delay:.08s">
         <span class="vtag vtag-new">NEW</span>
@@ -348,7 +349,7 @@ a{color:inherit}
       <div class="step"><div class="sn">4</div><h4 style="margin-top:8px">测试连接</h4></div>
     </div>
     <div class="apicta">
-      <a class="btn btn-p" href="downloads/ai-question-bank-desktop-windows.zip" download>下载桌面版</a>
+      <button class="btn btn-p" type="button" disabled title="安装包将通过 GitHub Releases 或对象存储提供下载">桌面版即将开放下载</button>
       <a class="btn btn-o-dark" href="#demo">观看演示</a>
       <a class="btn btn-gh-dark" href="https://github.com/Garyff1/ai-question-bank" target="_blank" rel="noopener">查看 GitHub 仓库 ↗</a>
     </div>

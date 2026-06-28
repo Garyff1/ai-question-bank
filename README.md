@@ -123,11 +123,13 @@ cd H:\ai-question-bank
 npm run desktop:build
 ```
 
-当前脚本会使用 `x86_64-pc-windows-gnu` 目标构建 Tauri，这样在没有管理员权限安装 Visual Studio C++ Build Tools 的机器上也可以完成构建。构建成功后会生成：
+当前脚本会使用 `x86_64-pc-windows-gnu` 目标构建 Tauri，这样在没有管理员权限安装 Visual Studio C++ Build Tools 的机器上也可以完成构建。构建成功后会生成本地发布包：
 
 ```text
-web/downloads/ai-question-bank-desktop-windows.zip
+artifacts/ai-question-bank-desktop-windows.zip
 ```
+
+注意：`artifacts/` 不会随 Cloudflare Pages 部署。桌面安装包超过 Pages 单文件限制，正式下载请上传到 GitHub Releases、Cloudflare R2 或其他对象存储，再把官网按钮改成对应外链。
 
 如果你已经安装了 Visual Studio C++ Build Tools，也可以自行改用 MSVC target。MSI 安装包属于可选项：
 
@@ -151,7 +153,7 @@ npm run desktop:bundle:msi
 静态官网只负责：
 
 - 展示产品介绍。
-- 提供“下载桌面版”入口。
+- 提供“桌面版即将开放下载”占位入口。
 - 提供“查看 GitHub”入口。
 - 提供“观看演示”入口。
 
@@ -191,10 +193,6 @@ npm run desktop:bundle:msi
 
 [https://github.com/Garyff1/ai-question-bank](https://github.com/Garyff1/ai-question-bank)
 
-静态官网发布时，将 `web/` 目录作为站点根目录即可。桌面安装包构建完成后，可放入：
+静态官网发布时，将 `web/` 目录作为站点根目录即可。Cloudflare Pages 的推荐配置见 [DEPLOYMENT.md](DEPLOYMENT.md)。
 
-```text
-web/downloads/ai-question-bank-desktop-windows.zip
-```
-
-这样官网的“下载桌面版”按钮就能直接下载最新桌面版本。
+桌面安装包不要放入 `web/`。请先上传到 GitHub Releases、Cloudflare R2、OSS 等下载源，再把官网按钮替换成真实下载链接。

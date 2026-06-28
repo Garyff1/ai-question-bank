@@ -2,7 +2,7 @@ $ErrorActionPreference = "Stop"
 
 $RepoRoot = Split-Path -Parent $PSScriptRoot
 $ReleaseDir = Join-Path $RepoRoot "src-tauri\target\x86_64-pc-windows-gnu\release"
-$OutputDir = Join-Path $RepoRoot "web\downloads"
+$OutputDir = Join-Path $RepoRoot "artifacts"
 $PackageRoot = Join-Path $RepoRoot "src-tauri\target\desktop-package"
 $AppDir = Join-Path $PackageRoot "AIQuestionBank"
 $ZipPath = Join-Path $OutputDir "ai-question-bank-desktop-windows.zip"
