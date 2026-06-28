@@ -1,307 +1,200 @@
-<p align="center">
-  <img src="https://img.shields.io/badge/状态-活跃-brightgreen" alt="状态">
-  <img src="https://img.shields.io/badge/后端-FastAPI-2563EB" alt="后端">
-  <img src="https://img.shields.io/badge/前端-多版本-10B981" alt="前端">
-  <img src="https://img.shields.io/badge/许可证-MIT-F59E0B" alt="许可证">
-</p>
+# AI题库
 
-<h1 align="center">🧠 AI题库</h1>
-<p align="center"><b>"躯壳与电池"</b> —— 软件是躯壳，接入你的 API Key 才是电池</p>
-<p align="center">上传资料 → AI 自动出题 → 答题练习 → 错题巩固</p>
+AI题库把课件、笔记、PDF、Word 或 TXT 资料转换成可练习的题目，支持选择题、判断题、填空题、主观题和混合出题。
 
-<p align="center">
-  <img src="screenshot.png" alt="答题界面截图" width="280">
-</p>
+当前架构已经拆成两层：
 
----
+- `web/`：纯静态官网与前端页面，可直接部署到静态托管平台。
+- `backend/`：FastAPI API 服务，开发模式可单独运行，桌面版会被 Tauri 自动作为 sidecar 启动。
 
-## 📦 快速上手（5 分钟跑起来）
+## 架构目标
 
-本项目分两部分：**后端**（Python，处理数据和 AI 调用）和**前端**（网页，你看到的界面）。先启动后端，再用浏览器打开前端。
+1. 官网 `web/index.html` 不在首屏请求 `/api`，后端关闭时首页仍可访问。
+2. 桌面版内置 `backend.exe`，启动桌面程序时自动启动 FastAPI 后端。
+3. 桌面版动态分配本地端口，并通过 `API_BASE` 注入前端。
+4. SQLite 数据库在桌面模式下写入用户数据目录，不写入安装目录。
+5. 关闭桌面程序时自动关闭后端进程。
 
----
+## 目录结构
 
-### 🔧 步骤一：启动后端
+```text
+ai-question-bank/
+├─ backend/                 # FastAPI 后端
+│  ├─ app/
+│  ├─ main.py               # 环境变量驱动的启动入口
+│  ├─ backend.spec          # PyInstaller 配置
+│  └─ requirements.txt
+├─ web/                     # 静态官网 + v1/v2 功能页
+│  ├─ index.html            # 静态官网首页
+│  ├─ v1-classic/
+│  ├─ v2-desktop/
+│  ├─ assets/
+│  └─ downloads/
+├─ src-tauri/               # Tauri 桌面壳
+├─ scripts/
+│  └─ build-backend.ps1     # 构建 backend.exe 并复制为 Tauri sidecar
+├─ android-app/             # Android App 项目
+└─ package.json             # 桌面构建脚本
+```
 
-> 前提：电脑已安装 Python 3.11 或更高版本。如果没装过，去 [python.org](https://www.python.org/downloads/) 下载安装。
+## 运行方式一：开发模式
 
-打开一个终端（PowerShell 或 CMD），依次执行：
+适合改 API 或调试前端。
 
 ```powershell
-# 1. 下载项目
-git clone https://github.com/Garyff1/ai-question-bank.git
-cd ai-question-bank
-
-# 2. 进入后端目录，安装依赖
-cd backend
+cd H:\ai-question-bank\backend
 pip install -r requirements.txt
-
-# 3. 启动后端
 python main.py
 ```
 
-> ⚠️ **如果提示 `ModuleNotFoundError`**（如 `No module named 'uvicorn'`），说明终端里的 `python` 指向的不是你安装依赖的那个 Python。在 PowerShell 里运行 `where.exe python` 看看有几个 Python，然后用**完整路径**启动，例如：
-> ```powershell
-> C:\Users\你的用户名\AppData\Local\Programs\Python\Python311\python.exe main.py
-> ```
+默认启动：
 
-看到以下输出表示启动成功：
+- 后端地址：`http://localhost:8000`
+- 健康检查：`http://localhost:8000/health`
+- API 文档：`http://localhost:8000/docs`
+- 官网预览：`http://localhost:8000/web/`
+- 桌面功能页：`http://localhost:8000/web/v2-desktop/index.html`
 
-```
-INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
-INFO:     Application startup complete.
-```
+可用环境变量：
 
----
-
-### 💻 步骤二：电脑端打开前端
-
-在后端启动状态下，浏览器打开：
-
-```
-http://localhost:8000/web/
+```powershell
+$env:HOST = "127.0.0.1"
+$env:PORT = "8000"
+$env:DATABASE_URL = "sqlite:///./ai_question_bank.db"
+$env:AIQB_DESKTOP_MODE = "0"
+python main.py
 ```
 
-> ⚠️ **不要**直接双击 `web/index.html` 文件打开——那样会以 `file://` 协议打开，跨域请求后端会被浏览器拦截。一定要通过 `http://localhost:8000/web/` 访问。
+桌面模式下会自动关闭 reload：
 
-你会看到一个**前端选择器**页面。点击「经典版」卡片进入完整功能。
-
----
-
-### 📱 步骤三：手机上使用（可选）
-
-让手机和电脑连同一个 WiFi，手机浏览器打开：
-
-```
-http://你的电脑IP:8000/web/
+```powershell
+$env:AIQB_DESKTOP_MODE = "1"
+$env:PORT = "18765"
+python main.py
 ```
 
-**如何查看电脑 IP？**
-1. Windows 按 `Win + R`，输入 `cmd`，回车
-2. 在命令行输入 `ipconfig`，回车
-3. 找到 `无线局域网适配器 WLAN` 下的 `IPv4 地址`（一般是 `192.168.x.xxx`）
+## 运行方式二：桌面版
 
-例如电脑 IP 是 `192.168.1.105`，手机浏览器打开：
+桌面版使用 Tauri。用户打开程序后，不需要手动运行 `python main.py`，也不需要手动启动 cloudflared。
 
-```
-http://192.168.1.105:8000/web/
-```
+### 首次准备
 
----
+Windows 本地构建需要：
 
-### 🚪 首次使用流程
+- Python 3.11+
+- Node.js 20+
+- Rust / Cargo
+- Microsoft Edge WebView2 Runtime
 
-```
-打开 http://localhost:8000/web/
-    │
-    ├── 点击「经典版」进入
-    │
-    ├── 登录页 → 点击「注册」→ 填任意账号密码 → 注册成功
-    │       或者用现有账号 → 点击「登录」
-    │
-    ├── 进入主页 → 看到空空的资料列表
-    │
-    ├── 🔋 先装电池！点右上角电池按钮 → 配置 API Key（见下方说明）
-    │
-    ├── 配置好 Key 后 → 点右上角 ＋ 按钮上传 PDF/DOCX/TXT
-    │
-    ├── 上传成功 → 资料卡片出现 → 点「出题」按钮
-    │
-    └── 选题型、选年龄段、选数量 → 点「生成题目」→ 开始答题！
+安装 Python 依赖：
+
+```powershell
+cd H:\ai-question-bank\backend
+pip install -r requirements.txt
 ```
 
----
+回到项目根目录安装 Tauri CLI：
 
-## 🔋 API Key 配置详解（装电池）
-
-AI 出题功能依赖大模型接口，需要你自己去服务商注册并获取 API Key。本项目就是一个"躯壳"，不内置任何 Key。
-
-### 在软件内配置
-
-登录后主页右上角有一个 **🔋 电池按钮**，点击进入配置页：
-
-1. **选择服务商** — 点击对应卡片（如 DeepSeek）
-2. **填写 API Key** — 从服务商官网获取的密钥，格式如 `sk-xxxxxxxxxx`
-3. **API Base URL** — 选择服务商后自动填入，一般不需修改
-4. **模型名称** — 自动填入，也可以手动改
-5. **点击"测试连接"** — 验证 Key 是否可用
-6. **点击"保存"** — 配置完成
-
-> 🔒 每个账号的 API Key 独立存储，退出登录时自动清除。
-
-### 推荐服务商（2025 年最新）
-
-| 服务商 | 特点 | 注册 + 获取 Key | API Base URL | 模型名 |
-|--------|------|:--:|-------------|--------|
-| **DeepSeek** 🏆 | 国内可用，价格最低 | [platform.deepseek.com](https://platform.deepseek.com) 注册 → API Keys → 创建 | `https://api.deepseek.com/v1` | `deepseek-chat` |
-| **硅基流动** 🆓 | 新用户有免费额度 | [siliconflow.cn](https://siliconflow.cn) 注册 → API 密钥 | `https://api.siliconflow.cn/v1` | `Qwen/Qwen3-8B` |
-| **阿里百炼** | 阿里云生态 | [bailian.console.aliyun.com](https://bailian.console.aliyun.com) → 模型广场 → API Key | `https://dashscope.aliyuncs.com/compatible-mode/v1` | `qwen-plus` |
-| **智谱开放平台** | GLM 系列模型 | [open.bigmodel.cn](https://open.bigmodel.cn) → API Keys | `https://open.bigmodel.cn/api/paas/v4` | `glm-4-flash` |
-
-> 所有服务商均兼容 OpenAI 接口格式，本项目直接支持。只需 Key + URL + 模型名即可使用，无需额外适配。
-
-### 排查 API 配置问题
-
-| 现象 | 可能原因 | 解决 |
-|------|----------|------|
-| 测试连接失败 "401" | Key 填错或过期 | 去服务商后台重新生成 Key |
-| 测试连接失败 "404" | URL 填错 | 核对上表中的 API Base URL，末尾不要多斜杠 |
-| 测试连接成功但出题失败 | 模型名不对 | 核对模型名，不同服务商模型名不同 |
-| 一直显示 "请先配置 API Key" | 未保存 | 测试连接成功后别忘了点"💾 保存" |
-
----
-
-## ✨ 功能总览
-
-| 功能 | 说明 |
-|------|------|
-| 🔋 **API 配置** | 内置 6 个服务商模板，填入 Key 即用，退出自动清除 |
-| 📤 **资料上传** | 支持 PDF / DOCX / TXT（≤ 50MB），自动解析文本 |
-| 🤖 **AI 出题** | 5 种题型：单选 · 多选 · 判断 · 填空 · 主观 |
-| 🎯 **混合出题** | 一次选多个题型（如判断+填空），混合出题 |
-| 🔄 **自动去重** | 每次出题自动避开已出过的题目 |
-| ✍️ **答题练习** | 逐题作答 → ✅ / ❌ 印章反馈 → 解析展示 |
-| 🔥 **连胜计数** | 连续答对火苗递增，答错归零 |
-| 📋 **练习历史** | 自动记录，按"教材名 #序号"命名 |
-| 📕 **错题本** | 按教材分组整理错题，点击「重练」专项训练 |
-| 📊 **学习统计** | 累计做题、正确率环形图、练习次数 |
-| 👶 **年龄段适配** | 可选小学到大学，AI 自动调整用词难度 |
-
----
-
-## 🎨 多前端版本
-
-所有前端**共用同一个后端 API**，启动后端后在浏览器挑版本即可。
-
-### 当前可用
-
-| 版本 | 目录 | 特点 |
-|:----|------|------|
-| 📱 **v1 · 经典版** | `web/v1-classic/` | 移动优先、全功能、印章动画、连胜、纸屑庆祝 |
-
-### 开发中
-
-| 版本 | 特点 | 状态 |
-|:----|------|:----:|
-| 🖥️ v2 · 桌面版 | PC 大屏优化、多栏布局、键盘快捷键 | 🚧 |
-| 🎨 v3 · 极简版 | 轻量级、仅核心功能 | 🚧 |
-
-> 💡 想贡献新前端？在 `web/` 下新建文件夹，写你的 `index.html`，然后编辑 `web/index.html` 加卡片入口即可。
-
----
-
-## 📁 项目结构
-
-```
-ai-question-bank/
-├── backend/                 # FastAPI 后端
-│   ├── main.py              # 启动入口
-│   ├── requirements.txt     # Python 依赖
-│   ├── .env                 # 环境变量（后端全局配置）
-│   ├── test_data.txt        # 测试用文本资料
-│   └── app/
-│       ├── app.py           # FastAPI 应用配置 + 静态文件托管
-│       ├── config.py        # 参数管理（文件大小限制等）
-│       ├── database.py      # SQLite 数据库连接
-│       ├── models.py        # 数据库表模型
-│       ├── routers/         # API 路由
-│       │   ├── api_config.py   # POST /api/config/*   API Key 配置
-│       │   ├── auth.py         # POST /api/auth/*     注册/登录
-│       │   ├── materials.py    # POST /api/materials/*  资料上传
-│       │   ├── questions.py    # POST /api/questions/*   AI 出题
-│       │   ├── practice.py     # POST /api/practice/*   答题/错题
-│       │   └── stats.py        # GET  /api/stats       学习统计
-│       ├── services/        # 业务逻辑
-│       │   ├── ai_service.py    # 调用大模型生成题目
-│       │   └── file_service.py  # PDF/DOCX/TXT 文件解析
-│       └── utils/
-│           └── auth.py         # JWT Token + 密码加密
-│
-├── web/                     # 多前端集合
-│   ├── index.html           # 前端选择器 ← 程序入口
-│   ├── v1-classic/          # 经典版（全功能）
-│   │   └── index.html
-│   ├── 项目概况-给网页设计师.md
-│   └── UI设计优化方案-趣味化升级.md
-│
-├── screenshot.png           # README 截图
-└── README.md
+```powershell
+cd H:\ai-question-bank
+npm install
 ```
 
----
+### 构建 backend.exe
 
-## 🧪 后端 API 接口文档
+```powershell
+cd H:\ai-question-bank
+npm run backend:build
+```
 
-启动后端后，访问 **http://localhost:8000/docs** 查看 Swagger 交互文档（可直接在网页上调用测试）。
+这个脚本会：
 
-### 认证
+1. 使用 PyInstaller 构建 `backend\dist\backend.exe`。
+2. 复制成 Tauri sidecar 需要的文件名。默认 Windows GNU 构建会生成：
 
-| 方法 | 路径 | 请求参数 | 说明 |
-|------|------|----------|------|
-| POST | `/api/auth/register` | `{"email":"...","password":"..."}` | 注册账号，返回 JWT Token |
-| POST | `/api/auth/login` | `{"email":"...","password":"..."}` | 登录，返回 JWT Token |
-| GET | `/api/auth/me` | Header: `Authorization: Bearer <token>` | 获取当前用户信息 |
+```text
+src-tauri\binaries\backend-x86_64-pc-windows-gnu.exe
+```
 
-### 资料管理
+### 构建桌面版 zip 包
 
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| POST | `/api/materials/upload` | 上传文件（multipart/form-data，字段名 `file`） |
-| GET | `/api/materials` | 资料列表 |
-| DELETE | `/api/materials/{id}` | 删除资料及关联题库 |
+```powershell
+cd H:\ai-question-bank
+npm run desktop:build
+```
 
-### AI 出题
+当前脚本会使用 `x86_64-pc-windows-gnu` 目标构建 Tauri，这样在没有管理员权限安装 Visual Studio C++ Build Tools 的机器上也可以完成构建。构建成功后会生成：
 
-| 方法 | 路径 | 请求参数 | 说明 |
-|------|------|----------|------|
-| POST | `/api/questions/generate` | `{"material_id":1, "question_type":"choice,fill", "question_count":5, "target_audience":"初中"}` | 生成题目。`question_type` 支持逗号分隔混合题型 |
+```text
+web/downloads/ai-question-bank-desktop-windows.zip
+```
 
-**支持的题型**：`choice`（单选）、`multi_choice`（多选）、`true_false`（判断）、`fill`（填空）、`subjective`（主观）
+如果你已经安装了 Visual Studio C++ Build Tools，也可以自行改用 MSVC target。MSI 安装包属于可选项：
 
-### 答题练习
+```powershell
+npm run desktop:bundle:msi
+```
 
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| POST | `/api/practice/submit` | 提交单题答案，返回对错 + 解析 |
-| POST | `/api/practice/complete` | 完成一轮练习，保存历史记录 |
-| GET | `/api/practice/history` | 练习历史（带教材名和序号） |
-| GET | `/api/practice/wrong` | 错题本（按教材分组） |
+桌面程序启动流程：
 
-### 统计与配置
+1. Tauri 随机分配一个 `127.0.0.1` 本地端口。
+2. 作为 sidecar 启动 `backend.exe`。
+3. 设置 `HOST`、`PORT`、`AIQB_DESKTOP_DATABASE_URL`、`AIQB_DESKTOP_MODE=1`。
+4. 轮询 `/health`，确认后端可用。
+5. 打开 `web/v2-desktop/index.html`，并注入 `api_base`。
+6. 用户关闭窗口时自动关闭后端进程。
 
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | `/api/stats` | 累计题数、正确率、练习次数 |
-| POST | `/api/config/config` | 保存 API Key 配置 |
-| POST | `/api/config/test` | 测试 API Key 连通性 |
+## 运行方式三：官网静态部署
 
----
+`web/index.html` 是纯静态官网首页，不依赖 FastAPI。可以部署到 Cloudflare Pages、GitHub Pages、Netlify、Vercel 或任意静态服务器。
 
-## ❓ 常见问题
+静态官网只负责：
 
-### 打开 http://localhost:8000/web/ 白屏或报错？
+- 展示产品介绍。
+- 提供“下载桌面版”入口。
+- 提供“查看 GitHub”入口。
+- 提供“观看演示”入口。
 
-确认后端已启动（终端看到 `Uvicorn running on http://0.0.0.0:8000`）。如果端口被占用，编辑 `backend/main.py` 改端口。
+注意：官网里的 `v1-classic` 和 `v2-desktop` 功能页仍然需要后端 API。正式用户建议下载桌面版使用，因为桌面版会自动启动内置后端。
 
-### 手机连不上？
+## API_BASE 规则
 
-- 手机和电脑必须在**同一 WiFi**
-- 检查电脑防火墙是否拦截了 8000 端口（临时关防火墙试试）
-- 在手机浏览器先试 `http://电脑IP:8000`，看到 JSON 就说明网络通了
+前端功能页会按顺序读取 API 地址：
 
-### 上传文件失败？
+1. `window.AIQB_API_BASE`
+2. URL 参数：`?api_base=http%3A%2F%2F127.0.0.1%3A18765`
+3. `localStorage.AIQB_API_BASE`
+4. 空字符串，也就是同源相对路径
 
-- 支持 PDF / DOCX / TXT，文件 ≤ 50MB
-- 如果 PDF 解析乱码，可能是扫描版 PDF，建议先用 OCR 工具转文字
+因此：
 
-### 出题一直失败？
+- 开发模式通过 `http://localhost:8000/web/v2-desktop/index.html` 访问时，使用同源 API。
+- 桌面模式由 Tauri 注入随机端口。
+- 静态官网不会在首页请求 API。
 
-- 先到 API 配置页点「测试连接」确认 Key 可用
-- 检查服务商账户余额是否充足
-- 如果资料文本太短（< 100 字），AI 出题质量会下降
+## 主要 API
 
----
+- `GET /health`：桌面壳健康检查。
+- `GET /api/status`：API 状态。
+- `POST /api/auth/register`：注册。
+- `POST /api/auth/login`：登录。
+- `GET /api/materials`：资料列表。
+- `POST /api/materials/upload`：上传资料。
+- `POST /api/questions/generate`：生成题目。
+- `POST /api/practice/submit`：提交答案。
+- `POST /api/practice/complete`：完成练习。
+- `GET /api/stats`：学习统计。
 
-## 📄 许可证
+## GitHub 与发布
 
-MIT
+项目地址：
+
+[https://github.com/Garyff1/ai-question-bank](https://github.com/Garyff1/ai-question-bank)
+
+静态官网发布时，将 `web/` 目录作为站点根目录即可。桌面安装包构建完成后，可放入：
+
+```text
+web/downloads/ai-question-bank-desktop-windows.zip
+```
+
+这样官网的“下载桌面版”按钮就能直接下载最新桌面版本。

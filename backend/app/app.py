@@ -43,6 +43,11 @@ async def api_status():
     return {"message": "AI题库 API 服务运行中", "version": "1.0.0"}
 
 
+@app.get("/health")
+async def health():
+    return {"ok": True, "service": "ai-question-bank-backend", "version": "1.0.0"}
+
+
 @app.api_route("/{path:path}", methods=["GET", "HEAD"])
 async def serve_static(path: str):
     """兜底路由：API 之外的路径走静态文件，SPA 友好"""

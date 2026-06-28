@@ -1,0 +1,17 @@
+{
+  "name": "ai-question-bank",
+  "version": "1.0.0",
+  "private": true,
+  "description": "AI题库：静态官网 + 桌面端内置 FastAPI 后端",
+  "scripts": {
+    "backend:dev": "cd backend && python main.py",
+    "backend:build": "powershell -ExecutionPolicy Bypass -File scripts/build-backend.ps1",
+    "desktop:dev": "npm run backend:build -- -TargetTriple x86_64-pc-windows-gnu && powershell -ExecutionPolicy Bypass -Command \". ./scripts/tauri-env-gnu.ps1; npm exec tauri -- dev --target x86_64-pc-windows-gnu\"",
+    "desktop:build": "npm run backend:build -- -TargetTriple x86_64-pc-windows-gnu && powershell -ExecutionPolicy Bypass -Command \". ./scripts/tauri-env-gnu.ps1; npm exec tauri -- build --target x86_64-pc-windows-gnu --no-bundle\" && powershell -ExecutionPolicy Bypass -File scripts/package-desktop.ps1",
+    "desktop:build:no-backend": "powershell -ExecutionPolicy Bypass -Command \". ./scripts/tauri-env-gnu.ps1; npm exec tauri -- build --target x86_64-pc-windows-gnu --no-bundle\" && powershell -ExecutionPolicy Bypass -File scripts/package-desktop.ps1",
+    "desktop:bundle:msi": "npm run backend:build -- -TargetTriple x86_64-pc-windows-gnu && powershell -ExecutionPolicy Bypass -Command \". ./scripts/tauri-env-gnu.ps1; npm exec tauri -- build --target x86_64-pc-windows-gnu --bundles msi\""
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.0.0"
+  }
+}

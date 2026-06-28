@@ -565,7 +565,16 @@ button,input,select{font-family:inherit}button{cursor:pointer}
 </div>
 <script>
 console.log('v2-desktop JS loading...');
-const AB='';
+const API_BASE_KEY='AIQB_API_BASE';
+function cleanApiBase(v){return String(v||'').trim().replace(/\/+$/,'');}
+function resolveApiBase(){
+  const q=new URLSearchParams(location.search).get('api_base');
+  const injected=window.AIQB_API_BASE||q||localStorage.getItem(API_BASE_KEY)||'';
+  const base=cleanApiBase(injected);
+  if(base)localStorage.setItem(API_BASE_KEY,base);
+  return base;
+}
+const AB=resolveApiBase();
 var TK=localStorage.getItem('tk')||'', UID=localStorage.getItem('uid')||'';
 var mats=[], gQCount=5, gMID=0, quiz=null, delId=null;
 var gQT_set=new Set(['choice']);
@@ -598,7 +607,7 @@ async function api2(path, options){
   try{
     response=await fetch(AB+path, Object.assign({}, options, {headers:headers}));
   }catch(error){
-    throw new Error('无法连接后端，请确认 FastAPI 已在 http://localhost:8000 启动');
+    throw new Error('无法连接 AI题库后端。桌面版会自动启动内置后端；开发模式请先运行 backend/main.py。');
   }
 
   var text=await response.text();
