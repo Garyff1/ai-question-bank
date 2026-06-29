@@ -73,8 +73,8 @@ class ApiConfig {
   const ApiConfig({
     this.provider = 'deepseek',
     this.apiKey = '',
-    this.baseUrl = 'https://api.deepseek.com/v1',
-    this.model = 'deepseek-chat',
+    this.baseUrl = 'https://api.deepseek.com',
+    this.model = 'deepseek-v4-flash',
   });
 
   final String provider;
@@ -97,8 +97,8 @@ class ApiConfig {
   factory ApiConfig.fromJson(Map<String, dynamic> json) => ApiConfig(
     provider: json['provider'] as String? ?? 'deepseek',
     apiKey: json['apiKey'] as String? ?? '',
-    baseUrl: json['baseUrl'] as String? ?? 'https://api.deepseek.com/v1',
-    model: json['model'] as String? ?? 'deepseek-chat',
+    baseUrl: json['baseUrl'] as String? ?? 'https://api.deepseek.com',
+    model: json['model'] as String? ?? 'deepseek-v4-flash',
   );
 }
 
@@ -1678,19 +1678,15 @@ class _ConfigPageState extends State<ConfigPage> {
   bool _testing = false;
 
   static const providers = {
-    'deepseek': ('DeepSeek', 'https://api.deepseek.com/v1', 'deepseek-chat'),
-    'siliconflow': (
-      'SiliconFlow',
-      'https://api.siliconflow.cn/v1',
-      'Qwen/Qwen2.5-7B-Instruct',
-    ),
-    'openai': ('OpenAI', 'https://api.openai.com/v1', 'gpt-3.5-turbo'),
-    'tongyi': (
-      '通义千问',
+    'deepseek': ('DeepSeek', 'https://api.deepseek.com', 'deepseek-v4-flash'),
+    'qwen': (
+      'Qwen',
       'https://dashscope.aliyuncs.com/compatible-mode/v1',
-      'qwen-turbo',
+      'qwen-plus',
     ),
-    'zhipu': ('智谱清言', 'https://open.bigmodel.cn/api/paas/v4', 'glm-4-flash'),
+    'zhipu': ('智谱', 'https://api.z.ai/api/paas/v4', 'glm-4.5-flash'),
+    'mimo': ('小米 MiMo', 'https://api.xiaomimimo.com/v1', 'MiMo-VL-7B-RL'),
+    'kimi': ('Kimi', 'https://api.moonshot.ai/v1', 'kimi-k2.6'),
     'custom': ('自定义', '', ''),
   };
 
@@ -1930,10 +1926,7 @@ $materialText
     final response = await http
         .post(
           uri,
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': 'Bearer ${config.apiKey}',
-          },
+          headers: _headersFor(config),
           body: jsonEncode({
             'model': config.model,
             'messages': messages,
@@ -1951,6 +1944,17 @@ $materialText
     if (choices == null || choices.isEmpty) throw Exception('API 没有返回 choices');
     final message = choices.first['message'] as Map?;
     return (message?['content'] ?? choices.first['text'] ?? '').toString();
+  }
+
+  static Map<String, String> _headersFor(ApiConfig config) {
+    final base = config.baseUrl.toLowerCase();
+    if (config.provider == 'mimo' || base.contains('xiaomimimo.com')) {
+      return {'Content-Type': 'application/json', 'api-key': config.apiKey};
+    }
+    return {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer ${config.apiKey}',
+    };
   }
 
   static String _extractJson(String text) {

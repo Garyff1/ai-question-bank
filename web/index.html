@@ -352,10 +352,12 @@ a{color:inherit}
     </div>
     <p class="apinote">每个账号的 API Key 独立存储，退出登录时自动清除 —— 这把“电池”始终是你自己的。</p>
     <div class="provgrid">
-      <div class="provcard reveal"><div class="provh"><b>DeepSeek</b><span class="provtag">🏆 价格友好</span></div><p class="provdesc">国内可直接访问，性价比高的选择</p><div class="provrow"><span>Base URL</span><span>api.deepseek.com/v1</span></div><div class="provrow"><span>模型名称</span><span>deepseek-chat</span></div></div>
-      <div class="provcard reveal" style="transition-delay:.06s"><div class="provh"><b>硅基流动</b><span class="provtag">🆓 新用户额度</span></div><p class="provdesc">注册即送免费调用额度，适合先试后买</p><div class="provrow"><span>Base URL</span><span>api.siliconflow.cn/v1</span></div><div class="provrow"><span>模型名称</span><span>Qwen/Qwen3-8B</span></div></div>
-      <div class="provcard reveal" style="transition-delay:.12s"><div class="provh"><b>阿里百炼</b></div><p class="provdesc">阿里云生态用户，配置路径最顺手</p><div class="provrow"><span>Base URL</span><span>dashscope.aliyuncs.com/...</span></div><div class="provrow"><span>模型名称</span><span>qwen-plus</span></div></div>
-      <div class="provcard reveal" style="transition-delay:.18s"><div class="provh"><b>智谱开放平台</b></div><p class="provdesc">GLM 系列模型，适合低成本测试</p><div class="provrow"><span>Base URL</span><span>open.bigmodel.cn/api/...</span></div><div class="provrow"><span>模型名称</span><span>glm-4-flash</span></div></div>
+      <div class="provcard reveal"><div class="provh"><b>DeepSeek</b><span class="provtag">推荐</span></div><p class="provdesc">OpenAI 兼容接口，适合作为默认出题模型</p><div class="provrow"><span>Base URL</span><span>api.deepseek.com</span></div><div class="provrow"><span>模型名称</span><span>deepseek-v4-flash</span></div></div>
+      <div class="provcard reveal" style="transition-delay:.06s"><div class="provh"><b>Qwen</b></div><p class="provdesc">阿里百炼 / DashScope 兼容 OpenAI 调用方式</p><div class="provrow"><span>Base URL</span><span>dashscope.aliyuncs.com/...</span></div><div class="provrow"><span>模型名称</span><span>qwen-plus</span></div></div>
+      <div class="provcard reveal" style="transition-delay:.12s"><div class="provh"><b>智谱</b></div><p class="provdesc">Z.ai GLM 系列模型，适合中文学习场景</p><div class="provrow"><span>Base URL</span><span>api.z.ai/api/paas/v4</span></div><div class="provrow"><span>模型名称</span><span>glm-4.5-flash</span></div></div>
+      <div class="provcard reveal" style="transition-delay:.18s"><div class="provh"><b>小米 MiMo</b></div><p class="provdesc">官方 MiMo API，使用 api-key Header 鉴权</p><div class="provrow"><span>Base URL</span><span>api.xiaomimimo.com/v1</span></div><div class="provrow"><span>模型名称</span><span>MiMo-VL-7B-RL</span></div></div>
+      <div class="provcard reveal" style="transition-delay:.24s"><div class="provh"><b>Kimi</b></div><p class="provdesc">Moonshot Kimi 平台，适合长文本理解</p><div class="provrow"><span>Base URL</span><span>api.moonshot.ai/v1</span></div><div class="provrow"><span>模型名称</span><span>kimi-k2.6</span></div></div>
+      <div class="provcard reveal" style="transition-delay:.30s"><div class="provh"><b>自定义</b></div><p class="provdesc">接入兼容 Chat Completions 的第三方或本地模型</p><div class="provrow"><span>Base URL</span><span>自行填写</span></div><div class="provrow"><span>模型名称</span><span>自行填写</span></div></div>
     </div>
     <div class="steps steps-dark reveal">
       <div class="step"><div class="sn">1</div><h4 style="margin-top:8px">选服务商</h4></div>
@@ -479,7 +481,7 @@ function animateBattery(){
     if(eased>.7)col='#10B981';
     fill.setAttribute('fill',col);
     if(t<1){requestAnimationFrame(f);}
-    else{label.textContent='已连接 · DeepSeek';label.style.color='#34D399';}
+    else{label.textContent='已连接 · DeepSeek / Qwen / Kimi';label.style.color='#34D399';}
   }
   requestAnimationFrame(f);
 }

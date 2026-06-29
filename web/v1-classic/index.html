@@ -227,8 +227,8 @@ body{font-family:"PingFang SC","Microsoft YaHei",sans-serif;background:#F4F6FB;c
 <div class="cs"><span class="csd wt" id="csd"></span><div class="cst"><strong id="cstt">未检测</strong><span id="csdd">下方测试连接</span></div></div>
 <div><p class="sl">选择服务商</p><div class="pg" id="pg" style="margin-top:8px"></div></div>
 <div class="cf"><label>API Key <span style="color:var(--faint);font-weight:400">（与账号绑定，退出即清除）</span></label><input class="cd" id="ck" placeholder="sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" type="password"><span class="ht">从服务商官网获取</span></div>
-<div class="cf"><label>API Base URL</label><input id="cb2" placeholder="https://api.deepseek.com/v1"><span class="ht">大模型 API 地址</span></div>
-<div class="cf"><label>模型名称</label><input id="cm" placeholder="deepseek-chat"><span class="ht">如 deepseek-chat / gpt-3.5-turbo</span></div>
+<div class="cf"><label>API Base URL</label><input id="cb2" placeholder="https://api.deepseek.com"><span class="ht">兼容 Chat Completions 的大模型 API 地址</span></div>
+<div class="cf"><label>模型名称</label><input id="cm" placeholder="deepseek-v4-flash"><span class="ht">如 deepseek-v4-flash / qwen-plus / glm-4.5-flash</span></div>
 <div class="tr" id="tr3"></div>
 <div style="display:flex;gap:10px"><button class="btn-sm amber" style="flex:1;justify-content:center;height:44px;font-size:14px" onclick="tc()">🔌 测试</button><button class="btn-sm blue" style="flex:1;justify-content:center;height:44px;font-size:14px" onclick="sc()">💾 保存</button></div></div></section>
 
@@ -341,7 +341,7 @@ document.getElementById('fi').onchange=async function(e){
 async function dm(id){const m=mats.find(x=>x.id===id);if(!m)return;om({t:'删除资料',b:'确定删除「'+m.filename+'」吗？',c3:'删除',dg:true,cb:async()=>{try{await api('/api/materials/'+id,{method:'DELETE'});await loadMats();tt('已删除');}catch(e2){tt(e2.message);}}});}
 
 // ====== API配置 ======
-const PROVS={deepseek:{name:'DeepSeek',base:'https://api.deepseek.com/v1',model:'deepseek-chat'},siliconflow:{name:'SiliconFlow',base:'https://api.siliconflow.cn/v1',model:'Qwen/Qwen2.5-7B-Instruct'},openai:{name:'OpenAI',base:'https://api.openai.com/v1',model:'gpt-3.5-turbo'},tongyi:{name:'通义千问',base:'https://dashscope.aliyuncs.com/compatible-mode/v1',model:'qwen-turbo'},zhipu:{name:'智谱清言',base:'https://open.bigmodel.cn/api/paas/v4',model:'glm-4-flash'},custom:{name:'自定义',base:'',model:''}};
+const PROVS={deepseek:{name:'DeepSeek',base:'https://api.deepseek.com',model:'deepseek-v4-flash'},qwen:{name:'Qwen',base:'https://dashscope.aliyuncs.com/compatible-mode/v1',model:'qwen-plus'},zhipu:{name:'智谱',base:'https://api.z.ai/api/paas/v4',model:'glm-4.5-flash'},mimo:{name:'小米 MiMo',base:'https://api.xiaomimimo.com/v1',model:'MiMo-VL-7B-RL'},kimi:{name:'Kimi',base:'https://api.moonshot.ai/v1',model:'kimi-k2.6'},custom:{name:'自定义',base:'',model:''}};
 let cp='custom';
 async function loadCfg(){
   const g=document.getElementById('pg');

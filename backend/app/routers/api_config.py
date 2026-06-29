@@ -12,13 +12,21 @@ router = APIRouter()
 
 # 预设服务商模板
 PROVIDER_TEMPLATES = {
-    "deepseek": {"name": "DeepSeek", "api_base": "https://api.deepseek.com/v1", "model": "deepseek-chat"},
-    "openai": {"name": "OpenAI", "api_base": "https://api.openai.com/v1", "model": "gpt-3.5-turbo"},
-    "siliconflow": {"name": "SiliconFlow", "api_base": "https://api.siliconflow.cn/v1", "model": "Qwen/Qwen2.5-7B-Instruct"},
-    "tongyi": {"name": "通义千问", "api_base": "https://dashscope.aliyuncs.com/compatible-mode/v1", "model": "qwen-turbo"},
-    "zhipu": {"name": "智谱清言", "api_base": "https://open.bigmodel.cn/api/paas/v4", "model": "glm-4-flash"},
+    "deepseek": {"name": "DeepSeek", "api_base": "https://api.deepseek.com", "model": "deepseek-v4-flash"},
+    "qwen": {"name": "Qwen", "api_base": "https://dashscope.aliyuncs.com/compatible-mode/v1", "model": "qwen-plus"},
+    "zhipu": {"name": "智谱", "api_base": "https://api.z.ai/api/paas/v4", "model": "glm-4.5-flash"},
+    "mimo": {"name": "小米 MiMo", "api_base": "https://api.xiaomimimo.com/v1", "model": "MiMo-VL-7B-RL"},
+    "kimi": {"name": "Kimi", "api_base": "https://api.moonshot.ai/v1", "model": "kimi-k2.6"},
     "custom": {"name": "自定义", "api_base": "", "model": ""},
 }
+
+
+def build_llm_headers(api_key: str, api_base: str) -> dict[str, str]:
+    """构建大模型请求头；小米 MiMo 使用 api-key，其余预设按 OpenAI 兼容 Bearer。"""
+    base = api_base.lower()
+    if "xiaomimimo.com" in base:
+        return {"api-key": api_key, "Content-Type": "application/json"}
+    return {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
 
 
 class SaveConfigRequest(BaseModel):
@@ -124,10 +132,7 @@ def test_connection(
 ):
     """测试 API 连通性：发送一条简单请求"""
     try:
-        headers = {
-            "Authorization": f"Bearer {req.api_key}",
-            "Content-Type": "application/json",
-        }
+        headers = build_llm_headers(req.api_key, req.api_base)
         payload = {
             "model": req.model_name,
             "messages": [{"role": "user", "content": "请回复 OK 两个字，不要多余内容。"}],

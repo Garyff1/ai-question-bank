@@ -110,10 +110,17 @@ def _call_llm(prompt: str, api_key=None, api_base=None, model=None):
                 "messages": [{"role": "user", "content": prompt}],
                 "temperature": 0.7, "max_tokens": 4096
             },
-            headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+            headers=_build_headers(key, base),
         )
         resp.raise_for_status()
         return resp.json()["choices"][0]["message"]["content"]
+
+
+def _build_headers(api_key: str, api_base: str) -> dict[str, str]:
+    """小米 MiMo 使用 api-key Header，其余 OpenAI 兼容服务商使用 Bearer。"""
+    if "xiaomimimo.com" in api_base.lower():
+        return {"api-key": api_key, "Content-Type": "application/json"}
+    return {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
 
 
 def _parse_response(content: str, qtype: str) -> list[dict]:

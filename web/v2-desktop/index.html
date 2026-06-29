@@ -503,13 +503,13 @@ button,input,select{font-family:inherit}button{cursor:pointer}
                 </div>
                 <div class="config-field">
                   <div class="config-label-row"><label class="config-label" for="cfgBase">API Base URL</label><span class="config-required">必填</span></div>
-                  <input class="inp config-input" id="cfgBase" placeholder="https://api.deepseek.com/v1">
-                  <div class="config-help">兼容 OpenAI 格式的接口地址，通常以 /v1 结尾。</div>
+                  <input class="inp config-input" id="cfgBase" placeholder="https://api.deepseek.com">
+                  <div class="config-help">兼容 Chat Completions 的接口地址；部分服务商以 /v1 结尾。</div>
                 </div>
                 <div class="config-field">
                   <div class="config-label-row"><label class="config-label" for="cfgModel">模型名称</label><span class="config-required">必填</span></div>
-                  <input class="inp config-input" id="cfgModel" placeholder="deepseek-chat">
-                  <div class="config-help">例如 deepseek-chat、qwen-turbo 或 glm-4-flash。</div>
+                  <input class="inp config-input" id="cfgModel" placeholder="deepseek-v4-flash">
+                  <div class="config-help">例如 deepseek-v4-flash、qwen-plus、glm-4.5-flash。</div>
                 </div>
               </div>
               <div class="config-result" id="testResult"></div>
@@ -720,11 +720,11 @@ async function checkApi(){
   try{var c=await api2('/api/config/config');var dot=document.getElementById('apiStatusDot');if(dot){dot.style.display='inline-block';dot.style.background=c.configured?'var(--green)':'var(--red)';}}catch(e){}
 }
 var PROVS={
-  deepseek:{name:'DeepSeek',mark:'DS',base:'https://api.deepseek.com/v1',model:'deepseek-chat'},
-  siliconflow:{name:'SiliconFlow',mark:'SF',base:'https://api.siliconflow.cn/v1',model:'Qwen/Qwen2.5-7B-Instruct'},
-  openai:{name:'OpenAI',mark:'AI',base:'https://api.openai.com/v1',model:'gpt-3.5-turbo'},
-  tongyi:{name:'通义千问',mark:'QW',base:'https://dashscope.aliyuncs.com/compatible-mode/v1',model:'qwen-turbo'},
-  zhipu:{name:'智谱清言',mark:'GLM',base:'https://open.bigmodel.cn/api/paas/v4',model:'glm-4-flash'},
+  deepseek:{name:'DeepSeek',mark:'DS',base:'https://api.deepseek.com',model:'deepseek-v4-flash'},
+  qwen:{name:'Qwen',mark:'QW',base:'https://dashscope.aliyuncs.com/compatible-mode/v1',model:'qwen-plus'},
+  zhipu:{name:'智谱',mark:'GLM',base:'https://api.z.ai/api/paas/v4',model:'glm-4.5-flash'},
+  mimo:{name:'小米 MiMo',mark:'MI',base:'https://api.xiaomimimo.com/v1',model:'MiMo-VL-7B-RL'},
+  kimi:{name:'Kimi',mark:'KM',base:'https://api.moonshot.ai/v1',model:'kimi-k2.6'},
   custom:{name:'自定义',mark:'···',base:'',model:'自行填写接口信息'}
 };
 var curProv='deepseek';
