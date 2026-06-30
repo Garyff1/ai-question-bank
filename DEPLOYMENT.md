@@ -65,7 +65,10 @@ Cloudflare Pages 单个静态资源限制为 25 MiB。桌面版 zip 和 Android 
 
 - `web/downloads/*.zip` 不进入 Pages。
 - `web/downloads/*.apk` 不进入 Pages。
-- Android APK 通过 GitHub Releases 分发。
+- Android APK 通过 GitHub Releases / Cloudflare R2 / OSS 分发。
+- 官网按钮使用本站短链接：`/download/android.apk`。
+- 当前短链接在 `web/_redirects` 中维护，更新 APK 版本时只需要修改该文件里的目标 URL。
+- 如果希望下载全过程都不出现 GitHub 域名，请把 APK 上传到 Cloudflare R2 或其他对象存储，再把 `/download/android.apk` 指向对象存储直链。
 - 桌面版仍显示“内测中”，暂不公开下载。
 
 当前 Android 下载：
