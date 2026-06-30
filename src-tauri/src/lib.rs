@@ -51,10 +51,14 @@ fn wait_for_health(port: u16, timeout: Duration) -> Result<(), String> {
             let _ = stream.set_read_timeout(Some(Duration::from_millis(500)));
             let request = "GET /health HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n";
             if stream.write_all(request.as_bytes()).is_ok() {
-                let mut body = String::new();
-                if stream.read_to_string(&mut body).is_ok()
-                    && body.starts_with("HTTP/1.1 200")
-                    && body.contains("\"ok\":true")
+                let mut response = String::new();
+                if stream.read_to_string(&mut response).is_ok()
+                    && response
+                        .lines()
+                        .next()
+                        .map(|line| line.contains(" 200 "))
+                        .unwrap_or(false)
+                    && response.contains("\"ok\":true")
                 {
                     return Ok(());
                 }
@@ -65,20 +69,26 @@ fn wait_for_health(port: u16, timeout: Duration) -> Result<(), String> {
     Err("backend /health did not become ready in time".to_string())
 }
 
+#[cfg(windows)]
+fn kill_process_tree(pid: u32) {
+    use std::os::windows::process::CommandExt;
+
+    let _ = std::process::Command::new("taskkill")
+        .args(["/PID", &pid.to_string(), "/T", "/F"])
+        .creation_flags(0x08000000)
+        .output();
+}
+
+#[cfg(not(windows))]
+fn kill_process_tree(_pid: u32) {}
+
 fn stop_backend(state: &tauri::State<'_, BackendState>) {
     if let Ok(mut child_slot) = state.child.lock() {
         if let Some(child) = child_slot.take() {
+            let pid = child.pid();
+            kill_process_tree(pid);
             let _ = child.kill();
         }
-    }
-
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        let _ = std::process::Command::new("taskkill")
-            .args(["/IM", "backend.exe", "/F", "/T"])
-            .creation_flags(0x08000000)
-            .output();
     }
 }
 
@@ -144,7 +154,7 @@ pub fn run() {
                 }
             });
 
-            wait_for_health(port, Duration::from_secs(20)).map_err(|e| {
+            wait_for_health(port, Duration::from_secs(30)).map_err(|e| {
                 stop_backend(&state);
                 e
             })?;
@@ -169,6 +179,15 @@ pub fn run() {
                 window.app_handle().exit(0);
             }
         })
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app_handle, event| {
+            if matches!(
+                event,
+                tauri::RunEvent::ExitRequested { .. } | tauri::RunEvent::Exit
+            ) {
+                let state = app_handle.state::<BackendState>();
+                stop_backend(&state);
+            }
+        });
 }
