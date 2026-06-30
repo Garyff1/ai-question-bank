@@ -341,7 +341,7 @@ document.getElementById('fi').onchange=async function(e){
 async function dm(id){const m=mats.find(x=>x.id===id);if(!m)return;om({t:'删除资料',b:'确定删除「'+m.filename+'」吗？',c3:'删除',dg:true,cb:async()=>{try{await api('/api/materials/'+id,{method:'DELETE'});await loadMats();tt('已删除');}catch(e2){tt(e2.message);}}});}
 
 // ====== API配置 ======
-const PROVS={deepseek:{name:'DeepSeek',base:'https://api.deepseek.com',model:'deepseek-v4-flash'},qwen:{name:'Qwen',base:'https://dashscope.aliyuncs.com/compatible-mode/v1',model:'qwen-plus'},zhipu:{name:'智谱',base:'https://api.z.ai/api/paas/v4',model:'glm-4.5-flash'},mimo:{name:'小米 MiMo',base:'https://api.xiaomimimo.com/v1',model:'MiMo-VL-7B-RL'},kimi:{name:'Kimi',base:'https://api.moonshot.ai/v1',model:'kimi-k2.6'},custom:{name:'自定义',base:'',model:''}};
+const PROVS={deepseek:{name:'DeepSeek',base:'https://api.deepseek.com',model:'deepseek-v4-flash'},qwen:{name:'Qwen',base:'https://dashscope.aliyuncs.com/compatible-mode/v1',model:'qwen-plus'},zhipu:{name:'智谱',base:'https://api.z.ai/api/paas/v4',model:'glm-4.5-flash'},mimo:{name:'小米 MiMo',base:'https://api.xiaomimimo.com/v1',model:'mimo-v2.5-pro'},kimi:{name:'Kimi',base:'https://api.moonshot.ai/v1',model:'kimi-k2.6'},custom:{name:'自定义',base:'',model:''}};
 let cp='custom';
 async function loadCfg(){
   const g=document.getElementById('pg');

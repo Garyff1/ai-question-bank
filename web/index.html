@@ -142,13 +142,14 @@ a{color:inherit}
 .provgrid{display:grid;grid-template-columns:repeat(2,1fr);gap:16px;margin-bottom:52px}.provcard{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.13);border-radius:14px;padding:18px 20px}
 .provh{display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap}.provh b{font-size:14.5px;color:#fff}.provtag{font-size:10.5px;font-weight:900;padding:2px 8px;border-radius:999px;background:rgba(245,158,11,.18);color:#FBBF24}
 .provdesc{font-size:12px;color:#aab3c8;margin-bottom:10px;line-height:1.6}.provrow{display:flex;justify-content:space-between;gap:10px;font-size:11px;color:#8d97ad;margin-top:5px}.provrow span:last-child{font-family:ui-monospace,SFMono-Regular,"SF Mono",Consolas,monospace;color:#93C5FD;text-align:right}
+.keyguide{margin:-24px 0 46px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);border-radius:24px;padding:24px}.keyguide h3{font-size:21px;color:#fff;margin-bottom:8px}.keylead{font-size:13px;color:#aab3c8;line-height:1.75;margin-bottom:18px}.keylist{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}.keyitem{background:rgba(15,23,42,.38);border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:16px}.keyitem b{display:flex;align-items:center;gap:8px;color:#fff;font-size:14px;margin-bottom:8px}.keyitem p{color:#aab3c8;font-size:12px;line-height:1.65;margin-bottom:10px}.keyitem a{display:inline-flex;align-items:center;color:#93C5FD;text-decoration:none;font-size:12px;font-weight:900}.keyitem a:hover{text-decoration:underline}.keytips{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:16px}.keytips span{background:rgba(37,99,235,.16);border:1px solid rgba(96,165,250,.25);color:#BFDBFE;border-radius:13px;padding:10px 12px;font-size:11.5px;line-height:1.55}
 .steps-dark .step h4{color:#fff}.steps-dark .step p{color:#aab3c8}.steps-dark .step:not(:last-child)::after{background:rgba(255,255,255,.16)}
 .apinote{text-align:center;font-size:12.5px;color:#8d97ad;margin:-30px auto 46px;max-width:500px;line-height:1.7}.apicta{display:flex;gap:14px;justify-content:center;flex-wrap:wrap}
 .foot{background:#fff;border-top:1px solid var(--line);padding:26px 0}.footin{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;font-size:13px;color:var(--muted)}.footlinks{display:flex;gap:18px;align-items:center;flex-wrap:wrap}.footlinks a{color:var(--muted);text-decoration:none}.footlinks a:hover{color:var(--blue)}
 
 @media(max-width:980px){
   .hero{padding:76px 0 84px}.hero-grid{grid-template-columns:1fr;gap:34px}.video-card{max-width:520px;margin:0 auto}.hero-copy{margin-left:0;justify-self:center}.hero h1{font-size:38px}
-  .vgrid,.rgrid,.provgrid{grid-template-columns:1fr}.install-tips ul{grid-template-columns:1fr}.steps{grid-template-columns:repeat(2,1fr);row-gap:30px}.step:nth-child(2)::after{display:none}.sechead h2{font-size:28px}.wrap{padding:0 22px}
+  .vgrid,.rgrid,.provgrid,.keylist{grid-template-columns:1fr}.keytips{grid-template-columns:1fr}.install-tips ul{grid-template-columns:1fr}.steps{grid-template-columns:repeat(2,1fr);row-gap:30px}.step:nth-child(2)::after{display:none}.sechead h2{font-size:28px}.wrap{padding:0 22px}
 }
 @media(max-width:680px){
   .links{display:none}.cart{padding:8px 12px}.cart span{display:none}.hero h1{font-size:32px}.hero p{font-size:14px}.herobtns,.apicta{flex-direction:column;width:100%}.herobtns .btn,.apicta .btn{width:100%}.sec{padding:72px 0}.steps{grid-template-columns:1fr}.step::after{display:none!important}
@@ -197,7 +198,7 @@ a{color:inherit}
       <h1 class="reveal" style="transition-delay:.08s">用 AI 出题，<br>把资料变成练习。</h1>
       <p class="reveal" style="transition-delay:.16s">上传课件、笔记或资料，AI 自动生成选择题、填空题、简答题和混合练习，帮你高效复习、巩固错题。</p>
       <div class="herobtns reveal" style="transition-delay:.24s">
-        <a class="btn btn-p" href="/download/android.apk" download="ai-question-bank-android-v1.0.3.apk">下载安卓版 APK</a>
+        <a class="btn btn-p" href="/download/android.apk" download="ai-question-bank-android-v1.0.4.apk">下载安卓版 APK</a>
         <a class="btn btn-o-dark" href="https://github.com/Garyff1/ai-question-bank" target="_blank" rel="noopener">查看 GitHub</a>
         <a class="btn btn-gh-dark" href="#demo">观看演示</a>
       </div>
@@ -224,9 +225,9 @@ a{color:inherit}
           <li>直接配置 API Key，打开即可出题</li>
           <li>无账号登录，资料和记录保存在本机</li>
         </ul>
-        <div class="apkmeta"><b>Android v1.0.3 · 早期测试版</b>建议保留原安装包，后续版本可能需要手动更新。<code>SHA-256：80DBED5CCE135F8E9CAB17D197DC3E7BADCE882A716D87454D07C4F29EA47533</code></div>
+        <div class="apkmeta"><b>Android v1.0.4 · 早期测试版</b>建议保留原安装包，后续版本可能需要手动更新。<code>SHA-256：658A5D28D58ECC688FF11B09ABCAAD3AA67CD4B8F9BAE0DF61EF4BAE271513D2</code></div>
         <div class="vtags"><span class="tg tg-b">APK 安装</span><span class="tg tg-g">一体化</span></div>
-        <a class="btn btn-o vbtn" href="/download/android.apk" download="ai-question-bank-android-v1.0.3.apk">下载安卓版 APK →</a>
+        <a class="btn btn-o vbtn" href="/download/android.apk" download="ai-question-bank-android-v1.0.4.apk">下载安卓版 APK →</a>
       </article>
       <article class="vcard reveal" style="transition-delay:.08s">
         <span class="vtag vtag-new">测试版</span>
@@ -356,9 +357,26 @@ a{color:inherit}
       <div class="provcard reveal"><div class="provh"><b>DeepSeek</b><span class="provtag">推荐</span></div><p class="provdesc">OpenAI 兼容接口，适合作为默认出题模型</p><div class="provrow"><span>Base URL</span><span>api.deepseek.com</span></div><div class="provrow"><span>模型名称</span><span>deepseek-v4-flash</span></div></div>
       <div class="provcard reveal" style="transition-delay:.06s"><div class="provh"><b>Qwen</b></div><p class="provdesc">阿里百炼 / DashScope 兼容 OpenAI 调用方式</p><div class="provrow"><span>Base URL</span><span>dashscope.aliyuncs.com/...</span></div><div class="provrow"><span>模型名称</span><span>qwen-plus</span></div></div>
       <div class="provcard reveal" style="transition-delay:.12s"><div class="provh"><b>智谱</b></div><p class="provdesc">Z.ai GLM 系列模型，适合中文学习场景</p><div class="provrow"><span>Base URL</span><span>api.z.ai/api/paas/v4</span></div><div class="provrow"><span>模型名称</span><span>glm-4.5-flash</span></div></div>
-      <div class="provcard reveal" style="transition-delay:.18s"><div class="provh"><b>小米 MiMo</b></div><p class="provdesc">官方 MiMo API，使用 api-key Header 鉴权</p><div class="provrow"><span>Base URL</span><span>api.xiaomimimo.com/v1</span></div><div class="provrow"><span>模型名称</span><span>MiMo-VL-7B-RL</span></div></div>
+      <div class="provcard reveal" style="transition-delay:.18s"><div class="provh"><b>小米 MiMo</b></div><p class="provdesc">官方 MiMo API，使用 api-key Header 鉴权</p><div class="provrow"><span>Base URL</span><span>api.xiaomimimo.com/v1</span></div><div class="provrow"><span>模型名称</span><span>mimo-v2.5-pro</span></div></div>
       <div class="provcard reveal" style="transition-delay:.24s"><div class="provh"><b>Kimi</b></div><p class="provdesc">Moonshot Kimi 平台，适合长文本理解</p><div class="provrow"><span>Base URL</span><span>api.moonshot.ai/v1</span></div><div class="provrow"><span>模型名称</span><span>kimi-k2.6</span></div></div>
       <div class="provcard reveal" style="transition-delay:.30s"><div class="provh"><b>自定义</b></div><p class="provdesc">接入兼容 Chat Completions 的第三方或本地模型</p><div class="provrow"><span>Base URL</span><span>自行填写</span></div><div class="provrow"><span>模型名称</span><span>自行填写</span></div></div>
+    </div>
+    <div class="keyguide reveal">
+      <h3>API Key 获取与配置指南</h3>
+      <p class="keylead">如果你是第一次接触 API Key，可以把它理解成“模型平台给你的调用密码”。先去服务商控制台创建 Key，再回到 AI题库的“API 配置”页填入 Key、Base URL 和模型名称，最后点“测试连接”。</p>
+      <div class="keylist">
+        <div class="keyitem"><b>① DeepSeek</b><p>登录 DeepSeek Platform，进入 API Keys 页面创建 Key；Base URL 填 <code>https://api.deepseek.com</code>。</p><a href="https://platform.deepseek.com/api_keys" target="_blank" rel="noopener">打开 DeepSeek API Keys ↗</a></div>
+        <div class="keyitem"><b>② Qwen / 阿里百炼</b><p>登录阿里云百炼控制台，选择地域后进入 API Key 页面，点击“创建 API Key”。</p><a href="https://help.aliyun.com/zh/model-studio/get-api-key" target="_blank" rel="noopener">查看百炼获取 Key 文档 ↗</a></div>
+        <div class="keyitem"><b>③ 智谱 / Z.ai</b><p>登录 Z.ai Open Platform，在 API Keys 管理页创建 Key；Base URL 填 <code>https://api.z.ai/api/paas/v4</code>。</p><a href="https://docs.z.ai/guides/overview/quick-start" target="_blank" rel="noopener">查看 Z.ai Quick Start ↗</a></div>
+        <div class="keyitem"><b>④ 小米 MiMo</b><p>进入 MiMo API Keys 创建 Key。普通按量付费使用 <code>https://api.xiaomimimo.com/v1</code>，模型可先填 <code>mimo-v2.5-pro</code>。</p><a href="https://mimo.mi.com/docs/en-US/quick-start/summary/first-api-call" target="_blank" rel="noopener">查看 MiMo 首次调用文档 ↗</a></div>
+        <div class="keyitem"><b>⑤ Kimi / Moonshot</b><p>登录 Kimi 开放平台控制台创建 Key；Base URL 填 <code>https://api.moonshot.ai/v1</code>。</p><a href="https://platform.kimi.ai/docs/api/overview" target="_blank" rel="noopener">查看 Kimi API Overview ↗</a></div>
+        <div class="keyitem"><b>⑥ 自定义接口</b><p>如果你的服务商兼容 OpenAI Chat Completions，通常只需要填自己的 Key、Base URL 和模型名。</p><a href="https://github.com/Garyff1/ai-question-bank/issues" target="_blank" rel="noopener">不确定怎么填？提交 Issue ↗</a></div>
+      </div>
+      <div class="keytips">
+        <span>Key 只保存在你的设备本地，不会上传到 AI题库服务器。</span>
+        <span>创建 Key 后请立刻复制保存，很多平台关闭弹窗后无法再次查看明文 Key。</span>
+        <span>如果测试失败，优先检查余额/额度、Base URL、模型名和 Key 是否复制完整。</span>
+      </div>
     </div>
     <div class="steps steps-dark reveal">
       <div class="step"><div class="sn">1</div><h4 style="margin-top:8px">选服务商</h4></div>
@@ -367,7 +385,7 @@ a{color:inherit}
       <div class="step"><div class="sn">4</div><h4 style="margin-top:8px">测试连接</h4></div>
     </div>
     <div class="apicta">
-      <a class="btn btn-p" href="/download/android.apk" download="ai-question-bank-android-v1.0.3.apk">下载安卓版 APK</a>
+      <a class="btn btn-p" href="/download/android.apk" download="ai-question-bank-android-v1.0.4.apk">下载安卓版 APK</a>
       <a class="btn btn-o-dark" href="/download/desktop-windows.zip" download="ai-question-bank-desktop-windows.zip">下载桌面版 ZIP</a>
       <a class="btn btn-o-dark" href="#demo">观看演示</a>
       <a class="btn btn-gh-dark" href="https://github.com/Garyff1/ai-question-bank" target="_blank" rel="noopener">查看 GitHub 仓库 ↗</a>

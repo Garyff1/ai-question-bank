@@ -4,6 +4,7 @@ import 'dart:math';
 import 'package:archive/archive.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:syncfusion_flutter_pdf/pdf.dart';
@@ -234,6 +235,7 @@ class _AppShellState extends State<AppShell> {
   static const _recordsKey = 'records_v1';
   static const _wrongsKey = 'wrongs_v1';
   static const _configKey = 'api_config_v1';
+  static const _onboardingSeenKey = 'onboarding_seen_v1';
 
   final Set<String> _selectedTypes = {'choice'};
   final List<String> _audiences = const [
@@ -256,6 +258,7 @@ class _AppShellState extends State<AppShell> {
   String _audience = '通用';
   bool _loading = true;
   bool _generating = false;
+  bool _onboardingQueued = false;
   PracticeSession? _session;
 
   @override
@@ -276,6 +279,7 @@ class _AppShellState extends State<AppShell> {
       prefs.getString(_wrongsKey),
     ).map((item) => WrongItem.fromJson(item)).toList();
     final configJson = prefs.getString(_configKey);
+    final onboardingSeen = prefs.getBool(_onboardingSeenKey) ?? false;
     setState(() {
       _materials = materials;
       _records = records;
@@ -286,6 +290,10 @@ class _AppShellState extends State<AppShell> {
           : ApiConfig.fromJson(jsonDecode(configJson) as Map<String, dynamic>);
       _loading = false;
     });
+    if (!onboardingSeen && !_onboardingQueued && mounted) {
+      _onboardingQueued = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) => _showOnboarding());
+    }
   }
 
   static List<Map<String, dynamic>> _decodeList(String? raw) {
@@ -332,6 +340,25 @@ class _AppShellState extends State<AppShell> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
     );
+  }
+
+  Future<void> _showOnboarding() async {
+    if (!mounted) return;
+    final finished = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const OnboardingGuide(),
+    );
+    if (finished == true) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_onboardingSeenKey, true);
+    }
+  }
+
+  void _selectTab(int index) {
+    if (index == _tab) return;
+    HapticFeedback.selectionClick();
+    setState(() => _tab = index);
   }
 
   Future<void> _addMaterial(String name, String content) async {
@@ -657,7 +684,7 @@ class _AppShellState extends State<AppShell> {
       body: SafeArea(child: pages[_tab]),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _tab,
-        onDestinationSelected: (index) => setState(() => _tab = index),
+        onDestinationSelected: _selectTab,
         destinations: const [
           NavigationDestination(
             icon: Icon(Icons.folder_copy_outlined),
@@ -672,6 +699,274 @@ class _AppShellState extends State<AppShell> {
           NavigationDestination(icon: Icon(Icons.key_rounded), label: '配置'),
         ],
       ),
+    );
+  }
+}
+
+class OnboardingGuide extends StatefulWidget {
+  const OnboardingGuide({super.key});
+
+  @override
+  State<OnboardingGuide> createState() => _OnboardingGuideState();
+}
+
+class _OnboardingGuideState extends State<OnboardingGuide> {
+  final PageController _controller = PageController();
+  int _index = 0;
+
+  static const _steps = [
+    _GuideStep(
+      icon: Icons.folder_copy_outlined,
+      title: '先导入资料',
+      body: '在“资料”页上传 PDF、Word、TXT，或粘贴文本。资料会保存在当前手机里，后续出题都从这里开始。',
+      tip: '如果是第一次试用，可以点“示例资料”先跑通流程。',
+    ),
+    _GuideStep(
+      icon: Icons.auto_awesome,
+      title: '再生成题目',
+      body: '在“出题”页选择资料、题型、目标群体和题目数量。题型可以多选，AI 会根据资料自动生成练习题。',
+      tip: '生成前请先完成 API 配置，否则模型无法工作。',
+    ),
+    _GuideStep(
+      icon: Icons.book_outlined,
+      title: '错题会自动收集',
+      body: '答题结束后，答错的题会进入“错题”页，方便你后续复习和针对性训练。',
+      tip: '清空和删除这类危险操作后续都会加二次确认，避免误触。',
+    ),
+    _GuideStep(
+      icon: Icons.key_rounded,
+      title: '最后配置 API Key',
+      body: 'AI题库不自带模型账号。你需要在 DeepSeek、Qwen、智谱、小米 MiMo、Kimi 等平台创建自己的 API Key。',
+      tip: '不知道 Key 去哪里拿？官网的“API 配置指南”已经放好入口：aichuti.ccwu.cc/#apikey',
+    ),
+  ];
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _finish() => Navigator.of(context).pop(true);
+
+  Future<void> _next() async {
+    if (_index == _steps.length - 1) {
+      _finish();
+      return;
+    }
+    HapticFeedback.selectionClick();
+    await _controller.nextPage(
+      duration: const Duration(milliseconds: 260),
+      curve: Curves.easeOutCubic,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog.fullscreen(
+      backgroundColor: kBg,
+      child: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(22),
+          child: Column(
+            children: [
+              Row(
+                children: [
+                  const _LogoMark(size: 44),
+                  const SizedBox(width: 12),
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '欢迎使用 AI题库',
+                          style: TextStyle(
+                            fontSize: 22,
+                            fontWeight: FontWeight.w900,
+                            color: kInk,
+                          ),
+                        ),
+                        SizedBox(height: 3),
+                        Text('一分钟了解每个页面能做什么', style: TextStyle(color: kMuted)),
+                      ],
+                    ),
+                  ),
+                  TextButton(onPressed: _finish, child: const Text('跳过')),
+                ],
+              ),
+              const SizedBox(height: 20),
+              Expanded(
+                child: PageView.builder(
+                  controller: _controller,
+                  itemCount: _steps.length,
+                  onPageChanged: (value) {
+                    HapticFeedback.selectionClick();
+                    setState(() => _index = value);
+                  },
+                  itemBuilder: (context, index) =>
+                      _GuideStepCard(step: _steps[index]),
+                ),
+              ),
+              const SizedBox(height: 18),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: List.generate(
+                  _steps.length,
+                  (index) => AnimatedContainer(
+                    duration: const Duration(milliseconds: 180),
+                    width: index == _index ? 24 : 8,
+                    height: 8,
+                    margin: const EdgeInsets.symmetric(horizontal: 4),
+                    decoration: BoxDecoration(
+                      color: index == _index ? kBlue : const Color(0xFFCBD5E1),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 18),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: _next,
+                  icon: Icon(
+                    _index == _steps.length - 1
+                        ? Icons.check_rounded
+                        : Icons.arrow_forward_rounded,
+                  ),
+                  label: Text(_index == _steps.length - 1 ? '开始使用' : '下一步'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _GuideStep {
+  const _GuideStep({
+    required this.icon,
+    required this.title,
+    required this.body,
+    required this.tip,
+  });
+
+  final IconData icon;
+  final String title;
+  final String body;
+  final String tip;
+}
+
+class _GuideStepCard extends StatelessWidget {
+  const _GuideStepCard({required this.step});
+
+  final _GuideStep step;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(color: kLine),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x120F172A),
+            blurRadius: 26,
+            offset: Offset(0, 14),
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 74,
+            height: 74,
+            decoration: BoxDecoration(
+              color: const Color(0xFFEFF6FF),
+              borderRadius: BorderRadius.circular(24),
+            ),
+            child: Icon(step.icon, color: kBlue, size: 36),
+          ),
+          const SizedBox(height: 26),
+          Text(
+            step.title,
+            style: const TextStyle(
+              fontSize: 28,
+              height: 1.15,
+              fontWeight: FontWeight.w900,
+              color: kInk,
+            ),
+          ),
+          const SizedBox(height: 14),
+          Text(
+            step.body,
+            style: const TextStyle(
+              fontSize: 15.5,
+              height: 1.75,
+              color: kMuted,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 22),
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFFFBEB),
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: const Color(0xFFFDE68A)),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Icon(Icons.lightbulb_outline, color: Color(0xFFD97706)),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    step.tip,
+                    style: const TextStyle(
+                      color: Color(0xFF92400E),
+                      height: 1.55,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LogoMark extends StatelessWidget {
+  const _LogoMark({required this.size});
+
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: kBlue,
+        borderRadius: BorderRadius.circular(size * 0.28),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x332563EB),
+            blurRadius: 18,
+            offset: Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Icon(Icons.school_rounded, color: Colors.white, size: size * 0.55),
     );
   }
 }
@@ -1685,7 +1980,7 @@ class _ConfigPageState extends State<ConfigPage> {
       'qwen-plus',
     ),
     'zhipu': ('智谱', 'https://api.z.ai/api/paas/v4', 'glm-4.5-flash'),
-    'mimo': ('小米 MiMo', 'https://api.xiaomimimo.com/v1', 'MiMo-VL-7B-RL'),
+    'mimo': ('小米 MiMo', 'https://api.xiaomimimo.com/v1', 'mimo-v2.5-pro'),
     'kimi': ('Kimi', 'https://api.moonshot.ai/v1', 'kimi-k2.6'),
     'custom': ('自定义', '', ''),
   };
@@ -1846,6 +2141,12 @@ class _ConfigPageState extends State<ConfigPage> {
           ],
         ),
         const SizedBox(height: 16),
+        const _NoteCard(
+          title: '不知道 API Key 在哪里获取？',
+          body:
+              '请打开官网 aichuti.ccwu.cc/#apikey 查看“API Key 获取与配置指南”。官网会列出 DeepSeek、Qwen、智谱、小米 MiMo、Kimi 的控制台入口和填写示例。',
+        ),
+        const SizedBox(height: 12),
         const _NoteCard(
           title: '本地化说明',
           body: '本 App 不提供账号系统，资料、API Key、练习记录都保存在当前手机。卸载 App 会删除这些本地数据。',

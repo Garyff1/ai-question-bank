@@ -11,11 +11,11 @@
 
 ## 当前公开测试版本
 
-- 版本：Android v1.0.3
+- 版本：Android v1.0.4
 - 状态：早期测试版
-- APK：[下载地址](https://github.com/Garyff1/ai-question-bank/releases/download/android-v1.0.3/ai-question-bank-android-v1.0.3.apk)
-- Release：[AI题库 Android v1.0.3](https://github.com/Garyff1/ai-question-bank/releases/tag/android-v1.0.3)
-- SHA-256：`80DBED5CCE135F8E9CAB17D197DC3E7BADCE882A716D87454D07C4F29EA47533`
+- APK：[下载地址](https://github.com/Garyff1/ai-question-bank/releases/download/android-v1.0.4/ai-question-bank-android-v1.0.4.apk)
+- Release：[AI题库 Android v1.0.4](https://github.com/Garyff1/ai-question-bank/releases/tag/android-v1.0.4)
+- SHA-256：`658A5D28D58ECC688FF11B09ABCAAD3AA67CD4B8F9BAE0DF61EF4BAE271513D2`
 
 ## 已实现功能
 
@@ -33,7 +33,7 @@
 | DeepSeek | `https://api.deepseek.com` | `deepseek-v4-flash` | OpenAI-compatible。旧 `deepseek-chat` 将不再作为默认推荐。 |
 | Qwen / 阿里百炼 | `https://dashscope.aliyuncs.com/compatible-mode/v1` | `qwen-plus` | OpenAI-compatible；也可按阿里云控制台替换为 workspace Endpoint。 |
 | 智谱 / Z.ai | `https://api.z.ai/api/paas/v4` | `glm-4.5-flash` | OpenAI-compatible。 |
-| 小米 MiMo | `https://api.xiaomimimo.com/v1` | `MiMo-VL-7B-RL` | Chat Completions 路径兼容，但 Header 使用 `api-key`。 |
+| 小米 MiMo | `https://api.xiaomimimo.com/v1` | `mimo-v2.5-pro` | Chat Completions 路径兼容，但 Header 使用 `api-key`。 |
 | Kimi / Moonshot | `https://api.moonshot.ai/v1` | `kimi-k2.6` | OpenAI-compatible。 |
 | 自定义 | 用户填写 | 用户填写 | 适合兼容 OpenAI Chat Completions 的第三方网关或本地服务。 |
 
