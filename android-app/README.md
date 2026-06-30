@@ -11,11 +11,11 @@
 
 ## 当前公开测试版本
 
-- 版本：Android v1.0.2
+- 版本：Android v1.0.3
 - 状态：早期测试版
-- APK：[下载地址](https://github.com/Garyff1/ai-question-bank/releases/download/android-v1.0.2/ai-question-bank-android-v1.0.2.apk)
-- Release：[AI题库 Android v1.0.2](https://github.com/Garyff1/ai-question-bank/releases/tag/android-v1.0.2)
-- SHA-256：`9C459AC45A5626DDE206A84D4E56DB107F9ECDCE4DCCC4CD1C9E6C5624DB501C`
+- APK：[下载地址](https://github.com/Garyff1/ai-question-bank/releases/download/android-v1.0.3/ai-question-bank-android-v1.0.3.apk)
+- Release：[AI题库 Android v1.0.3](https://github.com/Garyff1/ai-question-bank/releases/tag/android-v1.0.3)
+- SHA-256：`80DBED5CCE135F8E9CAB17D197DC3E7BADCE882A716D87454D07C4F29EA47533`
 
 ## 已实现功能
 
