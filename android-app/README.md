@@ -11,11 +11,11 @@
 
 ## 当前公开测试版本
 
-- 版本：Android v1.0.4
+- 版本：Android v1.0.5
 - 状态：早期测试版
-- APK：[下载地址](https://github.com/Garyff1/ai-question-bank/releases/download/android-v1.0.4/ai-question-bank-android-v1.0.4.apk)
-- Release：[AI题库 Android v1.0.4](https://github.com/Garyff1/ai-question-bank/releases/tag/android-v1.0.4)
-- SHA-256：`658A5D28D58ECC688FF11B09ABCAAD3AA67CD4B8F9BAE0DF61EF4BAE271513D2`
+- APK：[下载地址](https://github.com/Garyff1/ai-question-bank/releases/download/android-v1.0.5/ai-question-bank-android-v1.0.5.apk)
+- Release：[AI题库 Android v1.0.5](https://github.com/Garyff1/ai-question-bank/releases/tag/android-v1.0.5)
+- SHA-256：`CB59B634C9713AB951430212C6A3D974E5132387706740C00DB95605A5C593AF`
 
 ## 已实现功能
 
@@ -25,6 +25,7 @@
 - 本地答题：自动判分、显示解析、完成后记录成绩。
 - 错题本：答错题目自动收录在本机。
 - 学习统计：累计做题、正确率、错题数量、历史记录。
+- 学习激励：支持错题抽卡挑战、经验值、连续打卡和 10 分钟三倍经验。
 
 ## API 服务商预设
 

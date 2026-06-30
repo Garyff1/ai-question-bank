@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 
@@ -166,12 +167,16 @@ class PracticeRecord {
     required this.total,
     required this.correct,
     required this.createdAt,
+    this.xpEarned = 0,
+    this.isWrongCardChallenge = false,
   });
 
   final String materialName;
   final int total;
   final int correct;
   final DateTime createdAt;
+  final int xpEarned;
+  final bool isWrongCardChallenge;
 
   int get wrong => max(0, total - correct);
   int get accuracy => total == 0 ? 0 : (correct / total * 100).round();
@@ -181,12 +186,16 @@ class PracticeRecord {
     'total': total,
     'correct': correct,
     'createdAt': createdAt.toIso8601String(),
+    'xpEarned': xpEarned,
+    'isWrongCardChallenge': isWrongCardChallenge,
   };
 
   factory PracticeRecord.fromJson(Map<String, dynamic> json) => PracticeRecord(
     materialName: json['materialName'] as String? ?? '未知资料',
     total: json['total'] as int? ?? 0,
     correct: json['correct'] as int? ?? 0,
+    xpEarned: json['xpEarned'] as int? ?? 0,
+    isWrongCardChallenge: json['isWrongCardChallenge'] as bool? ?? false,
     createdAt:
         DateTime.tryParse(json['createdAt'] as String? ?? '') ?? DateTime.now(),
   );
@@ -223,6 +232,82 @@ class WrongItem {
   );
 }
 
+class XpProfile {
+  const XpProfile({
+    this.totalXp = 0,
+    this.checkinStreak = 0,
+    this.lastCheckinDate = '',
+    this.boostExpiresAt,
+  });
+
+  final int totalXp;
+  final int checkinStreak;
+  final String lastCheckinDate;
+  final DateTime? boostExpiresAt;
+
+  int get level => totalXp ~/ 100 + 1;
+  int get levelProgress => totalXp % 100;
+
+  bool isBoostActive([DateTime? now]) {
+    final expiresAt = boostExpiresAt;
+    if (expiresAt == null) return false;
+    return expiresAt.isAfter(now ?? DateTime.now());
+  }
+
+  int activeMultiplier([DateTime? now]) => isBoostActive(now) ? 3 : 1;
+
+  Duration boostRemaining([DateTime? now]) {
+    final expiresAt = boostExpiresAt;
+    if (expiresAt == null) return Duration.zero;
+    final left = expiresAt.difference(now ?? DateTime.now());
+    return left.isNegative ? Duration.zero : left;
+  }
+
+  XpProfile copyWith({
+    int? totalXp,
+    int? checkinStreak,
+    String? lastCheckinDate,
+    DateTime? boostExpiresAt,
+  }) => XpProfile(
+    totalXp: totalXp ?? this.totalXp,
+    checkinStreak: checkinStreak ?? this.checkinStreak,
+    lastCheckinDate: lastCheckinDate ?? this.lastCheckinDate,
+    boostExpiresAt: boostExpiresAt ?? this.boostExpiresAt,
+  );
+
+  Map<String, dynamic> toJson() => {
+    'totalXp': totalXp,
+    'checkinStreak': checkinStreak,
+    'lastCheckinDate': lastCheckinDate,
+    'boostExpiresAt': boostExpiresAt?.toIso8601String(),
+  };
+
+  factory XpProfile.fromJson(Map<String, dynamic> json) => XpProfile(
+    totalXp: json['totalXp'] as int? ?? 0,
+    checkinStreak: json['checkinStreak'] as int? ?? 0,
+    lastCheckinDate: json['lastCheckinDate'] as String? ?? '',
+    boostExpiresAt: DateTime.tryParse(json['boostExpiresAt'] as String? ?? ''),
+  );
+}
+
+class XpSettlement {
+  const XpSettlement({
+    required this.baseXp,
+    required this.multiplier,
+    required this.finalXp,
+    this.boostActivated = false,
+    this.isCheckin = false,
+    this.streak = 0,
+  });
+
+  final int baseXp;
+  final int multiplier;
+  final int finalXp;
+  final bool boostActivated;
+  final bool isCheckin;
+  final int streak;
+}
+
 class AppShell extends StatefulWidget {
   const AppShell({super.key});
 
@@ -236,6 +321,7 @@ class _AppShellState extends State<AppShell> {
   static const _wrongsKey = 'wrongs_v1';
   static const _configKey = 'api_config_v1';
   static const _onboardingSeenKey = 'onboarding_seen_v1';
+  static const _xpProfileKey = 'xp_profile_v1';
 
   final Set<String> _selectedTypes = {'choice'};
   final List<String> _audiences = const [
@@ -252,6 +338,7 @@ class _AppShellState extends State<AppShell> {
   List<PracticeRecord> _records = [];
   List<WrongItem> _wrongs = [];
   ApiConfig _config = const ApiConfig();
+  XpProfile _xpProfile = const XpProfile();
   StudyMaterial? _selectedMaterial;
   int _tab = 0;
   int _questionCount = 5;
@@ -260,6 +347,7 @@ class _AppShellState extends State<AppShell> {
   bool _generating = false;
   bool _onboardingQueued = false;
   PracticeSession? _session;
+  Timer? _boostTicker;
 
   @override
   void initState() {
@@ -279,6 +367,7 @@ class _AppShellState extends State<AppShell> {
       prefs.getString(_wrongsKey),
     ).map((item) => WrongItem.fromJson(item)).toList();
     final configJson = prefs.getString(_configKey);
+    final xpJson = prefs.getString(_xpProfileKey);
     final onboardingSeen = prefs.getBool(_onboardingSeenKey) ?? false;
     setState(() {
       _materials = materials;
@@ -288,12 +377,22 @@ class _AppShellState extends State<AppShell> {
       _config = configJson == null
           ? const ApiConfig()
           : ApiConfig.fromJson(jsonDecode(configJson) as Map<String, dynamic>);
+      _xpProfile = xpJson == null
+          ? const XpProfile()
+          : XpProfile.fromJson(jsonDecode(xpJson) as Map<String, dynamic>);
       _loading = false;
     });
+    _syncBoostTicker();
     if (!onboardingSeen && !_onboardingQueued && mounted) {
       _onboardingQueued = true;
       WidgetsBinding.instance.addPostFrameCallback((_) => _showOnboarding());
     }
+  }
+
+  @override
+  void dispose() {
+    _boostTicker?.cancel();
+    super.dispose();
   }
 
   static List<Map<String, dynamic>> _decodeList(String? raw) {
@@ -329,6 +428,11 @@ class _AppShellState extends State<AppShell> {
     );
   }
 
+  Future<void> _saveXpProfile() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_xpProfileKey, jsonEncode(_xpProfile.toJson()));
+  }
+
   Future<void> _saveConfig(ApiConfig config) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_configKey, jsonEncode(config.toJson()));
@@ -359,6 +463,21 @@ class _AppShellState extends State<AppShell> {
     if (index == _tab) return;
     HapticFeedback.selectionClick();
     setState(() => _tab = index);
+  }
+
+  void _syncBoostTicker() {
+    _boostTicker?.cancel();
+    if (!_xpProfile.isBoostActive()) return;
+    _boostTicker = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      if (!_xpProfile.isBoostActive()) {
+        timer.cancel();
+      }
+      setState(() {});
+    });
   }
 
   Future<void> _addMaterial(String name, String content) async {
@@ -583,6 +702,7 @@ class _AppShellState extends State<AppShell> {
           _session = PracticeSession(
             materialName: material.name,
             questions: questions.take(_questionCount).toList(),
+            xpMultiplier: _xpProfile.activeMultiplier(),
           );
         });
       }
@@ -593,7 +713,109 @@ class _AppShellState extends State<AppShell> {
     }
   }
 
+  Future<void> _startWrongCardChallenge() async {
+    if (_wrongs.isEmpty) {
+      _showSnack('暂无错题，先完成一组练习再来抽卡吧');
+      return;
+    }
+    final pool = [..._wrongs]..shuffle(Random());
+    final picked = pool.take(min(5, pool.length)).toList();
+    final proceed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => WrongCardDrawDialog(
+        count: picked.length,
+        canActivateBoost: picked.length >= 5,
+      ),
+    );
+    if (proceed != true || !mounted) return;
+    HapticFeedback.mediumImpact();
+    setState(() {
+      _session = PracticeSession(
+        materialName: '错题抽卡挑战',
+        questions: picked.map((item) => item.question).toList(),
+        isWrongCardChallenge: true,
+        xpMultiplier: _xpProfile.activeMultiplier(),
+      );
+    });
+  }
+
+  Future<void> _dailyCheckIn() async {
+    final today = _dateKey(DateTime.now());
+    if (_xpProfile.lastCheckinDate == today) {
+      _showSnack('今天已经打卡啦，明天继续保持');
+      return;
+    }
+    final yesterday = _dateKey(
+      DateTime.now().subtract(const Duration(days: 1)),
+    );
+    final streak = _xpProfile.lastCheckinDate == yesterday
+        ? _xpProfile.checkinStreak + 1
+        : 1;
+    final earned = min(streak, 5) * 5;
+    setState(() {
+      _xpProfile = _xpProfile.copyWith(
+        totalXp: _xpProfile.totalXp + earned,
+        checkinStreak: streak,
+        lastCheckinDate: today,
+      );
+    });
+    await _saveXpProfile();
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (_) => XpResultDialog(
+        settlement: XpSettlement(
+          baseXp: earned,
+          multiplier: 1,
+          finalXp: earned,
+          isCheckin: true,
+          streak: streak,
+        ),
+        profile: _xpProfile,
+      ),
+    );
+  }
+
+  XpSettlement _settleXp(PracticeResult result) {
+    final baseXp = _baseXpFor(result);
+    final multiplier = max(1, result.xpMultiplier);
+    final finalXp = baseXp * multiplier;
+    final boostActivated =
+        result.isWrongCardChallenge &&
+        result.total >= 5 &&
+        result.correct == result.total;
+    final boostExpiresAt = boostActivated
+        ? DateTime.now().add(const Duration(minutes: 10))
+        : _xpProfile.boostExpiresAt;
+    _xpProfile = _xpProfile.copyWith(
+      totalXp: _xpProfile.totalXp + finalXp,
+      boostExpiresAt: boostExpiresAt,
+    );
+    return XpSettlement(
+      baseXp: baseXp,
+      multiplier: multiplier,
+      finalXp: finalXp,
+      boostActivated: boostActivated,
+    );
+  }
+
+  int _baseXpFor(PracticeResult result) {
+    var xp = 5;
+    for (var i = 0; i < result.questions.length; i++) {
+      final question = result.questions[i];
+      final correct = i < result.correctFlags.length && result.correctFlags[i];
+      if (question.type == 'fill' || question.type == 'subjective') {
+        xp += 1;
+      } else if (correct) {
+        xp += 2;
+      }
+    }
+    return xp;
+  }
+
   Future<void> _completePractice(PracticeResult result) async {
+    final settlement = _settleXp(result);
     setState(() {
       _records.insert(
         0,
@@ -602,14 +824,26 @@ class _AppShellState extends State<AppShell> {
           total: result.total,
           correct: result.correct,
           createdAt: DateTime.now(),
+          xpEarned: settlement.finalXp,
+          isWrongCardChallenge: result.isWrongCardChallenge,
         ),
       );
-      _wrongs.insertAll(0, result.wrongs);
+      if (!result.isWrongCardChallenge) {
+        _wrongs.insertAll(0, result.wrongs);
+      }
       _session = null;
       _tab = 3;
     });
     await _saveRecords();
     await _saveWrongs();
+    await _saveXpProfile();
+    _syncBoostTicker();
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (_) =>
+          XpResultDialog(settlement: settlement, profile: _xpProfile),
+    );
   }
 
   @override
@@ -671,12 +905,19 @@ class _AppShellState extends State<AppShell> {
       ),
       WrongBookPage(
         wrongs: _wrongs,
+        xpProfile: _xpProfile,
+        onDrawCards: _startWrongCardChallenge,
         onClear: () async {
           setState(() => _wrongs = []);
           await _saveWrongs();
         },
       ),
-      StatsPage(records: _records, wrongs: _wrongs),
+      StatsPage(
+        records: _records,
+        wrongs: _wrongs,
+        xpProfile: _xpProfile,
+        onCheckIn: _dailyCheckIn,
+      ),
       ConfigPage(config: _config, onSave: _saveConfig),
     ];
 
@@ -1407,10 +1648,17 @@ class _TypeMeta {
 }
 
 class PracticeSession {
-  const PracticeSession({required this.materialName, required this.questions});
+  const PracticeSession({
+    required this.materialName,
+    required this.questions,
+    this.isWrongCardChallenge = false,
+    this.xpMultiplier = 1,
+  });
 
   final String materialName;
   final List<AiQuestion> questions;
+  final bool isWrongCardChallenge;
+  final int xpMultiplier;
 }
 
 class PracticeResult {
@@ -1419,12 +1667,20 @@ class PracticeResult {
     required this.total,
     required this.correct,
     required this.wrongs,
+    required this.questions,
+    required this.correctFlags,
+    required this.isWrongCardChallenge,
+    required this.xpMultiplier,
   });
 
   final String materialName;
   final int total;
   final int correct;
   final List<WrongItem> wrongs;
+  final List<AiQuestion> questions;
+  final List<bool> correctFlags;
+  final bool isWrongCardChallenge;
+  final int xpMultiplier;
 }
 
 class PracticeScreen extends StatefulWidget {
@@ -1447,6 +1703,7 @@ class _PracticeScreenState extends State<PracticeScreen> {
   final TextEditingController _answerCtrl = TextEditingController();
   final Set<int> _selected = {};
   final List<WrongItem> _wrongs = [];
+  final List<bool> _correctFlags = [];
   int _index = 0;
   int _correct = 0;
   bool _answered = false;
@@ -1485,6 +1742,7 @@ class _PracticeScreenState extends State<PracticeScreen> {
           ),
         );
       }
+      _correctFlags.add(correct);
     });
   }
 
@@ -1496,6 +1754,10 @@ class _PracticeScreenState extends State<PracticeScreen> {
           total: widget.session.questions.length,
           correct: _correct,
           wrongs: _wrongs,
+          questions: widget.session.questions,
+          correctFlags: _correctFlags,
+          isWrongCardChallenge: widget.session.isWrongCardChallenge,
+          xpMultiplier: widget.session.xpMultiplier,
         ),
       );
       return;
@@ -1761,9 +2023,17 @@ class _ResultBox extends StatelessWidget {
 }
 
 class WrongBookPage extends StatelessWidget {
-  const WrongBookPage({super.key, required this.wrongs, required this.onClear});
+  const WrongBookPage({
+    super.key,
+    required this.wrongs,
+    required this.xpProfile,
+    required this.onDrawCards,
+    required this.onClear,
+  });
 
   final List<WrongItem> wrongs;
+  final XpProfile xpProfile;
+  final VoidCallback onDrawCards;
   final VoidCallback onClear;
 
   @override
@@ -1781,6 +2051,12 @@ class WrongBookPage extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 12),
+        _WrongCardEntry(
+          wrongCount: wrongs.length,
+          xpProfile: xpProfile,
+          onTap: onDrawCards,
+        ),
+        const SizedBox(height: 14),
         if (wrongs.isEmpty)
           const _EmptyCard(
             icon: Icons.check_circle_outline,
@@ -1840,11 +2116,103 @@ class WrongBookPage extends StatelessWidget {
   }
 }
 
+class _WrongCardEntry extends StatelessWidget {
+  const _WrongCardEntry({
+    required this.wrongCount,
+    required this.xpProfile,
+    required this.onTap,
+  });
+
+  final int wrongCount;
+  final XpProfile xpProfile;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final canBoost = wrongCount >= 5;
+    final boostText = xpProfile.isBoostActive()
+        ? '三倍经验剩余 ${_durationText(xpProfile.boostRemaining())}'
+        : (canBoost ? '5 题全对，开启 10 分钟三倍经验' : '错题不足 5 道也可练习，但不激活三倍经验');
+    return InkWell(
+      onTap: wrongCount == 0 ? null : onTap,
+      borderRadius: BorderRadius.circular(24),
+      child: Container(
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            colors: [Color(0xFF172554), Color(0xFF2563EB)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(24),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x332563EB),
+              blurRadius: 24,
+              offset: Offset(0, 12),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 54,
+              height: 54,
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.16),
+                borderRadius: BorderRadius.circular(18),
+              ),
+              child: const Icon(
+                Icons.style_rounded,
+                color: Colors.white,
+                size: 30,
+              ),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    '错题抽卡',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    wrongCount == 0 ? '暂无错题，先去完成一组练习吧' : boostText,
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.82),
+                      height: 1.35,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_right_rounded, color: Colors.white),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class StatsPage extends StatelessWidget {
-  const StatsPage({super.key, required this.records, required this.wrongs});
+  const StatsPage({
+    super.key,
+    required this.records,
+    required this.wrongs,
+    required this.xpProfile,
+    required this.onCheckIn,
+  });
 
   final List<PracticeRecord> records;
   final List<WrongItem> wrongs;
+  final XpProfile xpProfile;
+  final VoidCallback onCheckIn;
 
   @override
   Widget build(BuildContext context) {
@@ -1855,6 +2223,8 @@ class StatsPage extends StatelessWidget {
       padding: const EdgeInsets.all(18),
       children: [
         _PageTitle(title: '学习统计', subtitle: '所有数据都只保存在当前手机。'),
+        const SizedBox(height: 16),
+        _XpPanel(profile: xpProfile, onCheckIn: onCheckIn),
         const SizedBox(height: 16),
         GridView.count(
           crossAxisCount: 2,
@@ -1902,12 +2272,14 @@ class StatsPage extends StatelessWidget {
                 style: const TextStyle(fontWeight: FontWeight.w900),
               ),
               subtitle: Text(
-                '${record.correct}/${record.total} 正确 · ${_dateText(record.createdAt)}',
+                '${record.correct}/${record.total} 正确 · +${record.xpEarned} XP · ${_dateText(record.createdAt)}',
               ),
               trailing: Text(
-                '${record.accuracy}%',
+                record.isWrongCardChallenge ? '抽卡' : '${record.accuracy}%',
                 style: TextStyle(
-                  color: record.accuracy >= 60 ? kGreen : kRed,
+                  color: record.isWrongCardChallenge
+                      ? kBlue
+                      : (record.accuracy >= 60 ? kGreen : kRed),
                   fontWeight: FontWeight.w900,
                 ),
               ),
@@ -1949,6 +2321,476 @@ class _StatCard extends StatelessWidget {
             label,
             style: const TextStyle(color: kMuted, fontWeight: FontWeight.w800),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+class _XpPanel extends StatelessWidget {
+  const _XpPanel({required this.profile, required this.onCheckIn});
+
+  final XpProfile profile;
+  final VoidCallback onCheckIn;
+
+  @override
+  Widget build(BuildContext context) {
+    final boostActive = profile.isBoostActive();
+    final progress = profile.levelProgress / 100;
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: kLine),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFEFF6FF),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: const Icon(Icons.bolt_rounded, color: kBlue),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Lv.${profile.level} · ${profile.totalXp} XP',
+                      style: const TextStyle(
+                        fontSize: 19,
+                        fontWeight: FontWeight.w900,
+                        color: kInk,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      '连续打卡 ${profile.checkinStreak} 天',
+                      style: const TextStyle(
+                        color: kMuted,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              FilledButton.tonal(onPressed: onCheckIn, child: const Text('打卡')),
+            ],
+          ),
+          const SizedBox(height: 14),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(999),
+            child: LinearProgressIndicator(
+              value: progress,
+              minHeight: 9,
+              backgroundColor: const Color(0xFFEFF6FF),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: boostActive
+                  ? const Color(0xFFFFF7ED)
+                  : const Color(0xFFF8FAFC),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: boostActive ? const Color(0xFFFDBA74) : kLine,
+              ),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  boostActive
+                      ? Icons.local_fire_department_rounded
+                      : Icons.style_outlined,
+                  color: boostActive ? const Color(0xFFF97316) : kMuted,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    boostActive
+                        ? '三倍经验剩余 ${_durationText(profile.boostRemaining())}'
+                        : '完成 5 道错题抽卡并全对，可开启 10 分钟三倍经验',
+                    style: TextStyle(
+                      color: boostActive ? const Color(0xFF9A3412) : kMuted,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class WrongCardDrawDialog extends StatefulWidget {
+  const WrongCardDrawDialog({
+    super.key,
+    required this.count,
+    required this.canActivateBoost,
+  });
+
+  final int count;
+  final bool canActivateBoost;
+
+  @override
+  State<WrongCardDrawDialog> createState() => _WrongCardDrawDialogState();
+}
+
+class _WrongCardDrawDialogState extends State<WrongCardDrawDialog>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  bool _started = false;
+  bool _done = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1800),
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Future<void> _draw() async {
+    if (_started) return;
+    setState(() => _started = true);
+    HapticFeedback.mediumImpact();
+    await _controller.forward(from: 0);
+    if (!mounted) return;
+    HapticFeedback.heavyImpact();
+    setState(() => _done = true);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog.fullscreen(
+      backgroundColor: const Color(0xFF0F172A),
+      child: SafeArea(
+        child: Stack(
+          children: [
+            const Positioned.fill(child: _MistBackground()),
+            Padding(
+              padding: const EdgeInsets.all(22),
+              child: Column(
+                children: [
+                  Row(
+                    children: [
+                      IconButton(
+                        onPressed: () => Navigator.pop(context, false),
+                        icon: const Icon(Icons.close, color: Colors.white),
+                      ),
+                      const Expanded(
+                        child: Text(
+                          '错题抽卡挑战',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 20,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: () => Navigator.pop(context, true),
+                        child: const Text(
+                          '跳过动画',
+                          style: TextStyle(color: Colors.white70),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 24),
+                  Text(
+                    widget.canActivateBoost
+                        ? '本轮抽取 5 道错题，全对即可开启三倍经验'
+                        : '当前错题不足 5 道，先完成已有错题挑战',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(color: Colors.white70, height: 1.5),
+                  ),
+                  Expanded(
+                    child: Center(
+                      child: AnimatedBuilder(
+                        animation: _controller,
+                        builder: (context, child) {
+                          final t = Curves.easeInOutCubic.transform(
+                            _controller.value,
+                          );
+                          return SizedBox(
+                            height: 310,
+                            child: Stack(
+                              alignment: Alignment.center,
+                              children: List.generate(5, (index) {
+                                final offset = (index - 2) * 46.0 * (1 - t);
+                                final rotate = (index - 2) * 0.09 * (1 - t);
+                                final scale = _done && index == 2 ? 1.12 : 1.0;
+                                return Transform.translate(
+                                  offset: Offset(offset, (index % 2) * 12.0),
+                                  child: Transform.rotate(
+                                    angle:
+                                        rotate + sin(t * pi * 6 + index) * 0.03,
+                                    child: Transform.scale(
+                                      scale: scale,
+                                      child: _DrawCard(
+                                        active: _done && index == 2,
+                                        dimmed: _started && index != 2,
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              }),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                  AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 240),
+                    child: _done
+                        ? Column(
+                            key: const ValueKey('done'),
+                            children: [
+                              const Text(
+                                '抽取成功',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 26,
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                '已抽取 ${widget.count} 道历史错题，准备开始挑战。',
+                                style: const TextStyle(color: Colors.white70),
+                              ),
+                              const SizedBox(height: 18),
+                              FilledButton.icon(
+                                onPressed: () => Navigator.pop(context, true),
+                                icon: const Icon(Icons.play_arrow_rounded),
+                                label: const Text('开始挑战'),
+                              ),
+                            ],
+                          )
+                        : SizedBox(
+                            key: const ValueKey('ready'),
+                            width: double.infinity,
+                            child: FilledButton.icon(
+                              onPressed: _draw,
+                              icon: const Icon(Icons.style_rounded),
+                              label: const Text('开始抽卡'),
+                            ),
+                          ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MistBackground extends StatelessWidget {
+  const _MistBackground();
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: RadialGradient(
+          center: Alignment.topLeft,
+          radius: 1.2,
+          colors: [
+            const Color(0xFF2563EB).withValues(alpha: 0.48),
+            const Color(0xFF172554).withValues(alpha: 0.72),
+            const Color(0xFF020617),
+          ],
+        ),
+      ),
+      child: Stack(
+        children: [
+          Positioned(
+            top: 80,
+            left: -40,
+            child: _MistBlob(
+              size: 220,
+              color: Colors.white.withValues(alpha: 0.10),
+            ),
+          ),
+          Positioned(
+            bottom: 120,
+            right: -70,
+            child: _MistBlob(size: 260, color: kBlue.withValues(alpha: 0.20)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MistBlob extends StatelessWidget {
+  const _MistBlob({required this.size, required this.color});
+
+  final double size;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(shape: BoxShape.circle, color: color),
+    );
+  }
+}
+
+class _DrawCard extends StatelessWidget {
+  const _DrawCard({required this.active, required this.dimmed});
+
+  final bool active;
+  final bool dimmed;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 260),
+      width: 116,
+      height: 168,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: active ? Colors.white : const Color(0xFF1E293B),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(
+          color: active ? const Color(0xFF93C5FD) : Colors.white24,
+          width: active ? 2.2 : 1,
+        ),
+        boxShadow: [
+          if (active)
+            const BoxShadow(
+              color: Color(0x802563EB),
+              blurRadius: 34,
+              spreadRadius: 4,
+            ),
+        ],
+      ),
+      child: Opacity(
+        opacity: dimmed ? 0.55 : 1,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              active ? Icons.quiz_rounded : Icons.school_rounded,
+              color: active ? kBlue : Colors.white70,
+              size: 42,
+            ),
+            const SizedBox(height: 12),
+            Text(
+              active ? '错题卡' : 'AI题库',
+              style: TextStyle(
+                color: active ? kInk : Colors.white70,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class XpResultDialog extends StatelessWidget {
+  const XpResultDialog({
+    super.key,
+    required this.settlement,
+    required this.profile,
+  });
+
+  final XpSettlement settlement;
+  final XpProfile profile;
+
+  @override
+  Widget build(BuildContext context) {
+    final title = settlement.isCheckin
+        ? '打卡成功'
+        : (settlement.boostActivated ? '三倍经验已开启' : '练习完成');
+    final subtitle = settlement.isCheckin
+        ? '连续第 ${settlement.streak} 天，获得 ${settlement.finalXp} XP。'
+        : (settlement.multiplier > 1
+              ? '本轮处于三倍经验，获得 ${settlement.finalXp} XP。'
+              : '本轮获得 ${settlement.finalXp} XP。');
+    return AlertDialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      title: Text(title),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(subtitle, style: const TextStyle(height: 1.5)),
+          const SizedBox(height: 14),
+          _XpLine(label: '基础经验', value: '${settlement.baseXp} XP'),
+          _XpLine(label: '倍率', value: '×${settlement.multiplier}'),
+          _XpLine(label: '最终获得', value: '${settlement.finalXp} XP'),
+          const Divider(height: 24),
+          Text(
+            '当前等级：Lv.${profile.level} · 总经验 ${profile.totalXp} XP',
+            style: const TextStyle(fontWeight: FontWeight.w900),
+          ),
+          if (settlement.boostActivated) ...[
+            const SizedBox(height: 10),
+            const Text(
+              '现在去练习，接下来 10 分钟内经验值 ×3。',
+              style: TextStyle(color: Color(0xFFF97316)),
+            ),
+          ],
+        ],
+      ),
+      actions: [
+        FilledButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('知道了'),
+        ),
+      ],
+    );
+  }
+}
+
+class _XpLine extends StatelessWidget {
+  const _XpLine({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(label, style: const TextStyle(color: kMuted)),
+          ),
+          Text(value, style: const TextStyle(fontWeight: FontWeight.w900)),
         ],
       ),
     );
@@ -2375,6 +3217,16 @@ class _NoteCard extends StatelessWidget {
 
 String _dateText(DateTime date) =>
     '${date.month}/${date.day} ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
+
+String _dateKey(DateTime date) =>
+    '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+
+String _durationText(Duration duration) {
+  final safe = duration.isNegative ? Duration.zero : duration;
+  final minutes = safe.inMinutes.remainder(60).toString().padLeft(2, '0');
+  final seconds = safe.inSeconds.remainder(60).toString().padLeft(2, '0');
+  return '$minutes:$seconds';
+}
 
 String _letter(int index) => String.fromCharCode(65 + index);
 
