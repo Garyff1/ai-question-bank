@@ -446,6 +446,32 @@ class _AppShellState extends State<AppShell> {
     );
   }
 
+  Future<bool> _confirmDanger({
+    required String title,
+    required String message,
+    required String confirmText,
+  }) async {
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(title),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: kRed),
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(confirmText),
+          ),
+        ],
+      ),
+    );
+    return result == true;
+  }
+
   Future<void> _showOnboarding() async {
     if (!mounted) return;
     final finished = await showDialog<bool>(
@@ -461,8 +487,27 @@ class _AppShellState extends State<AppShell> {
 
   void _selectTab(int index) {
     if (index == _tab) return;
-    HapticFeedback.selectionClick();
+    HapticFeedback.lightImpact();
     setState(() => _tab = index);
+  }
+
+  Future<void> _openConfigPage() async {
+    HapticFeedback.selectionClick();
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) => Scaffold(
+          backgroundColor: kBg,
+          appBar: AppBar(
+            title: const Text('API 配置'),
+            backgroundColor: kBg,
+            surfaceTintColor: Colors.transparent,
+          ),
+          body: SafeArea(
+            child: ConfigPage(config: _config, onSave: _saveConfig),
+          ),
+        ),
+      ),
+    );
   }
 
   void _syncBoostTicker() {
@@ -499,6 +544,13 @@ class _AppShellState extends State<AppShell> {
   }
 
   Future<void> _deleteMaterial(StudyMaterial material) async {
+    final ok = await _confirmDanger(
+      title: '删除资料？',
+      message: '删除后，这份资料将从本机移除；已生成的练习记录和错题不会被自动删除。',
+      confirmText: '确认删除',
+    );
+    if (!ok || !mounted) return;
+    HapticFeedback.mediumImpact();
     setState(() {
       _materials.removeWhere((item) => item.id == material.id);
       if (_selectedMaterial?.id == material.id) {
@@ -861,20 +913,26 @@ class _AppShellState extends State<AppShell> {
     }
 
     final pages = [
-      MaterialsPage(
+      HomePage(
         materials: _materials,
+        records: _records,
+        wrongs: _wrongs,
+        xpProfile: _xpProfile,
         configReady: _config.ready,
         onPickFile: _pickFile,
         onPaste: _openPasteDialog,
         onDemo: _addDemoMaterial,
-        onDelete: _deleteMaterial,
         onGenerate: (material) {
           setState(() {
             _selectedMaterial = material;
             _tab = 1;
           });
         },
-        onOpenConfig: () => setState(() => _tab = 4),
+        onGoGenerate: () => setState(() => _tab = 1),
+        onGoWrong: () => setState(() => _tab = 2),
+        onDrawCards: _startWrongCardChallenge,
+        onCheckIn: _dailyCheckIn,
+        onOpenConfig: _openConfigPage,
       ),
       GeneratePage(
         materials: _materials,
@@ -884,9 +942,12 @@ class _AppShellState extends State<AppShell> {
         audience: _audience,
         audiences: _audiences,
         generating: _generating,
-        onMaterialChanged: (material) =>
-            setState(() => _selectedMaterial = material),
+        onMaterialChanged: (material) {
+          HapticFeedback.selectionClick();
+          setState(() => _selectedMaterial = material);
+        },
         onToggleType: (type) {
+          HapticFeedback.selectionClick();
           setState(() {
             if (_selectedTypes.contains(type)) {
               if (_selectedTypes.length == 1) {
@@ -899,26 +960,44 @@ class _AppShellState extends State<AppShell> {
             }
           });
         },
-        onCountChanged: (count) => setState(() => _questionCount = count),
-        onAudienceChanged: (value) => setState(() => _audience = value),
+        onCountChanged: (count) {
+          HapticFeedback.selectionClick();
+          setState(() => _questionCount = count);
+        },
+        onAudienceChanged: (value) {
+          HapticFeedback.selectionClick();
+          setState(() => _audience = value);
+        },
         onGenerate: _generateQuestions,
+        onPickFile: _pickFile,
+        onPaste: _openPasteDialog,
+        onDemo: _addDemoMaterial,
+        onDeleteMaterial: _deleteMaterial,
       ),
       WrongBookPage(
         wrongs: _wrongs,
         xpProfile: _xpProfile,
         onDrawCards: _startWrongCardChallenge,
         onClear: () async {
+          final ok = await _confirmDanger(
+            title: '清空错题本？',
+            message: '这会删除当前手机里的全部错题记录，清空后无法恢复。',
+            confirmText: '确认清空',
+          );
+          if (!ok || !mounted) return;
+          HapticFeedback.mediumImpact();
           setState(() => _wrongs = []);
           await _saveWrongs();
         },
       ),
-      StatsPage(
+      MePage(
         records: _records,
         wrongs: _wrongs,
         xpProfile: _xpProfile,
+        configReady: _config.ready,
         onCheckIn: _dailyCheckIn,
+        onOpenConfig: _openConfigPage,
       ),
-      ConfigPage(config: _config, onSave: _saveConfig),
     ];
 
     return Scaffold(
@@ -928,16 +1007,12 @@ class _AppShellState extends State<AppShell> {
         onDestinationSelected: _selectTab,
         destinations: const [
           NavigationDestination(
-            icon: Icon(Icons.folder_copy_outlined),
-            label: '资料',
+            icon: Icon(Icons.dashboard_rounded),
+            label: '首页',
           ),
           NavigationDestination(icon: Icon(Icons.auto_awesome), label: '出题'),
           NavigationDestination(icon: Icon(Icons.book_outlined), label: '错题'),
-          NavigationDestination(
-            icon: Icon(Icons.bar_chart_rounded),
-            label: '统计',
-          ),
-          NavigationDestination(icon: Icon(Icons.key_rounded), label: '配置'),
+          NavigationDestination(icon: Icon(Icons.person_rounded), label: '我的'),
         ],
       ),
     );
@@ -1212,6 +1287,606 @@ class _LogoMark extends StatelessWidget {
   }
 }
 
+class HomePage extends StatelessWidget {
+  const HomePage({
+    super.key,
+    required this.materials,
+    required this.records,
+    required this.wrongs,
+    required this.xpProfile,
+    required this.configReady,
+    required this.onPickFile,
+    required this.onPaste,
+    required this.onDemo,
+    required this.onGenerate,
+    required this.onGoGenerate,
+    required this.onGoWrong,
+    required this.onDrawCards,
+    required this.onCheckIn,
+    required this.onOpenConfig,
+  });
+
+  final List<StudyMaterial> materials;
+  final List<PracticeRecord> records;
+  final List<WrongItem> wrongs;
+  final XpProfile xpProfile;
+  final bool configReady;
+  final VoidCallback onPickFile;
+  final VoidCallback onPaste;
+  final VoidCallback onDemo;
+  final ValueChanged<StudyMaterial> onGenerate;
+  final VoidCallback onGoGenerate;
+  final VoidCallback onGoWrong;
+  final VoidCallback onDrawCards;
+  final VoidCallback onCheckIn;
+  final VoidCallback onOpenConfig;
+
+  @override
+  Widget build(BuildContext context) {
+    final today = _dateKey(DateTime.now());
+    final todayXp = records
+        .where((record) => _dateKey(record.createdAt) == today)
+        .fold<int>(0, (sum, record) => sum + record.xpEarned);
+    final totalDone = records.fold<int>(0, (sum, record) => sum + record.total);
+    final correct = records.fold<int>(0, (sum, record) => sum + record.correct);
+    final accuracy = totalDone == 0 ? 0 : (correct / totalDone * 100).round();
+    final latestRecord = records.isEmpty ? null : records.first;
+    final latestMaterials = materials.take(3).toList();
+    return ListView(
+      padding: const EdgeInsets.all(18),
+      children: [
+        _HomeHeroCard(
+          xpProfile: xpProfile,
+          configReady: configReady,
+          onOpenConfig: onOpenConfig,
+        ),
+        const SizedBox(height: 16),
+        _LearningStatusCard(
+          todayXp: todayXp,
+          totalDone: totalDone,
+          accuracy: accuracy,
+          wrongCount: wrongs.length,
+          xpProfile: xpProfile,
+          onCheckIn: onCheckIn,
+        ),
+        const SizedBox(height: 16),
+        _HomeActionGrid(
+          onPickFile: onPickFile,
+          onPaste: onPaste,
+          onGenerate: onGoGenerate,
+          onWrongCards: onGoWrong,
+        ),
+        const SizedBox(height: 16),
+        _WrongCardEntry(
+          wrongCount: wrongs.length,
+          xpProfile: xpProfile,
+          onTap: onDrawCards,
+        ),
+        const SizedBox(height: 18),
+        _SectionHeader(
+          title: '最近资料',
+          subtitle: materials.isEmpty ? '等待导入' : '${materials.length} 份',
+        ),
+        const SizedBox(height: 10),
+        if (latestMaterials.isEmpty)
+          _EmptyCard(
+            icon: Icons.upload_file_rounded,
+            title: '先导入一份资料',
+            subtitle: '支持 PDF、Word、TXT、Markdown 等资料。也可以先添加示例资料体验。',
+            action: OutlinedButton.icon(
+              onPressed: onDemo,
+              icon: const Icon(Icons.science_outlined),
+              label: const Text('添加示例资料'),
+            ),
+          )
+        else
+          ...latestMaterials.map(
+            (material) => _RecentMaterialTile(
+              material: material,
+              onGenerate: () => onGenerate(material),
+            ),
+          ),
+        const SizedBox(height: 18),
+        _SectionHeader(
+          title: '最近练习',
+          subtitle: latestRecord == null
+              ? '暂无记录'
+              : _dateText(latestRecord.createdAt),
+        ),
+        const SizedBox(height: 10),
+        if (latestRecord == null)
+          const _EmptyCard(
+            icon: Icons.history_rounded,
+            title: '还没有练习记录',
+            subtitle: '生成一组题并完成练习后，这里会显示最近一次结果。',
+          )
+        else
+          _PracticeRecordTile(record: latestRecord),
+      ],
+    );
+  }
+}
+
+class _HomeHeroCard extends StatelessWidget {
+  const _HomeHeroCard({
+    required this.xpProfile,
+    required this.configReady,
+    required this.onOpenConfig,
+  });
+
+  final XpProfile xpProfile;
+  final bool configReady;
+  final VoidCallback onOpenConfig;
+
+  @override
+  Widget build(BuildContext context) {
+    final hour = DateTime.now().hour;
+    final greeting = hour < 12 ? '早上好，同学' : (hour < 18 ? '下午好，同学' : '晚上好，同学');
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFF172554), Color(0xFF2563EB), Color(0xFF7C3AED)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(28),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x332563EB),
+            blurRadius: 28,
+            offset: Offset(0, 14),
+          ),
+        ],
+      ),
+      child: Stack(
+        children: [
+          Positioned(
+            right: -30,
+            top: -30,
+            child: Container(
+              width: 140,
+              height: 140,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.white.withValues(alpha: 0.10),
+              ),
+            ),
+          ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const _LogoMark(size: 44),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          greeting,
+                          style: const TextStyle(
+                            color: Colors.white70,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        const Text(
+                          '今天也来巩固一点知识吧',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 23,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+              Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                children: [
+                  _GlassStatusPill(
+                    icon: Icons.bolt_rounded,
+                    label: 'Lv.${xpProfile.level}',
+                    value: '${xpProfile.totalXp} XP',
+                  ),
+                  _GlassStatusPill(
+                    icon: Icons.local_fire_department_rounded,
+                    label: '连续打卡',
+                    value: '${xpProfile.checkinStreak} 天',
+                  ),
+                  _GlassStatusPill(
+                    icon: configReady
+                        ? Icons.check_circle_rounded
+                        : Icons.key_rounded,
+                    label: 'API',
+                    value: configReady ? '已配置' : '待配置',
+                  ),
+                ],
+              ),
+              if (!configReady) ...[
+                const SizedBox(height: 16),
+                FilledButton.tonalIcon(
+                  onPressed: onOpenConfig,
+                  icon: const Icon(Icons.key_rounded),
+                  label: const Text('先配置 API Key'),
+                ),
+              ],
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _GlassStatusPill extends StatelessWidget {
+  const _GlassStatusPill({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: Colors.white, size: 18),
+          const SizedBox(width: 8),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.72),
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              Text(
+                value,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LearningStatusCard extends StatelessWidget {
+  const _LearningStatusCard({
+    required this.todayXp,
+    required this.totalDone,
+    required this.accuracy,
+    required this.wrongCount,
+    required this.xpProfile,
+    required this.onCheckIn,
+  });
+
+  final int todayXp;
+  final int totalDone;
+  final int accuracy;
+  final int wrongCount;
+  final XpProfile xpProfile;
+  final VoidCallback onCheckIn;
+
+  @override
+  Widget build(BuildContext context) {
+    final checkedIn = xpProfile.lastCheckinDate == _dateKey(DateTime.now());
+    final boostActive = xpProfile.isBoostActive();
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: kLine),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  '今日学习状态',
+                  style: TextStyle(
+                    color: kInk,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+              FilledButton.tonalIcon(
+                onPressed: checkedIn ? null : onCheckIn,
+                icon: Icon(
+                  checkedIn ? Icons.check_rounded : Icons.event_available,
+                ),
+                label: Text(checkedIn ? '今日已打卡' : '立即打卡'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              _MiniMetric(
+                icon: Icons.bolt_rounded,
+                label: '今日 XP',
+                value: '+$todayXp',
+              ),
+              const SizedBox(width: 10),
+              _MiniMetric(
+                icon: Icons.task_alt_rounded,
+                label: '累计做题',
+                value: '$totalDone',
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              _MiniMetric(
+                icon: Icons.speed_rounded,
+                label: '正确率',
+                value: '$accuracy%',
+              ),
+              const SizedBox(width: 10),
+              _MiniMetric(
+                icon: Icons.bookmark_remove_outlined,
+                label: '错题',
+                value: '$wrongCount',
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: boostActive
+                  ? const Color(0xFFFFF7ED)
+                  : const Color(0xFFF8FAFC),
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(
+                color: boostActive ? const Color(0xFFFDBA74) : kLine,
+              ),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  boostActive
+                      ? Icons.local_fire_department_rounded
+                      : Icons.style_outlined,
+                  color: boostActive ? const Color(0xFFF97316) : kMuted,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    boostActive
+                        ? '三倍经验进行中 · 剩余 ${_durationText(xpProfile.boostRemaining())}'
+                        : '错题抽卡 5 题全对，可开启 10 分钟三倍经验',
+                    style: TextStyle(
+                      color: boostActive ? const Color(0xFF9A3412) : kMuted,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _HomeActionGrid extends StatelessWidget {
+  const _HomeActionGrid({
+    required this.onPickFile,
+    required this.onPaste,
+    required this.onGenerate,
+    required this.onWrongCards,
+  });
+
+  final VoidCallback onPickFile;
+  final VoidCallback onPaste;
+  final VoidCallback onGenerate;
+  final VoidCallback onWrongCards;
+
+  @override
+  Widget build(BuildContext context) {
+    return GridView.count(
+      crossAxisCount: 2,
+      crossAxisSpacing: 12,
+      mainAxisSpacing: 12,
+      childAspectRatio: 1.35,
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      children: [
+        _HomeActionCard(
+          icon: Icons.upload_file_rounded,
+          title: '上传资料',
+          subtitle: 'PDF / Word / TXT',
+          onTap: onPickFile,
+        ),
+        _HomeActionCard(
+          icon: Icons.edit_note_rounded,
+          title: '粘贴资料',
+          subtitle: '快速录入文本',
+          onTap: onPaste,
+          color: const Color(0xFF10B981),
+        ),
+        _HomeActionCard(
+          icon: Icons.auto_awesome_rounded,
+          title: '开始出题',
+          subtitle: '按步骤生成练习',
+          onTap: onGenerate,
+          color: const Color(0xFF7C3AED),
+        ),
+        _HomeActionCard(
+          icon: Icons.style_rounded,
+          title: '错题抽卡',
+          subtitle: '随机复习薄弱点',
+          onTap: onWrongCards,
+          color: const Color(0xFFF97316),
+        ),
+      ],
+    );
+  }
+}
+
+class _HomeActionCard extends StatelessWidget {
+  const _HomeActionCard({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+    this.color = kBlue,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(22),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(color: kLine),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x070F172A),
+              blurRadius: 18,
+              offset: Offset(0, 8),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Container(
+              width: 42,
+              height: 42,
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.10),
+                borderRadius: BorderRadius.circular(15),
+              ),
+              child: Icon(icon, color: color),
+            ),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    color: kInk,
+                    fontWeight: FontWeight.w900,
+                    fontSize: 16,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  subtitle,
+                  style: const TextStyle(color: kMuted, fontSize: 12),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _RecentMaterialTile extends StatelessWidget {
+  const _RecentMaterialTile({required this.material, required this.onGenerate});
+
+  final StudyMaterial material;
+  final VoidCallback onGenerate;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: kLine),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: const Color(0xFFEFF6FF),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: const Icon(Icons.description_rounded, color: kBlue),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  material.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: kInk,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '${_fileTypeLabel(material.name)} · ${material.content.length} 字 · ${_dateText(material.createdAt)}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: kMuted, fontSize: 12),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          FilledButton.tonal(onPressed: onGenerate, child: const Text('出题')),
+        ],
+      ),
+    );
+  }
+}
+
 class MaterialsPage extends StatelessWidget {
   const MaterialsPage({
     super.key,
@@ -1236,42 +1911,28 @@ class MaterialsPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final totalChars = materials.fold<int>(
+      0,
+      (sum, item) => sum + item.content.length,
+    );
     return ListView(
       padding: const EdgeInsets.all(18),
       children: [
         _HeroHeader(configReady: configReady, onOpenConfig: onOpenConfig),
         const SizedBox(height: 16),
-        Row(
-          children: [
-            Expanded(
-              child: FilledButton.icon(
-                onPressed: onPickFile,
-                icon: const Icon(Icons.upload_file),
-                label: const Text('导入资料文件'),
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: OutlinedButton.icon(
-                onPressed: onPaste,
-                icon: const Icon(Icons.edit_note),
-                label: const Text('粘贴资料'),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 10),
-        OutlinedButton.icon(
-          onPressed: onDemo,
-          icon: const Icon(Icons.science_outlined),
-          label: const Text('没有资料？添加一份示例'),
+        _MaterialActionPanel(
+          materialCount: materials.length,
+          totalChars: totalChars,
+          onPickFile: onPickFile,
+          onPaste: onPaste,
+          onDemo: onDemo,
         ),
         const SizedBox(height: 18),
-        Text(
-          '我的资料',
-          style: Theme.of(
-            context,
-          ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
+        _SectionHeader(
+          title: '我的资料',
+          subtitle: materials.isEmpty
+              ? '等待导入第一份学习资料'
+              : '共 ${materials.length} 份资料',
         ),
         const SizedBox(height: 10),
         if (materials.isEmpty)
@@ -1282,13 +1943,135 @@ class MaterialsPage extends StatelessWidget {
           )
         else
           ...materials.map(
-            (material) => Card(
-              margin: const EdgeInsets.only(bottom: 12),
-              elevation: 0,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(18),
-                side: const BorderSide(color: kLine),
+            (material) => _MaterialCard(
+              material: material,
+              onGenerate: () => onGenerate(material),
+              onDelete: () => onDelete(material),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _MaterialActionPanel extends StatelessWidget {
+  const _MaterialActionPanel({
+    required this.materialCount,
+    required this.totalChars,
+    required this.onPickFile,
+    required this.onPaste,
+    required this.onDemo,
+  });
+
+  final int materialCount;
+  final int totalChars;
+  final VoidCallback onPickFile;
+  final VoidCallback onPaste;
+  final VoidCallback onDemo;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: kLine),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x0A0F172A),
+            blurRadius: 20,
+            offset: Offset(0, 10),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              _MiniMetric(
+                icon: Icons.folder_copy_rounded,
+                label: '资料',
+                value: '$materialCount 份',
               ),
+              const SizedBox(width: 10),
+              _MiniMetric(
+                icon: Icons.notes_rounded,
+                label: '内容',
+                value: '$totalChars 字',
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Expanded(
+                child: FilledButton.icon(
+                  onPressed: onPickFile,
+                  icon: const Icon(Icons.upload_file),
+                  label: const Text('导入资料文件'),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: onPaste,
+                  icon: const Icon(Icons.edit_note),
+                  label: const Text('粘贴资料'),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          OutlinedButton.icon(
+            onPressed: onDemo,
+            icon: const Icon(Icons.science_outlined),
+            label: const Text('没有资料？添加一份示例'),
+            style: OutlinedButton.styleFrom(
+              minimumSize: const Size.fromHeight(46),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MaterialCard extends StatelessWidget {
+  const _MaterialCard({
+    required this.material,
+    required this.onGenerate,
+    required this.onDelete,
+  });
+
+  final StudyMaterial material;
+  final VoidCallback onGenerate;
+  final VoidCallback onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    final type = _fileTypeLabel(material.name);
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: kLine),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x070F172A),
+            blurRadius: 16,
+            offset: Offset(0, 8),
+          ),
+        ],
+      ),
+      child: IntrinsicHeight(
+        child: Row(
+          children: [
+            Container(width: 5, color: _fileTypeColor(type)),
+            Expanded(
               child: Padding(
                 padding: const EdgeInsets.all(16),
                 child: Column(
@@ -1301,7 +2084,7 @@ class MaterialsPage extends StatelessWidget {
                           height: 42,
                           decoration: BoxDecoration(
                             color: const Color(0xFFEFF6FF),
-                            borderRadius: BorderRadius.circular(12),
+                            borderRadius: BorderRadius.circular(14),
                           ),
                           child: const Icon(Icons.description, color: kBlue),
                         ),
@@ -1315,16 +2098,26 @@ class MaterialsPage extends StatelessWidget {
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: const TextStyle(
+                                  fontSize: 16,
                                   fontWeight: FontWeight.w900,
+                                  color: kInk,
                                 ),
                               ),
-                              const SizedBox(height: 4),
-                              Text(
-                                '${material.content.length} 字 · ${_dateText(material.createdAt)}',
-                                style: const TextStyle(
-                                  color: kMuted,
-                                  fontSize: 12,
-                                ),
+                              const SizedBox(height: 5),
+                              Wrap(
+                                spacing: 8,
+                                runSpacing: 6,
+                                children: [
+                                  _TinyBadge(label: type),
+                                  _TinyBadge(
+                                    label: '${material.content.length} 字',
+                                    soft: true,
+                                  ),
+                                  _TinyBadge(
+                                    label: _dateText(material.createdAt),
+                                    soft: true,
+                                  ),
+                                ],
                               ),
                             ],
                           ),
@@ -1336,20 +2129,23 @@ class MaterialsPage extends StatelessWidget {
                       material.content,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(color: kMuted, height: 1.5),
+                      style: const TextStyle(color: kMuted, height: 1.55),
                     ),
                     const SizedBox(height: 14),
                     Row(
                       children: [
                         Expanded(
-                          child: FilledButton(
-                            onPressed: () => onGenerate(material),
-                            child: const Text('生成题目'),
+                          child: FilledButton.icon(
+                            onPressed: onGenerate,
+                            icon: const Icon(Icons.auto_awesome, size: 18),
+                            label: const Text('生成题目'),
                           ),
                         ),
-                        IconButton(
-                          onPressed: () => onDelete(material),
+                        const SizedBox(width: 8),
+                        IconButton.filledTonal(
+                          onPressed: onDelete,
                           icon: const Icon(Icons.delete_outline, color: kRed),
+                          tooltip: '删除资料',
                         ),
                       ],
                     ),
@@ -1357,8 +2153,9 @@ class MaterialsPage extends StatelessWidget {
                 ),
               ),
             ),
-          ),
-      ],
+          ],
+        ),
+      ),
     );
   }
 }
@@ -1445,6 +2242,10 @@ class GeneratePage extends StatelessWidget {
     required this.onCountChanged,
     required this.onAudienceChanged,
     required this.onGenerate,
+    required this.onPickFile,
+    required this.onPaste,
+    required this.onDemo,
+    required this.onDeleteMaterial,
   });
 
   final List<StudyMaterial> materials;
@@ -1459,42 +2260,162 @@ class GeneratePage extends StatelessWidget {
   final ValueChanged<int> onCountChanged;
   final ValueChanged<String> onAudienceChanged;
   final VoidCallback onGenerate;
+  final VoidCallback onPickFile;
+  final VoidCallback onPaste;
+  final VoidCallback onDemo;
+  final ValueChanged<StudyMaterial> onDeleteMaterial;
 
   @override
   Widget build(BuildContext context) {
+    final material = selectedMaterial;
+    final activeMaterial =
+        material ?? (materials.isEmpty ? null : materials.first);
+    final totalChars = materials.fold<int>(
+      0,
+      (sum, item) => sum + item.content.length,
+    );
     return ListView(
       padding: const EdgeInsets.all(18),
       children: [
-        _PageTitle(title: '生成题目', subtitle: '选择资料、题型和数量，AI 将在手机端直接生成练习。'),
+        _PageTitle(title: '出题练习', subtitle: '选择资料、题型和数量，AI 将在手机端直接生成练习。'),
         const SizedBox(height: 16),
-        if (materials.isEmpty)
+        const _FlowStepHeader(
+          step: '01',
+          title: '选择资料',
+          subtitle: '先准备资料，再让 AI 基于内容出题。',
+        ),
+        const SizedBox(height: 10),
+        _MaterialActionPanel(
+          materialCount: materials.length,
+          totalChars: totalChars,
+          onPickFile: onPickFile,
+          onPaste: onPaste,
+          onDemo: onDemo,
+        ),
+        const SizedBox(height: 14),
+        if (materials.isEmpty) ...[
           const _EmptyCard(
             icon: Icons.upload_file,
             title: '请先添加资料',
-            subtitle: '回到资料页导入 PDF、DOCX 或文本资料后，再开始出题。',
-          )
-        else ...[
-          DropdownButtonFormField<StudyMaterial>(
-            initialValue: selectedMaterial,
-            items: materials
-                .map(
-                  (item) => DropdownMenuItem(
-                    value: item,
-                    child: Text(item.name, overflow: TextOverflow.ellipsis),
+            subtitle: '导入文件、粘贴文本或添加示例资料后，就可以继续选择题型。',
+          ),
+        ] else ...[
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: kLine),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      width: 44,
+                      height: 44,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFEFF6FF),
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: const Icon(Icons.menu_book_rounded, color: kBlue),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            '选择练习资料',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w900,
+                              color: kInk,
+                            ),
+                          ),
+                          const SizedBox(height: 3),
+                          Text(
+                            activeMaterial == null
+                                ? '未手动选择时，会默认使用第一份资料'
+                                : '${activeMaterial.content.length} 字 · ${_dateText(activeMaterial.createdAt)}',
+                            style: const TextStyle(
+                              color: kMuted,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                DropdownButtonFormField<StudyMaterial>(
+                  initialValue: activeMaterial,
+                  items: materials
+                      .map(
+                        (item) => DropdownMenuItem(
+                          value: item,
+                          child: Text(
+                            item.name,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: onMaterialChanged,
+                  decoration: InputDecoration(
+                    labelText: '学习资料',
+                    filled: true,
+                    fillColor: const Color(0xFFF8FAFC),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(18),
+                    ),
                   ),
-                )
-                .toList(),
-            onChanged: onMaterialChanged,
-            decoration: const InputDecoration(
-              labelText: '学习资料',
-              border: OutlineInputBorder(),
+                ),
+                if (activeMaterial != null) ...[
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF8FAFC),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: kLine),
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            '当前资料：${activeMaterial.name}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: kMuted,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ),
+                        TextButton.icon(
+                          onPressed: () => onDeleteMaterial(activeMaterial),
+                          icon: const Icon(Icons.delete_outline, size: 18),
+                          label: const Text('删除'),
+                          style: TextButton.styleFrom(foregroundColor: kRed),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ],
             ),
           ),
           const SizedBox(height: 18),
-          const Text(
-            '题型（可多选混合出题）',
-            style: TextStyle(fontWeight: FontWeight.w900, color: kMuted),
+          const _FlowStepHeader(
+            step: '02',
+            title: '选择题型',
+            subtitle: '支持多选混合出题。',
           ),
+          const SizedBox(height: 10),
+          const _SectionHeader(title: '题型选择', subtitle: '可多选混合出题'),
           const SizedBox(height: 10),
           GridView.count(
             crossAxisCount: 2,
@@ -1502,7 +2423,7 @@ class GeneratePage extends StatelessWidget {
             mainAxisSpacing: 12,
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
-            childAspectRatio: 1.85,
+            childAspectRatio: 1.35,
             children:
                 const [
                   _TypeMeta('choice', '单选题', '四选一'),
@@ -1514,18 +2435,29 @@ class GeneratePage extends StatelessWidget {
                   final selected = selectedTypes.contains(meta.type);
                   return InkWell(
                     onTap: () => onToggleType(meta.type),
-                    borderRadius: BorderRadius.circular(18),
+                    borderRadius: BorderRadius.circular(20),
                     child: AnimatedContainer(
                       duration: const Duration(milliseconds: 160),
+                      curve: Curves.easeOutCubic,
+                      padding: const EdgeInsets.all(14),
                       decoration: BoxDecoration(
                         color: selected
                             ? const Color(0xFFEFF6FF)
                             : Colors.white,
-                        borderRadius: BorderRadius.circular(18),
+                        borderRadius: BorderRadius.circular(20),
                         border: Border.all(
                           color: selected ? kBlue : kLine,
                           width: selected ? 2 : 1.4,
                         ),
+                        boxShadow: selected
+                            ? const [
+                                BoxShadow(
+                                  color: Color(0x1A2563EB),
+                                  blurRadius: 18,
+                                  offset: Offset(0, 8),
+                                ),
+                              ]
+                            : null,
                       ),
                       child: Stack(
                         children: [
@@ -1547,6 +2479,12 @@ class GeneratePage extends StatelessWidget {
                             child: Column(
                               mainAxisSize: MainAxisSize.min,
                               children: [
+                                Icon(
+                                  _typeIcon(meta.type),
+                                  color: selected ? kBlue : kMuted,
+                                  size: 28,
+                                ),
+                                const SizedBox(height: 8),
                                 Text(
                                   meta.title,
                                   style: const TextStyle(
@@ -1570,55 +2508,116 @@ class GeneratePage extends StatelessWidget {
                 }).toList(),
           ),
           const SizedBox(height: 22),
-          DropdownButtonFormField<String>(
-            initialValue: audience,
-            items: audiences
-                .map((item) => DropdownMenuItem(value: item, child: Text(item)))
-                .toList(),
-            onChanged: (value) {
-              if (value != null) onAudienceChanged(value);
-            },
-            decoration: const InputDecoration(
-              labelText: '目标群体',
-              border: OutlineInputBorder(),
-            ),
+          const _FlowStepHeader(
+            step: '03',
+            title: '设置练习参数',
+            subtitle: '选择目标群体和本轮题量。',
           ),
-          const SizedBox(height: 22),
-          const Center(
-            child: Text(
-              '题目数量',
-              style: TextStyle(fontWeight: FontWeight.w900, color: kMuted),
+          const SizedBox(height: 10),
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: kLine),
             ),
-          ),
-          const SizedBox(height: 8),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              IconButton.filledTonal(
-                onPressed: questionCount <= 1
-                    ? null
-                    : () => onCountChanged(questionCount - 1),
-                icon: const Icon(Icons.remove),
-              ),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 28),
-                child: Text(
-                  '$questionCount',
-                  style: const TextStyle(
-                    fontSize: 32,
-                    fontWeight: FontWeight.w900,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                DropdownButtonFormField<String>(
+                  initialValue: audience,
+                  items: audiences
+                      .map(
+                        (item) =>
+                            DropdownMenuItem(value: item, child: Text(item)),
+                      )
+                      .toList(),
+                  onChanged: (value) {
+                    if (value != null) onAudienceChanged(value);
+                  },
+                  decoration: InputDecoration(
+                    labelText: '目标群体',
+                    filled: true,
+                    fillColor: const Color(0xFFF8FAFC),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(18),
+                    ),
                   ),
                 ),
-              ),
-              IconButton.filledTonal(
-                onPressed: questionCount >= 20
-                    ? null
-                    : () => onCountChanged(questionCount + 1),
-                icon: const Icon(Icons.add),
-              ),
-            ],
+                const SizedBox(height: 16),
+                const Center(
+                  child: Text(
+                    '题目数量',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w900,
+                      color: kMuted,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 10,
+                  ),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF8FAFC),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: kLine),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      IconButton.filledTonal(
+                        onPressed: questionCount <= 1
+                            ? null
+                            : () => onCountChanged(questionCount - 1),
+                        icon: const Icon(Icons.remove),
+                      ),
+                      Text(
+                        '$questionCount',
+                        style: const TextStyle(
+                          fontSize: 32,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      IconButton.filledTonal(
+                        onPressed: questionCount >= 20
+                            ? null
+                            : () => onCountChanged(questionCount + 1),
+                        icon: const Icon(Icons.add),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [5, 10, 15, 20].map((count) {
+                    final selected = questionCount == count;
+                    return ChoiceChip(
+                      label: Text('$count 题'),
+                      selected: selected,
+                      onSelected: (_) => onCountChanged(count),
+                    );
+                  }).toList(),
+                ),
+                const SizedBox(height: 10),
+                const Text(
+                  '范围 1—20 题；题型多选时会混合生成。',
+                  style: TextStyle(color: kMuted, fontSize: 12),
+                ),
+              ],
+            ),
           ),
           const SizedBox(height: 24),
+          const _FlowStepHeader(
+            step: '04',
+            title: '生成题目',
+            subtitle: '确认设置后，AI 会生成本轮练习。',
+          ),
+          const SizedBox(height: 10),
           FilledButton.icon(
             onPressed: generating ? null : onGenerate,
             icon: generating
@@ -2038,6 +3037,13 @@ class WrongBookPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final grouped = <String, List<WrongItem>>{};
+    for (final item in wrongs) {
+      grouped.putIfAbsent(item.materialName, () => []).add(item);
+    }
+    final groups = grouped.entries.toList()
+      ..sort((a, b) => b.value.length.compareTo(a.value.length));
+    final weakest = groups.isEmpty ? null : groups.first;
     return ListView(
       padding: const EdgeInsets.all(18),
       children: [
@@ -2051,6 +3057,13 @@ class WrongBookPage extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 12),
+        _WrongOverviewCard(
+          total: wrongs.length,
+          groupCount: groups.length,
+          weakestName: weakest?.key,
+          weakestCount: weakest?.value.length ?? 0,
+        ),
+        const SizedBox(height: 14),
         _WrongCardEntry(
           wrongCount: wrongs.length,
           xpProfile: xpProfile,
@@ -2063,55 +3076,187 @@ class WrongBookPage extends StatelessWidget {
             title: '暂无错题',
             subtitle: '做题后答错的题目会自动收录到这里。',
           )
-        else
-          ...wrongs.map(
-            (item) => Card(
-              margin: const EdgeInsets.only(bottom: 12),
-              elevation: 0,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(18),
-                side: const BorderSide(color: kLine),
+        else ...[
+          _SectionHeader(title: '错题收纳', subtitle: '按资料自动归类'),
+          const SizedBox(height: 10),
+          ...groups.map((group) => _WrongMaterialGroup(group: group)),
+        ],
+      ],
+    );
+  }
+}
+
+class _WrongOverviewCard extends StatelessWidget {
+  const _WrongOverviewCard({
+    required this.total,
+    required this.groupCount,
+    required this.weakestName,
+    required this.weakestCount,
+  });
+
+  final int total;
+  final int groupCount;
+  final String? weakestName;
+  final int weakestCount;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: kLine),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              _MiniMetric(
+                icon: Icons.error_outline_rounded,
+                label: '错题',
+                value: '$total 道',
               ),
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '${item.question.label} · ${item.materialName}',
-                      style: const TextStyle(
-                        color: kMuted,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      item.question.question,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w900,
-                        height: 1.45,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      '你的答案：${item.userAnswer}',
-                      style: const TextStyle(color: kRed),
-                    ),
-                    Text(
-                      '参考答案：${_answerString(item.question.answer)}',
-                      style: const TextStyle(color: kGreen),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      item.question.explanation,
-                      style: const TextStyle(color: kMuted, height: 1.45),
-                    ),
-                  ],
+              const SizedBox(width: 10),
+              _MiniMetric(
+                icon: Icons.inventory_2_outlined,
+                label: '资料收纳',
+                value: '$groupCount 组',
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFFFBEB),
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: const Color(0xFFFDE68A)),
+            ),
+            child: Row(
+              children: [
+                const Icon(
+                  Icons.lightbulb_outline_rounded,
+                  color: Color(0xFFF59E0B),
                 ),
-              ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    weakestName == null
+                        ? '暂无薄弱资料，完成练习后会自动分析。'
+                        : '当前薄弱资料：$weakestName（$weakestCount 道错题）',
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Color(0xFF92400E),
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
-      ],
+        ],
+      ),
+    );
+  }
+}
+
+class _WrongMaterialGroup extends StatelessWidget {
+  const _WrongMaterialGroup({required this.group});
+
+  final MapEntry<String, List<WrongItem>> group;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 14),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: kLine),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFEFF6FF),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: const Icon(Icons.folder_special_outlined, color: kBlue),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  group.key,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: kInk,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+              _TinyBadge(label: '${group.value.length} 道'),
+            ],
+          ),
+          const SizedBox(height: 12),
+          ...group.value.map((item) => _WrongQuestionCard(item: item)),
+        ],
+      ),
+    );
+  }
+}
+
+class _WrongQuestionCard extends StatelessWidget {
+  const _WrongQuestionCard({required this.item});
+
+  final WrongItem item;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: kLine),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '${item.question.label} · ${_dateText(item.createdAt)}',
+            style: const TextStyle(color: kMuted, fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            item.question.question,
+            style: const TextStyle(fontWeight: FontWeight.w900, height: 1.45),
+          ),
+          const SizedBox(height: 8),
+          Text('你的答案：${item.userAnswer}', style: const TextStyle(color: kRed)),
+          Text(
+            '参考答案：${_answerString(item.question.answer)}',
+            style: const TextStyle(color: kGreen),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            item.question.explanation,
+            style: const TextStyle(color: kMuted, height: 1.45),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -2200,52 +3345,83 @@ class _WrongCardEntry extends StatelessWidget {
   }
 }
 
-class StatsPage extends StatelessWidget {
-  const StatsPage({
+class MePage extends StatelessWidget {
+  const MePage({
     super.key,
     required this.records,
     required this.wrongs,
     required this.xpProfile,
+    required this.configReady,
     required this.onCheckIn,
+    required this.onOpenConfig,
   });
 
   final List<PracticeRecord> records;
   final List<WrongItem> wrongs;
   final XpProfile xpProfile;
+  final bool configReady;
   final VoidCallback onCheckIn;
+  final VoidCallback onOpenConfig;
 
   @override
   Widget build(BuildContext context) {
     final total = records.fold<int>(0, (sum, item) => sum + item.total);
     final correct = records.fold<int>(0, (sum, item) => sum + item.correct);
     final accuracy = total == 0 ? 0 : (correct / total * 100).round();
+    final now = DateTime.now();
+    final weeklyValues = List.generate(7, (index) {
+      final day = now.subtract(Duration(days: 6 - index));
+      final key = _dateKey(day);
+      return records
+          .where((record) => _dateKey(record.createdAt) == key)
+          .fold<int>(0, (sum, record) => sum + record.total);
+    });
+    final weeklyTotal = weeklyValues.fold<int>(0, (sum, value) => sum + value);
     return ListView(
       padding: const EdgeInsets.all(18),
       children: [
-        _PageTitle(title: '学习统计', subtitle: '所有数据都只保存在当前手机。'),
+        _PageTitle(title: '我的', subtitle: '学习数据、API 配置和项目信息都在这里。'),
         const SizedBox(height: 16),
         _XpPanel(profile: xpProfile, onCheckIn: onCheckIn),
+        const SizedBox(height: 16),
+        _ConfigEntryCard(configReady: configReady, onTap: onOpenConfig),
+        const SizedBox(height: 16),
+        _WeeklyTrendCard(values: weeklyValues, total: weeklyTotal),
         const SizedBox(height: 16),
         GridView.count(
           crossAxisCount: 2,
           crossAxisSpacing: 12,
           mainAxisSpacing: 12,
+          childAspectRatio: 1.18,
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
           children: [
-            _StatCard(label: '累计做题', value: '$total'),
-            _StatCard(label: '正确题数', value: '$correct'),
-            _StatCard(label: '正确率', value: '$accuracy%'),
-            _StatCard(label: '错题数', value: '${wrongs.length}'),
+            _StatCard(
+              icon: Icons.task_alt_rounded,
+              label: '累计做题',
+              value: '$total',
+            ),
+            _StatCard(
+              icon: Icons.verified_rounded,
+              label: '正确题数',
+              value: '$correct',
+              color: kGreen,
+            ),
+            _StatCard(
+              icon: Icons.speed_rounded,
+              label: '正确率',
+              value: '$accuracy%',
+            ),
+            _StatCard(
+              icon: Icons.bookmark_remove_outlined,
+              label: '错题数',
+              value: '${wrongs.length}',
+              color: kRed,
+            ),
           ],
         ),
         const SizedBox(height: 18),
-        Text(
-          '练习历史',
-          style: Theme.of(
-            context,
-          ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
-        ),
+        _SectionHeader(title: '练习历史', subtitle: '${records.length} 次记录'),
         const SizedBox(height: 10),
         if (records.isEmpty)
           const _EmptyCard(
@@ -2254,47 +3430,26 @@ class StatsPage extends StatelessWidget {
             subtitle: '完成一组题目后会显示在这里。',
           )
         else
-          ...records.map(
-            (record) => ListTile(
-              tileColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-                side: const BorderSide(color: kLine),
-              ),
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 16,
-                vertical: 8,
-              ),
-              title: Text(
-                record.materialName,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontWeight: FontWeight.w900),
-              ),
-              subtitle: Text(
-                '${record.correct}/${record.total} 正确 · +${record.xpEarned} XP · ${_dateText(record.createdAt)}',
-              ),
-              trailing: Text(
-                record.isWrongCardChallenge ? '抽卡' : '${record.accuracy}%',
-                style: TextStyle(
-                  color: record.isWrongCardChallenge
-                      ? kBlue
-                      : (record.accuracy >= 60 ? kGreen : kRed),
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-            ),
-          ),
+          ...records.map((record) => _PracticeRecordTile(record: record)),
+        const SizedBox(height: 8),
+        const _AboutAppCard(),
       ],
     );
   }
 }
 
 class _StatCard extends StatelessWidget {
-  const _StatCard({required this.label, required this.value});
+  const _StatCard({
+    required this.icon,
+    required this.label,
+    required this.value,
+    this.color = kBlue,
+  });
 
+  final IconData icon;
   final String label;
   final String value;
+  final Color color;
 
   @override
   Widget build(BuildContext context) {
@@ -2306,20 +3461,316 @@ class _StatCard extends StatelessWidget {
         border: Border.all(color: kLine),
       ),
       child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
+          Container(
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.10),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Icon(icon, color: color, size: 20),
+          ),
           Text(
             value,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 30,
               fontWeight: FontWeight.w900,
-              color: kBlue,
+              color: color,
             ),
           ),
-          const SizedBox(height: 8),
           Text(
             label,
             style: const TextStyle(color: kMuted, fontWeight: FontWeight.w800),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _WeeklyTrendCard extends StatelessWidget {
+  const _WeeklyTrendCard({required this.values, required this.total});
+
+  final List<int> values;
+  final int total;
+
+  @override
+  Widget build(BuildContext context) {
+    final maxValue = values.isEmpty ? 1 : max(1, values.reduce(max));
+    final now = DateTime.now();
+    const weekNames = ['一', '二', '三', '四', '五', '六', '日'];
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: kLine),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFEFF6FF),
+                  borderRadius: BorderRadius.circular(15),
+                ),
+                child: const Icon(Icons.show_chart_rounded, color: kBlue),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      '本周练习趋势',
+                      style: TextStyle(
+                        color: kInk,
+                        fontSize: 17,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      '近 7 天共完成 $total 道题',
+                      style: const TextStyle(
+                        color: kMuted,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              _TinyBadge(label: total >= 30 ? '节奏不错' : '继续加油'),
+            ],
+          ),
+          const SizedBox(height: 18),
+          SizedBox(
+            height: 120,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: List.generate(values.length, (index) {
+                final value = values[index];
+                final day = now.subtract(
+                  Duration(days: values.length - 1 - index),
+                );
+                final label = weekNames[day.weekday - 1];
+                final height = 22 + (value / maxValue) * 78;
+                return Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        Text(
+                          '$value',
+                          style: const TextStyle(
+                            color: kMuted,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        const SizedBox(height: 5),
+                        AnimatedContainer(
+                          duration: const Duration(milliseconds: 260),
+                          height: height,
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              colors: [Color(0xFF93C5FD), kBlue],
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                            ),
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          label,
+                          style: const TextStyle(
+                            color: kMuted,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              }),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PracticeRecordTile extends StatelessWidget {
+  const _PracticeRecordTile({required this.record});
+
+  final PracticeRecord record;
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = record.isWrongCardChallenge
+        ? kBlue
+        : (record.accuracy >= 60 ? kGreen : kRed);
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: kLine),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: accent.withValues(alpha: 0.10),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Icon(
+              record.isWrongCardChallenge
+                  ? Icons.style_rounded
+                  : Icons.assignment_turned_in_outlined,
+              color: accent,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  record.materialName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: kInk,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '${record.correct}/${record.total} 正确 · +${record.xpEarned} XP · ${_dateText(record.createdAt)}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: kMuted, fontSize: 12),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 10),
+          Text(
+            record.isWrongCardChallenge ? '抽卡' : '${record.accuracy}%',
+            style: TextStyle(color: accent, fontWeight: FontWeight.w900),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ConfigEntryCard extends StatelessWidget {
+  const _ConfigEntryCard({required this.configReady, required this.onTap});
+
+  final bool configReady;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(24),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: kLine),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                color: configReady
+                    ? const Color(0xFFDCFCE7)
+                    : const Color(0xFFFFF7ED),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Icon(
+                configReady ? Icons.check_circle_rounded : Icons.key_rounded,
+                color: configReady ? kGreen : const Color(0xFFF97316),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'API 配置',
+                    style: TextStyle(
+                      color: kInk,
+                      fontSize: 17,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    configReady ? '已配置模型接口，可继续生成题目。' : '首次使用前，请配置自己的 API Key。',
+                    style: const TextStyle(color: kMuted, height: 1.35),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            const Icon(Icons.chevron_right_rounded, color: kMuted),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _AboutAppCard extends StatelessWidget {
+  const _AboutAppCard();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: kLine),
+      ),
+      child: const Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '关于 AI题库',
+            style: TextStyle(
+              color: kInk,
+              fontSize: 17,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          SizedBox(height: 8),
+          Text(
+            'v2.0.0 候选版 · 个人 AI 学习训练台。官网：aichuti.ccwu.cc，项目开源在 GitHub：Garyff1/ai-question-bank。',
+            style: TextStyle(color: kMuted, height: 1.5),
           ),
         ],
       ),
@@ -3112,6 +4563,192 @@ $materialText
   }
 }
 
+class _SectionHeader extends StatelessWidget {
+  const _SectionHeader({required this.title, required this.subtitle});
+
+  final String title;
+  final String subtitle;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        Expanded(
+          child: Text(
+            title,
+            style: const TextStyle(
+              fontSize: 21,
+              fontWeight: FontWeight.w900,
+              color: kInk,
+            ),
+          ),
+        ),
+        Text(
+          subtitle,
+          style: const TextStyle(color: kMuted, fontWeight: FontWeight.w700),
+        ),
+      ],
+    );
+  }
+}
+
+class _FlowStepHeader extends StatelessWidget {
+  const _FlowStepHeader({
+    required this.step,
+    required this.title,
+    required this.subtitle,
+  });
+
+  final String step;
+  final String title;
+  final String subtitle;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 38,
+          height: 38,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              colors: [Color(0xFF2563EB), Color(0xFF7C3AED)],
+            ),
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: Text(
+            step,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 12,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: const TextStyle(
+                  color: kInk,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              const SizedBox(height: 3),
+              Text(
+                subtitle,
+                style: const TextStyle(
+                  color: kMuted,
+                  height: 1.35,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _MiniMetric extends StatelessWidget {
+  const _MiniMetric({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF8FAFC),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: kLine),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 34,
+              height: 34,
+              decoration: BoxDecoration(
+                color: const Color(0xFFEFF6FF),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(icon, size: 18, color: kBlue),
+            ),
+            const SizedBox(width: 9),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    value,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w900,
+                      color: kInk,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    label,
+                    style: const TextStyle(
+                      color: kMuted,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _TinyBadge extends StatelessWidget {
+  const _TinyBadge({required this.label, this.soft = false});
+
+  final String label;
+  final bool soft;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: soft ? const Color(0xFFF1F5F9) : const Color(0xFFEFF6FF),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: soft ? kMuted : kBlue,
+          fontSize: 11,
+          fontWeight: FontWeight.w900,
+        ),
+      ),
+    );
+  }
+}
+
 class _PageTitle extends StatelessWidget {
   const _PageTitle({required this.title, required this.subtitle});
 
@@ -3143,11 +4780,13 @@ class _EmptyCard extends StatelessWidget {
     required this.icon,
     required this.title,
     required this.subtitle,
+    this.action,
   });
 
   final IconData icon;
   final String title;
   final String subtitle;
+  final Widget? action;
 
   @override
   Widget build(BuildContext context) {
@@ -3173,6 +4812,7 @@ class _EmptyCard extends StatelessWidget {
             textAlign: TextAlign.center,
             style: const TextStyle(color: kMuted, height: 1.5),
           ),
+          if (action != null) ...[const SizedBox(height: 16), action!],
         ],
       ),
     );
@@ -3221,6 +4861,33 @@ String _dateText(DateTime date) =>
 String _dateKey(DateTime date) =>
     '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
 
+String _fileTypeLabel(String name) {
+  final lower = name.toLowerCase();
+  if (lower.endsWith('.pdf')) return 'PDF';
+  if (lower.endsWith('.doc') || lower.endsWith('.docx')) return 'Word';
+  if (lower.endsWith('.md')) return 'MD';
+  if (lower.endsWith('.csv')) return 'CSV';
+  if (lower.endsWith('.json')) return 'JSON';
+  return 'TXT';
+}
+
+Color _fileTypeColor(String type) {
+  switch (type) {
+    case 'PDF':
+      return const Color(0xFFEF4444);
+    case 'Word':
+      return const Color(0xFF2563EB);
+    case 'MD':
+      return const Color(0xFF8B5CF6);
+    case 'CSV':
+      return const Color(0xFF10B981);
+    case 'JSON':
+      return const Color(0xFFF59E0B);
+    default:
+      return const Color(0xFF64748B);
+  }
+}
+
 String _durationText(Duration duration) {
   final safe = duration.isNegative ? Duration.zero : duration;
   final minutes = safe.inMinutes.remainder(60).toString().padLeft(2, '0');
@@ -3251,6 +4918,21 @@ String _typeLabel(String type) {
       return '主观题';
     default:
       return '单选题';
+  }
+}
+
+IconData _typeIcon(String type) {
+  switch (type) {
+    case 'multi_choice':
+      return Icons.checklist_rounded;
+    case 'true_false':
+      return Icons.fact_check_outlined;
+    case 'fill':
+      return Icons.edit_rounded;
+    case 'subjective':
+      return Icons.short_text_rounded;
+    default:
+      return Icons.format_list_bulleted_rounded;
   }
 }
 
