@@ -56,8 +56,6 @@ a{color:inherit}
 .links a{color:#475569;font-size:13.5px;font-weight:800;text-decoration:none;padding:10px 2px;position:relative;transition:color .2s}
 .links a:hover,.links a.act{color:var(--blue)}
 .links a.act::after{content:'';position:absolute;left:2px;right:2px;bottom:0;height:3px;background:var(--blue);border-radius:999px}
-.cart{display:inline-flex;align-items:center;gap:6px;background:var(--bl);border:1.5px solid var(--bs);color:var(--blue);font-size:12.5px;font-weight:800;padding:9px 15px;border-radius:999px;cursor:pointer;transition:.2s;box-shadow:0 8px 18px -14px rgba(37,99,235,.55)}
-.cart:hover{transform:translateY(-1px);background:#fff}
 
 /* Hero：左侧视频卡片 + 右移文字 */
 .hero{position:relative;background:linear-gradient(165deg,#0b1220,#1d2d52 52%,#16213a);overflow:hidden;padding:88px 0 96px;color:#fff;min-height:610px}
@@ -112,8 +110,9 @@ a{color:inherit}
 .install-tips li b{display:block;color:var(--ink);font-size:13px;margin-bottom:4px}
 
 /* 智能出题 */
-.steps{display:grid;grid-template-columns:repeat(4,1fr);margin-bottom:56px}
-.step{position:relative;text-align:center;padding:0 14px}.step:not(:last-child)::after{content:'';position:absolute;top:17px;right:-2px;width:calc(100% - 30px);height:2px;background:var(--line)}
+.steps{position:relative;display:grid;grid-template-columns:repeat(4,1fr);margin-bottom:56px}
+.steps::before{content:'';position:absolute;top:17px;left:calc(12.5% + 13px);right:calc(12.5% + 13px);height:2px;background:var(--line)}
+.step{position:relative;text-align:center;padding:0 14px}
 .sn{width:26px;height:26px;border-radius:50%;background:var(--amber);color:#fff;font-size:12px;font-weight:900;display:flex;align-items:center;justify-content:center;margin:0 auto 12px;position:relative;z-index:1}
 .se{font-size:26px;margin-bottom:8px}.step h4{font-size:14.5px;font-weight:900;margin-bottom:5px}.step p{font-size:12px;color:var(--muted);line-height:1.55}
 .preview{display:flex;justify-content:center}.prevcard{position:relative;max-width:520px;width:100%;background:var(--paper);border:1px solid var(--line);border-radius:17px;padding:28px 23px 22px;box-shadow:0 12px 28px -16px rgba(15,23,42,.22)}
@@ -138,21 +137,21 @@ a{color:inherit}
 .ringval{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:21px;font-weight:900;color:var(--ink)}.stiles{display:flex;gap:26px}.stiles div{text-align:center}.stiles b{display:block;font-size:19px;font-weight:900;color:var(--ink)}.stiles span{font-size:11px;color:var(--muted)}
 
 /* API 配置 */
-.battery-wrap{display:flex;flex-direction:column;align-items:center;gap:10px;margin-bottom:50px}.batsvg{width:200px;height:100px}.batshell{fill:none;stroke:rgba(255,255,255,.35);stroke-width:3}.batnub{fill:rgba(255,255,255,.35)}.batfill{fill:var(--red)}.batlabel{font-size:13px;font-weight:900;color:#aab3c8;letter-spacing:.3px;transition:color .3s}
+.battery-wrap{display:flex;flex-direction:column;align-items:center;gap:10px;margin-bottom:50px}.batsvg{width:200px;height:100px}.batshell{fill:none;stroke:rgba(255,255,255,.38);stroke-width:3}.batnub{fill:rgba(255,255,255,.38)}.batfill{fill:#EF4444;transition:fill .16s linear}.batlabel{font-size:13px;font-weight:900;color:#aab3c8;letter-spacing:.3px;transition:color .3s}
 .provgrid{display:grid;grid-template-columns:repeat(2,1fr);gap:16px;margin-bottom:52px}.provcard{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.13);border-radius:14px;padding:18px 20px}
 .provh{display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap}.provh b{font-size:14.5px;color:#fff}.provtag{font-size:10.5px;font-weight:900;padding:2px 8px;border-radius:999px;background:rgba(245,158,11,.18);color:#FBBF24}
 .provdesc{font-size:12px;color:#aab3c8;margin-bottom:10px;line-height:1.6}.provrow{display:flex;justify-content:space-between;gap:10px;font-size:11px;color:#8d97ad;margin-top:5px}.provrow span:last-child{font-family:ui-monospace,SFMono-Regular,"SF Mono",Consolas,monospace;color:#93C5FD;text-align:right}
 .keyguide{margin:-24px 0 46px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);border-radius:24px;padding:24px}.keyguide h3{font-size:21px;color:#fff;margin-bottom:8px}.keylead{font-size:13px;color:#aab3c8;line-height:1.75;margin-bottom:18px}.keylist{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}.keyitem{background:rgba(15,23,42,.38);border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:16px}.keyitem b{display:flex;align-items:center;gap:8px;color:#fff;font-size:14px;margin-bottom:8px}.keyitem p{color:#aab3c8;font-size:12px;line-height:1.65;margin-bottom:10px}.keyitem a{display:inline-flex;align-items:center;color:#93C5FD;text-decoration:none;font-size:12px;font-weight:900}.keyitem a:hover{text-decoration:underline}.keytips{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:16px}.keytips span{background:rgba(37,99,235,.16);border:1px solid rgba(96,165,250,.25);color:#BFDBFE;border-radius:13px;padding:10px 12px;font-size:11.5px;line-height:1.55}
-.steps-dark .step h4{color:#fff}.steps-dark .step p{color:#aab3c8}.steps-dark .step:not(:last-child)::after{background:rgba(255,255,255,.16)}
+.steps-dark::before{background:rgba(255,255,255,.16)}.steps-dark .step h4{color:#fff}.steps-dark .step p{color:#aab3c8}
 .apinote{text-align:center;font-size:12.5px;color:#8d97ad;margin:-30px auto 46px;max-width:500px;line-height:1.7}.apicta{display:flex;gap:14px;justify-content:center;flex-wrap:wrap}
 .foot{background:#fff;border-top:1px solid var(--line);padding:26px 0}.footin{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;font-size:13px;color:var(--muted)}.footlinks{display:flex;gap:18px;align-items:center;flex-wrap:wrap}.footlinks a{color:var(--muted);text-decoration:none}.footlinks a:hover{color:var(--blue)}
 
 @media(max-width:980px){
   .hero{padding:76px 0 84px}.hero-grid{grid-template-columns:1fr;gap:34px}.video-card{max-width:520px;margin:0 auto}.hero-copy{margin-left:0;justify-self:center}.hero h1{font-size:38px}
-  .vgrid,.rgrid,.provgrid,.keylist{grid-template-columns:1fr}.keytips{grid-template-columns:1fr}.install-tips ul{grid-template-columns:1fr}.steps{grid-template-columns:repeat(2,1fr);row-gap:30px}.step:nth-child(2)::after{display:none}.sechead h2{font-size:28px}.wrap{padding:0 22px}
+  .vgrid,.rgrid,.provgrid,.keylist{grid-template-columns:1fr}.keytips{grid-template-columns:1fr}.install-tips ul{grid-template-columns:1fr}.steps{grid-template-columns:repeat(2,1fr);row-gap:30px}.steps::before{display:none}.sechead h2{font-size:28px}.wrap{padding:0 22px}
 }
 @media(max-width:680px){
-  .links{display:none}.cart{padding:8px 12px}.cart span{display:none}.hero h1{font-size:32px}.hero p{font-size:14px}.herobtns,.apicta{flex-direction:column;width:100%}.herobtns .btn,.apicta .btn{width:100%}.sec{padding:72px 0}.steps{grid-template-columns:1fr}.step::after{display:none!important}
+  .links{display:none}.hero h1{font-size:32px}.hero p{font-size:14px}.herobtns,.apicta{flex-direction:column;width:100%}.herobtns .btn,.apicta .btn{width:100%}.sec{padding:72px 0}.steps{grid-template-columns:1fr}.steps::before{display:none!important}
 }
 @media (prefers-reduced-motion:reduce){
   *{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important;scroll-behavior:auto!important}
@@ -172,10 +171,6 @@ a{color:inherit}
       <a href="#records" data-sec="records">学习记录</a>
       <a href="#apikey" data-sec="apikey">API 配置</a>
     </nav>
-    <button class="cart" type="button" aria-label="打开我的题库">
-      <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M6 6l1.5 12a2 2 0 002 2h5a2 2 0 002-2L18 6M9 6V4a2 2 0 012-2h2a2 2 0 012 2v2"/></svg>
-      <span>我的题库 (0)</span>
-    </button>
   </div>
 </header>
 
@@ -345,9 +340,14 @@ a{color:inherit}
     </div>
     <div class="battery-wrap reveal" id="batWrap">
       <svg viewBox="0 0 200 100" class="batsvg">
-        <rect x="6" y="14" width="168" height="72" rx="13" class="batshell"/>
+        <defs>
+          <clipPath id="batClip">
+            <rect x="16" y="24" width="148" height="52" rx="7"/>
+          </clipPath>
+        </defs>
+        <rect x="6" y="14" width="168" height="72" rx="14" class="batshell"/>
         <rect x="176" y="38" width="16" height="24" rx="4" class="batnub"/>
-        <rect x="15" y="23" width="0" height="54" rx="7" class="batfill" id="batFill"/>
+        <rect x="16" y="24" width="0" height="52" rx="7" class="batfill" id="batFill" clip-path="url(#batClip)"/>
       </svg>
       <div class="batlabel" id="batLabel">未连接</div>
     </div>
@@ -488,15 +488,14 @@ let batDone=false;
 function animateBattery(){
   const fill=document.getElementById('batFill');
   const label=document.getElementById('batLabel');
-  const maxW=154,start=performance.now(),dur=1300;
+  const maxW=148,start=performance.now(),dur=1400;
   function f(now){
     const t=Math.min(1,(now-start)/dur);
     const eased=1-Math.pow(1-t,3);
     fill.setAttribute('width',eased*maxW);
-    let col='#EF4444';
-    if(eased>.33)col='#F59E0B';
-    if(eased>.7)col='#10B981';
-    fill.setAttribute('fill',col);
+    const hue=Math.round(142*eased);
+    const light=Math.round(57-9*eased);
+    fill.style.fill=`hsl(${hue} 84% ${light}%)`;
     if(t<1){requestAnimationFrame(f);}
     else{label.textContent='已连接 · DeepSeek / Qwen / Kimi';label.style.color='#34D399';}
   }
