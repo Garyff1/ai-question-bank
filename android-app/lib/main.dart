@@ -4063,10 +4063,14 @@ class _WrongCardDrawDialogState extends State<WrongCardDrawDialog>
     final scale = item.scale + (1.34 - item.scale) * fly;
     const cardWidth = 118.0;
     const cardHeight = 170.0;
+    // Stack 自身会按最大的非定位子组件（220x220 光晕）撑开，因此 Positioned
+    // 必须按光晕尺寸的一半来偏移，才能让 Stack 的中心（也就是卡片的中心）
+    // 落在 position 上，与被点击的流水卡片中心对齐，避免抽卡瞬间跳变。
+    const glowSize = 220.0;
 
     return Positioned(
-      left: position.dx - cardWidth / 2,
-      top: position.dy - cardHeight / 2,
+      left: position.dx - glowSize / 2,
+      top: position.dy - glowSize / 2,
       child: Stack(
         alignment: Alignment.center,
         children: [
@@ -4074,8 +4078,8 @@ class _WrongCardDrawDialogState extends State<WrongCardDrawDialog>
             child: Opacity(
               opacity: glow,
               child: Container(
-                width: 220,
-                height: 220,
+                width: glowSize,
+                height: glowSize,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   boxShadow: [
