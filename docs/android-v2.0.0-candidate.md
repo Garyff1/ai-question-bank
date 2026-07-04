@@ -1,9 +1,9 @@
 # AI题库 Android v2.0.0 候选版说明
 
-> 状态：本地验收候选版  
-> 发布策略：不发布 GitHub Release，不切换官网 `/download/android.apk`  
+> 状态：官网验收候选版  
+> 发布策略：GitHub Release 预发布，官网 `/download/android.apk` 指向该候选 APK  
 > APK：`artifacts/ai-question-bank-android-v2.0.0-candidate.apk`  
-> SHA-256：`AB9D8E2C3F935082E1D22DD4BBC17797F7D21BF89D5832F6FC54DFD9EDEF7199`
+> SHA-256：`A2B9174B4574494CCFF93BADBD1C0DB95D15BB831052FD919902ED9D3AB7B0DC`
 
 ## 本轮定位
 
@@ -156,4 +156,3 @@ flutter build apk --release
 ```text
 H:\ai-question-bank\artifacts\ai-question-bank-android-v2.0.0-candidate.apk
 ```
-

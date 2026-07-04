@@ -1423,7 +1423,7 @@ class _HomeHeroCard extends StatelessWidget {
     final hour = DateTime.now().hour;
     final greeting = hour < 12 ? '早上好，同学' : (hour < 18 ? '下午好，同学' : '晚上好，同学');
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
           colors: [Color(0xFF172554), Color(0xFF2563EB), Color(0xFF7C3AED)],
@@ -1442,14 +1442,26 @@ class _HomeHeroCard extends StatelessWidget {
       child: Stack(
         children: [
           Positioned(
-            right: -30,
-            top: -30,
+            right: -34,
+            top: -36,
             child: Container(
-              width: 140,
-              height: 140,
+              width: 156,
+              height: 156,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 color: Colors.white.withValues(alpha: 0.10),
+              ),
+            ),
+          ),
+          Positioned(
+            right: 18,
+            bottom: 10,
+            child: Container(
+              width: 96,
+              height: 96,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(28),
+                color: Colors.white.withValues(alpha: 0.07),
               ),
             ),
           ),
@@ -1457,9 +1469,10 @@ class _HomeHeroCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const _LogoMark(size: 44),
-                  const SizedBox(width: 12),
+                  const _LogoMark(size: 48),
+                  const SizedBox(width: 14),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1475,47 +1488,61 @@ class _HomeHeroCard extends StatelessWidget {
                           '今天也来巩固一点知识吧',
                           style: TextStyle(
                             color: Colors.white,
-                            fontSize: 23,
+                            fontSize: 24,
+                            height: 1.16,
                             fontWeight: FontWeight.w900,
                           ),
+                          maxLines: 2,
                         ),
                       ],
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 20),
-              Wrap(
-                spacing: 10,
-                runSpacing: 10,
+              const SizedBox(height: 18),
+              Row(
                 children: [
-                  _GlassStatusPill(
-                    icon: Icons.bolt_rounded,
-                    label: 'Lv.${xpProfile.level}',
-                    value: '${xpProfile.totalXp} XP',
+                  Expanded(
+                    child: _GlassStatusPill(
+                      icon: Icons.bolt_rounded,
+                      label: 'Lv.${xpProfile.level}',
+                      value: '${xpProfile.totalXp} XP',
+                    ),
                   ),
-                  _GlassStatusPill(
-                    icon: Icons.local_fire_department_rounded,
-                    label: '连续打卡',
-                    value: '${xpProfile.checkinStreak} 天',
-                  ),
-                  _GlassStatusPill(
-                    icon: configReady
-                        ? Icons.check_circle_rounded
-                        : Icons.key_rounded,
-                    label: 'API',
-                    value: configReady ? '已配置' : '待配置',
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: _GlassStatusPill(
+                      icon: Icons.local_fire_department_rounded,
+                      label: '连续打卡',
+                      value: '${xpProfile.checkinStreak} 天',
+                    ),
                   ),
                 ],
               ),
-              if (!configReady) ...[
-                const SizedBox(height: 16),
-                FilledButton.tonalIcon(
-                  onPressed: onOpenConfig,
-                  icon: const Icon(Icons.key_rounded),
-                  label: const Text('先配置 API Key'),
-                ),
-              ],
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Expanded(
+                    child: _GlassStatusPill(
+                      icon: configReady
+                          ? Icons.check_circle_rounded
+                          : Icons.key_rounded,
+                      label: 'API',
+                      value: configReady ? '已配置' : '待配置',
+                    ),
+                  ),
+                  if (!configReady) ...[
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: FilledButton.tonalIcon(
+                        onPressed: onOpenConfig,
+                        icon: const Icon(Icons.key_rounded, size: 18),
+                        label: const Text('配置 Key'),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
             ],
           ),
         ],
@@ -2010,7 +2037,7 @@ class _MaterialActionPanel extends StatelessWidget {
                 child: FilledButton.icon(
                   onPressed: onPickFile,
                   icon: const Icon(Icons.upload_file),
-                  label: const Text('导入资料文件'),
+                  label: const Text('导入资料'),
                 ),
               ),
               const SizedBox(width: 10),
@@ -3552,16 +3579,12 @@ class _WeeklyTrendCard extends StatelessWidget {
           ),
           const SizedBox(height: 18),
           SizedBox(
-            height: 120,
+            height: 102,
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: List.generate(values.length, (index) {
                 final value = values[index];
-                final day = now.subtract(
-                  Duration(days: values.length - 1 - index),
-                );
-                final label = weekNames[day.weekday - 1];
-                final height = 22 + (value / maxValue) * 78;
+                final height = 20 + (value / maxValue) * 62;
                 return Expanded(
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 4),
@@ -3589,21 +3612,33 @@ class _WeeklyTrendCard extends StatelessWidget {
                             borderRadius: BorderRadius.circular(999),
                           ),
                         ),
-                        const SizedBox(height: 6),
-                        Text(
-                          label,
-                          style: const TextStyle(
-                            color: kMuted,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
                       ],
                     ),
                   ),
                 );
               }),
             ),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: List.generate(values.length, (index) {
+              final day = now.subtract(
+                Duration(days: values.length - 1 - index),
+              );
+              final label = weekNames[day.weekday - 1];
+              return Expanded(
+                child: Center(
+                  child: Text(
+                    label,
+                    style: const TextStyle(
+                      color: kMuted,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              );
+            }),
           ),
         ],
       ),
@@ -3902,46 +3937,299 @@ class WrongCardDrawDialog extends StatefulWidget {
 }
 
 class _WrongCardDrawDialogState extends State<WrongCardDrawDialog>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _controller;
-  bool _started = false;
-  bool _done = false;
+    with TickerProviderStateMixin {
+  late final AnimationController _streamController;
+  late final AnimationController _revealController;
+  late final List<_CardStreamItem> _cards;
+  int? _selectedIndex;
+  bool _revealed = false;
 
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(
+    _streamController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1800),
+      duration: const Duration(milliseconds: 14500),
+    )..repeat();
+    _revealController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1650),
     );
+    _cards = List.generate(11, (index) {
+      final random = Random(index * 73 + 19);
+      return _CardStreamItem(
+        xFactor: 0.16 + random.nextDouble() * 0.68,
+        seed: random.nextDouble(),
+        speed: 0.72 + random.nextDouble() * 0.42,
+        rotation: (random.nextDouble() - 0.5) * 0.22,
+        scale: 0.86 + random.nextDouble() * 0.22,
+        drift: 10 + random.nextDouble() * 28,
+      );
+    });
   }
 
   @override
   void dispose() {
-    _controller.dispose();
+    _streamController.dispose();
+    _revealController.dispose();
     super.dispose();
   }
 
-  Future<void> _draw() async {
-    if (_started) return;
-    setState(() => _started = true);
+  double _clamp01(double value) {
+    if (value < 0) return 0;
+    if (value > 1) return 1;
+    return value;
+  }
+
+  Offset _positionFor(_CardStreamItem item, Size size) {
+    final progress = (_streamController.value * item.speed + item.seed) % 1.0;
+    final x =
+        size.width * item.xFactor +
+        sin(progress * pi * 2 + item.seed * 7) * item.drift;
+    final y = size.height + 120 - progress * (size.height + 300);
+    return Offset(x, y);
+  }
+
+  void _chooseCard(int index) {
+    if (_selectedIndex != null) return;
     HapticFeedback.mediumImpact();
-    await _controller.forward(from: 0);
-    if (!mounted) return;
-    HapticFeedback.heavyImpact();
-    setState(() => _done = true);
+    setState(() {
+      _selectedIndex = index;
+      _revealed = false;
+    });
+    _streamController.stop();
+    _revealController.forward(from: 0).then((_) {
+      if (!mounted) return;
+      HapticFeedback.heavyImpact();
+      setState(() => _revealed = true);
+    });
+  }
+
+  void _redraw() {
+    HapticFeedback.selectionClick();
+    setState(() {
+      _selectedIndex = null;
+      _revealed = false;
+    });
+    _revealController.reset();
+    _streamController.repeat();
+  }
+
+  Widget _buildFlowCard({
+    required int index,
+    required Size size,
+    required bool dimmed,
+  }) {
+    final item = _cards[index];
+    final position = _positionFor(item, size);
+    final bob = sin((_streamController.value + item.seed) * pi * 2) * 0.025;
+    const cardWidth = 104.0;
+    const cardHeight = 148.0;
+    return Positioned(
+      left: position.dx - cardWidth / 2,
+      top: position.dy - cardHeight / 2,
+      child: GestureDetector(
+        onTap: () => _chooseCard(index),
+        child: Transform.rotate(
+          angle:
+              item.rotation +
+              sin((_streamController.value + item.seed) * pi * 2) * 0.04,
+          child: Transform.scale(
+            scale: item.scale + bob,
+            child: _DrawCard(
+              active: false,
+              dimmed: dimmed,
+              width: cardWidth,
+              height: cardHeight,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSelectedCard({required int index, required Size size}) {
+    final item = _cards[index];
+    final origin = _positionFor(item, size);
+    final center = Offset(size.width / 2, size.height * 0.47);
+    final raw = _revealController.value;
+    final fly = Curves.easeOutCubic.transform(_clamp01(raw / 0.72));
+    final reveal = Curves.easeOut.transform(_clamp01((raw - 0.42) / 0.58));
+    final glow = Curves.easeOut.transform(_clamp01((raw - 0.18) / 0.72));
+    final position = Offset(
+      origin.dx + (center.dx - origin.dx) * fly,
+      origin.dy + (center.dy - origin.dy) * fly,
+    );
+    final scale = item.scale + (1.34 - item.scale) * fly;
+    const cardWidth = 118.0;
+    const cardHeight = 170.0;
+
+    return Positioned(
+      left: position.dx - cardWidth / 2,
+      top: position.dy - cardHeight / 2,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          IgnorePointer(
+            child: Opacity(
+              opacity: glow,
+              child: Container(
+                width: 220,
+                height: 220,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: kBlue.withValues(alpha: 0.55),
+                      blurRadius: 48,
+                      spreadRadius: 12,
+                    ),
+                    BoxShadow(
+                      color: Colors.white.withValues(alpha: 0.35),
+                      blurRadius: 18,
+                      spreadRadius: 2,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          Transform.rotate(
+            angle: item.rotation * (1 - fly),
+            child: Transform.scale(
+              scale: scale,
+              child: _DrawCard(
+                active: reveal > 0.5 || _revealed,
+                dimmed: false,
+                width: cardWidth,
+                height: cardHeight,
+                badgeText: '已抽 ${widget.count} 题',
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCards(Size size) {
+    return AnimatedBuilder(
+      animation: Listenable.merge([_streamController, _revealController]),
+      builder: (context, child) {
+        final selected = _selectedIndex;
+        return Stack(
+          clipBehavior: Clip.none,
+          children: [
+            if (selected != null)
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: Container(color: Colors.black.withValues(alpha: 0.22)),
+                ),
+              ),
+            ...List.generate(_cards.length, (index) {
+              if (selected == index) return const SizedBox.shrink();
+              return _buildFlowCard(
+                index: index,
+                size: size,
+                dimmed: selected != null,
+              );
+            }),
+            if (selected != null)
+              _buildSelectedCard(index: selected, size: size),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildBottomPanel() {
+    final selected = _selectedIndex != null;
+    if (_revealed) {
+      return Column(
+        key: const ValueKey('revealed'),
+        children: [
+          const Text(
+            '错题挑战已开启',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 26,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            widget.canActivateBoost
+                ? '已抽取 ${widget.count} 道历史错题，全对可开启 10 分钟三倍经验。'
+                : '已抽取 ${widget.count} 道历史错题，准备开始挑战。',
+            textAlign: TextAlign.center,
+            style: const TextStyle(color: Colors.white70, height: 1.45),
+          ),
+          const SizedBox(height: 18),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: _redraw,
+                  icon: const Icon(Icons.refresh_rounded),
+                  label: const Text('再抽一次'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.white,
+                    side: BorderSide(
+                      color: Colors.white.withValues(alpha: 0.35),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: FilledButton.icon(
+                  onPressed: () => Navigator.pop(context, true),
+                  icon: const Icon(Icons.play_arrow_rounded),
+                  label: const Text('开始挑战'),
+                ),
+              ),
+            ],
+          ),
+        ],
+      );
+    }
+
+    return Column(
+      key: ValueKey(selected ? 'revealing' : 'ready'),
+      children: [
+        Text(
+          selected ? '正在揭示错题卡...' : '轻点任意卡片，抽取本轮错题。',
+          style: const TextStyle(
+            color: Colors.white70,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        if (!selected) ...[
+          const SizedBox(height: 14),
+          OutlinedButton.icon(
+            onPressed: () => _chooseCard(_cards.length ~/ 2),
+            icon: const Icon(Icons.style_rounded),
+            label: const Text('帮我抽一张'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: Colors.white,
+              side: BorderSide(color: Colors.white.withValues(alpha: 0.35)),
+            ),
+          ),
+        ],
+      ],
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Dialog.fullscreen(
-      backgroundColor: const Color(0xFF0F172A),
+      backgroundColor: const Color(0xFF020617),
       child: SafeArea(
         child: Stack(
           children: [
             const Positioned.fill(child: _MistBackground()),
             Padding(
-              padding: const EdgeInsets.all(22),
+              padding: const EdgeInsets.fromLTRB(18, 14, 18, 22),
               child: Column(
                 children: [
                   Row(
@@ -3956,7 +4244,7 @@ class _WrongCardDrawDialogState extends State<WrongCardDrawDialog>
                           textAlign: TextAlign.center,
                           style: TextStyle(
                             color: Colors.white,
-                            fontSize: 20,
+                            fontSize: 22,
                             fontWeight: FontWeight.w900,
                           ),
                         ),
@@ -3970,87 +4258,31 @@ class _WrongCardDrawDialogState extends State<WrongCardDrawDialog>
                       ),
                     ],
                   ),
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 22),
                   Text(
                     widget.canActivateBoost
-                        ? '本轮抽取 5 道错题，全对即可开启三倍经验'
+                        ? '本轮抽取 ${widget.count} 道错题，全对即可开启三倍经验'
                         : '当前错题不足 5 道，先完成已有错题挑战',
                     textAlign: TextAlign.center,
-                    style: const TextStyle(color: Colors.white70, height: 1.5),
+                    style: const TextStyle(
+                      color: Colors.white70,
+                      height: 1.5,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                   Expanded(
-                    child: Center(
-                      child: AnimatedBuilder(
-                        animation: _controller,
-                        builder: (context, child) {
-                          final t = Curves.easeInOutCubic.transform(
-                            _controller.value,
-                          );
-                          return SizedBox(
-                            height: 310,
-                            child: Stack(
-                              alignment: Alignment.center,
-                              children: List.generate(5, (index) {
-                                final offset = (index - 2) * 46.0 * (1 - t);
-                                final rotate = (index - 2) * 0.09 * (1 - t);
-                                final scale = _done && index == 2 ? 1.12 : 1.0;
-                                return Transform.translate(
-                                  offset: Offset(offset, (index % 2) * 12.0),
-                                  child: Transform.rotate(
-                                    angle:
-                                        rotate + sin(t * pi * 6 + index) * 0.03,
-                                    child: Transform.scale(
-                                      scale: scale,
-                                      child: _DrawCard(
-                                        active: _done && index == 2,
-                                        dimmed: _started && index != 2,
-                                      ),
-                                    ),
-                                  ),
-                                );
-                              }),
-                            ),
-                          );
-                        },
-                      ),
+                    child: LayoutBuilder(
+                      builder: (context, constraints) {
+                        return _buildCards(
+                          Size(constraints.maxWidth, constraints.maxHeight),
+                        );
+                      },
                     ),
                   ),
                   AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 240),
-                    child: _done
-                        ? Column(
-                            key: const ValueKey('done'),
-                            children: [
-                              const Text(
-                                '抽取成功',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 26,
-                                  fontWeight: FontWeight.w900,
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              Text(
-                                '已抽取 ${widget.count} 道历史错题，准备开始挑战。',
-                                style: const TextStyle(color: Colors.white70),
-                              ),
-                              const SizedBox(height: 18),
-                              FilledButton.icon(
-                                onPressed: () => Navigator.pop(context, true),
-                                icon: const Icon(Icons.play_arrow_rounded),
-                                label: const Text('开始挑战'),
-                              ),
-                            ],
-                          )
-                        : SizedBox(
-                            key: const ValueKey('ready'),
-                            width: double.infinity,
-                            child: FilledButton.icon(
-                              onPressed: _draw,
-                              icon: const Icon(Icons.style_rounded),
-                              label: const Text('开始抽卡'),
-                            ),
-                          ),
+                    duration: const Duration(milliseconds: 260),
+                    child: _buildBottomPanel(),
                   ),
                 ],
               ),
@@ -4060,6 +4292,24 @@ class _WrongCardDrawDialogState extends State<WrongCardDrawDialog>
       ),
     );
   }
+}
+
+class _CardStreamItem {
+  const _CardStreamItem({
+    required this.xFactor,
+    required this.seed,
+    required this.speed,
+    required this.rotation,
+    required this.scale,
+    required this.drift,
+  });
+
+  final double xFactor;
+  final double seed;
+  final double speed;
+  final double rotation;
+  final double scale;
+  final double drift;
 }
 
 class _MistBackground extends StatelessWidget {
@@ -4117,21 +4367,30 @@ class _MistBlob extends StatelessWidget {
 }
 
 class _DrawCard extends StatelessWidget {
-  const _DrawCard({required this.active, required this.dimmed});
+  const _DrawCard({
+    required this.active,
+    required this.dimmed,
+    this.width = 116,
+    this.height = 168,
+    this.badgeText,
+  });
 
   final bool active;
   final bool dimmed;
+  final double width;
+  final double height;
+  final String? badgeText;
 
   @override
   Widget build(BuildContext context) {
     return AnimatedContainer(
       duration: const Duration(milliseconds: 260),
-      width: 116,
-      height: 168,
-      padding: const EdgeInsets.all(14),
+      width: width,
+      height: height,
+      padding: EdgeInsets.all(width >= 116 ? 16 : 13),
       decoration: BoxDecoration(
         color: active ? Colors.white : const Color(0xFF1E293B),
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(width >= 116 ? 26 : 22),
         border: Border.all(
           color: active ? const Color(0xFF93C5FD) : Colors.white24,
           width: active ? 2.2 : 1,
@@ -4151,18 +4410,31 @@ class _DrawCard extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(
-              active ? Icons.quiz_rounded : Icons.school_rounded,
+              active ? Icons.auto_awesome_rounded : Icons.school_rounded,
               color: active ? kBlue : Colors.white70,
-              size: 42,
+              size: width >= 116 ? 44 : 38,
             ),
             const SizedBox(height: 12),
             Text(
               active ? '错题卡' : 'AI题库',
+              textAlign: TextAlign.center,
               style: TextStyle(
                 color: active ? kInk : Colors.white70,
+                fontSize: width >= 116 ? 16 : 14,
                 fontWeight: FontWeight.w900,
               ),
             ),
+            if (active && badgeText != null) ...[
+              const SizedBox(height: 6),
+              Text(
+                badgeText!,
+                style: const TextStyle(
+                  color: kMuted,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ],
           ],
         ),
       ),
