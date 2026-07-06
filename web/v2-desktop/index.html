@@ -409,9 +409,64 @@ button,input,select{font-family:inherit}button{cursor:pointer}
 @media(prefers-reduced-motion:reduce){
   *{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important}
 }
+/* === 学科 chip === */
+.subj-row{display:flex;flex-wrap:wrap;gap:8px}
+.subj-chip{background:#fff;border:1.5px solid var(--line);border-radius:999px;padding:7px 16px;font-size:13px;font-weight:700;color:var(--ink);cursor:pointer;transition:.15s}
+.subj-chip:hover{border-color:var(--bs);background:var(--bl)}
+.subj-chip.sel{background:var(--blue);color:#fff;border-color:var(--blue);box-shadow:0 4px 10px -4px rgba(37,99,235,.5)}
+/* === 试卷结构 === */
+.paper-struct{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:14px}
+.ps-item{display:flex;flex-direction:column;gap:6px}
+.ps-item span{font-size:12.5px;font-weight:700;color:var(--muted)}
+.ps-item input{padding:10px 12px;border:1.5px solid var(--line);border-radius:10px;font-size:14px;font-weight:700;color:var(--ink);outline:none}
+.ps-item input:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(37,99,235,.12)}
+/* === 统计卡片 === */
+.stats-extra{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:30px}
+.stats-card{background:#fff;border-radius:16px;box-shadow:0 10px 26px -8px rgba(15,23,42,.16);padding:24px}
+.stats-card-title{font-size:16px;font-weight:800;color:var(--ink);margin-bottom:4px}
+.stats-card-sub{font-size:12px;color:var(--muted);margin-bottom:16px}
+/* === 知识点 Top5 === */
+.kp-row{display:flex;gap:12px;padding:12px 0;border-bottom:1px solid var(--line)}
+.kp-row:last-child{border-bottom:none}
+.kp-rank{width:28px;height:28px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:900;color:#fff;flex-shrink:0}
+.kp-rank.rank-1{background:linear-gradient(135deg,#EF4444,#DC2626)}
+.kp-rank.rank-2{background:linear-gradient(135deg,#F59E0B,#D97706)}
+.kp-rank.rank-3{background:linear-gradient(135deg,#F59E0B,#B45309)}
+.kp-rank.rank-4,.kp-rank.rank-5{background:linear-gradient(135deg,#94A3B8,#64748B)}
+.kp-main{flex:1;min-width:0}
+.kp-name{font-size:13px;font-weight:700;color:var(--ink);margin-bottom:6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.kp-bar{height:6px;background:#F1F5F9;border-radius:3px;overflow:hidden;margin-bottom:4px}
+.kp-bar-inner{height:100%;border-radius:3px;transition:width .4s ease}
+.kp-meta{font-size:11px;color:var(--muted)}
+/* === 开屏动画 === */
+.splash{position:fixed;inset:0;z-index:9999;background:linear-gradient(135deg,#1d4ed8,#1e3a8a 50%,#047857);display:flex;flex-direction:column;align-items:center;justify-content:center;transition:opacity .6s ease}
+.splash.hide{opacity:0;pointer-events:none}
+.splash-logo{width:88px;height:88px;border-radius:24px;background:rgba(255,255,255,.16);display:flex;align-items:center;justify-content:center;animation:splashLogo 1.4s cubic-bezier(.34,1.56,.64,1) forwards;box-shadow:0 20px 40px -10px rgba(0,0,0,.3)}
+.splash-logo svg{width:46px;height:46px;color:#fff}
+@keyframes splashLogo{0%{transform:scale(.3) rotate(-12deg);opacity:0}60%{transform:scale(1.08) rotate(2deg);opacity:1}100%{transform:scale(1) rotate(0);opacity:1}}
+.splash-title{font-size:30px;font-weight:800;color:#fff;margin-top:24px;letter-spacing:.02em;animation:splashFade 1s ease .4s both}
+.splash-sub{font-size:13px;color:rgba(255,255,255,.78);margin-top:10px;font-weight:600;animation:splashFade 1s ease .7s both}
+.splash-loader{margin-top:30px;width:36px;height:36px;border:3px solid rgba(255,255,255,.25);border-top-color:#fff;border-radius:50%;animation:spin .8s linear infinite;animation-delay:1s;opacity:0;animation-fill-mode:forwards}
+@keyframes splashFade{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+/* === 批量删除工具栏 === */
+.batch-bar{display:flex;align-items:center;gap:12px;padding:12px 16px;background:var(--blue);color:#fff;border-radius:12px;margin-bottom:16px}
+.batch-bar .bb-count{font-weight:700}
+.batch-bar .bb-btn{background:rgba(255,255,255,.18);border:none;color:#fff;padding:7px 14px;border-radius:8px;font-size:12.5px;font-weight:700;cursor:pointer}
+.batch-bar .bb-btn:hover{background:rgba(255,255,255,.28)}
+.batch-bar .bb-close{margin-left:auto;background:rgba(255,255,255,.12)}
+.mcard.sel{border:2px solid var(--blue);box-shadow:0 0 0 3px rgba(37,99,235,.15)}
+.mcard-batch-check{position:absolute;top:10px;right:10px;width:24px;height:24px;border-radius:50%;border:2px solid var(--line);background:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;color:#fff;opacity:0;transition:.15s}
+.mcard.sel .mcard-batch-check{background:var(--blue);border-color:var(--blue);opacity:1}
+.mcard{position:relative}
 </style>
 </head>
 <body>
+<div class="splash" id="splashScreen">
+  <div class="splash-logo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="9"/></svg></div>
+  <div class="splash-title">AI 题库</div>
+  <div class="splash-sub">资料变练习 · 智能出题 · 高效学习</div>
+  <div class="splash-loader"></div>
+</div>
 <div class="toast" id="toast"></div>
 <div class="shell">
   <aside class="sidebar">
@@ -422,6 +477,7 @@ button,input,select{font-family:inherit}button{cursor:pointer}
       <button data-page="history" onclick="showPage('history')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.2"/><path d="M12 8v4l3 2"/></svg><span>练习历史</span></button>
       <button data-page="wrongbook" onclick="showPage('wrongbook')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4h9l3 3v13H6z"/><path d="M9.5 11l5 5M14.5 11l-5 5"/></svg><span>错题本</span></button>
       <button data-page="stats" onclick="showPage('stats')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 19V11M11 19V5M17 19v-7"/><path d="M3 19h18"/></svg><span>学习统计</span></button>
+      <button data-page="paper" onclick="showPage('paper')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6M9 13h6M9 17h6"/></svg><span>试卷生成</span></button>
       <button data-page="config" onclick="showPage('config')" style="margin-top:12px;border-top:1px solid rgba(255,255,255,.1);padding-top:15px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l2 4h4l-3 3 1 5-4-2-4 2 1-5-3-3h4z"/><circle cx="12" cy="12" r="9"/></svg><span>API 配置</span><span id="apiStatusDot" style="margin-left:auto;width:8px;height:8px;border-radius:50%;background:var(--red);flex-shrink:0;display:none"></span></button>
     </nav>
     <button class="sb-up" onclick="openUpload()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px"><path d="M12 5v14M5 12h14"/></svg><span>上传资料</span></button>
@@ -435,8 +491,9 @@ button,input,select{font-family:inherit}button{cursor:pointer}
   <main class="main" id="main">
     <section class="page active" id="page-home">
       <div class="pi">
-        <div class="ph"><div><div class="pt">我的资料</div><div class="ps">上传学习资料，AI 会基于内容自动出题</div></div><button class="btn btn-p" onclick="openUpload()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px"><path d="M12 5v14M5 12h14"/></svg>上传资料</button></div>
-        <div class="ut">支持 PDF、Word、TXT，单个文件不超过 50MB</div>
+        <div class="ph"><div><div class="pt">我的资料</div><div class="ps">上传学习资料，AI 会基于内容自动出题</div></div><div style="display:flex;gap:10px"><button class="btn btn-gh" id="batchToggleBtn" onclick="toggleBatchMode()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:15px;height:15px"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>批量管理</button><button class="btn btn-p" onclick="openUpload()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px"><path d="M12 5v14M5 12h14"/></svg>上传资料</button></div></div>
+        <div class="ut">支持 PDF、Word、TXT，单个文件不超过 50MB · 每账号最多 20 份</div>
+        <div class="batch-bar" id="batchBar" style="display:none"><span class="bb-count">已选 <b id="bbCount">0</b> 份</span><button class="bb-btn" onclick="batchSelectAll()">全选</button><button class="bb-btn" onclick="confirmBatchDelete()">删除选中</button><button class="bb-btn bb-close" onclick="exitBatchMode()">取消</button></div>
         <div class="mg" id="materialGrid"></div>
         <div class="empty" id="emptyState"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3h7l5 5v13H7z"/><path d="M14 3v5h5"/><path d="M12 17v-5M9.5 14.5h5"/></svg><h3>还没有学习资料</h3><p>上传第一份资料，开启你的专属题库</p><button class="btn btn-p btn-sm" onclick="openUpload()">立即上传</button></div>
       </div>
@@ -446,6 +503,7 @@ button,input,select{font-family:inherit}button{cursor:pointer}
         <button class="pback" onclick="showPage('home')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:15px;height:15px"><path d="M15 5l-7 7 7 7"/></svg>返回我的资料</button>
         <div class="ph"><div><div class="pt">生成题目</div><div class="ps">设置题型、群体与数量，AI 将基于资料内容出题</div></div></div>
         <div class="chip generate-file" id="genChip"></div>
+        <div class="fs"><span class="fsl">学科</span><div class="subj-row" id="subjectRow"></div></div>
         <div class="fs"><span class="fsl">题型（可多选混合出题）</span><div class="trw">
           <button type="button" class="tcard sel" id="typeChoice" data-t="choice" role="checkbox" aria-checked="true" aria-pressed="true" onclick="selType(this,'choice')"><span class="ck">✓</span><span class="tl">单选题</span><span class="td">四选一</span></button>
           <button type="button" class="tcard" id="typeMultiChoice" data-t="multi_choice" role="checkbox" aria-checked="false" aria-pressed="false" onclick="selType(this,'multi_choice')"><span class="ck">✓</span><span class="tl">多选题</span><span class="td">多选多</span></button>
@@ -462,7 +520,44 @@ button,input,select{font-family:inherit}button{cursor:pointer}
     </section>
     <section class="page" id="page-history"><div class="pi"><div class="ph"><div><div class="pt">练习历史</div><div class="ps">按时间倒序展示每一次练习的成绩</div></div></div><div class="hl" id="historyBody"></div><div class="empty" id="histEmpty"><h3>还没有练习记录</h3><p>完成一次答题后，记录会出现在这里</p></div></div></section>
     <section class="page" id="page-wrongbook"><div class="pi"><div class="ph"><div><div class="pt">错题本</div><div class="ps">按资料分组收录错题，可一键专项重练</div></div></div><div id="wrongbookBody"></div><div class="empty" id="wbEmpty"><h3>错题本是空的</h3><p>坚持练习，错题会被自动收录在这里</p></div></div></section>
-    <section class="page" id="page-stats"><div class="pi"><div class="ph"><div><div class="pt">学习统计</div><div class="ps">查看你的整体练习数据</div></div></div><div class="sd2"><div class="sr"><div class="rw2"><svg viewBox="0 0 120 120"><circle class="rbg" cx="60" cy="60" r="52"></circle><circle class="rfg" id="ringFg2" cx="60" cy="60" r="52" stroke-dasharray="326.7" stroke-dashoffset="326.7"></circle></svg><div class="rc"><div class="rv" id="ringVal2">0%</div><div class="rl2">总正确率</div></div></div><div style="font-size:12.5px;color:var(--muted);font-weight:600;text-align:center">所有练习记录的综合正确率</div></div><div class="stiles" id="statsTiles"></div></div></div></section>
+    <section class="page" id="page-stats"><div class="pi"><div class="ph"><div><div class="pt">学习统计</div><div class="ps">查看你的整体练习数据</div></div></div><div class="sd2"><div class="sr"><div class="rw2"><svg viewBox="0 0 120 120"><circle class="rbg" cx="60" cy="60" r="52"></circle><circle class="rfg" id="ringFg2" cx="60" cy="60" r="52" stroke-dasharray="326.7" stroke-dashoffset="326.7"></circle></svg><div class="rc"><div class="rv" id="ringVal2">0%</div><div class="rl2">总正确率</div></div></div><div style="font-size:12.5px;color:var(--muted);font-weight:600;text-align:center">所有练习记录的综合正确率</div></div><div class="stiles" id="statsTiles"></div></div>
+      <div class="stats-extra">
+        <div class="stats-card">
+          <div class="stats-card-title">本周练习趋势</div>
+          <div class="stats-card-sub">最近 7 天每日做题数</div>
+          <svg id="weeklyTrendSvg" viewBox="0 0 700 200" preserveAspectRatio="none" style="width:100%;height:180px"></svg>
+        </div>
+        <div class="stats-card">
+          <div class="stats-card-title">错题知识点 Top5</div>
+          <div class="stats-card-sub">按错误率排序，重点突破</div>
+          <div id="topKpList"></div>
+        </div>
+      </div>
+    </div></section>
+    <section class="page" id="page-paper">
+      <div class="pi-n">
+        <button class="pback" onclick="showPage('home')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:15px;height:15px"><path d="M15 5l-7 7 7 7"/></svg>返回我的资料</button>
+        <div class="ph"><div><div class="pt">生成试卷</div><div class="ps">按学科、章节结构生成完整试卷</div></div></div>
+        <div class="chip generate-file" id="paperChip"></div>
+        <div class="f2">
+          <div class="fs"><span class="fsl">学科</span><div class="subj-row" id="paperSubjectRow"></div></div>
+          <div class="fs"><span class="fsl">年级</span><div class="dropdown" id="gradeDropdown"><button class="dropdown__trigger" onclick="toggleGradeMenu(event)"><span id="gradeValue">通用</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button><div class="dropdown__menu" id="gradeMenu"></div></div></div>
+        </div>
+        <div class="f2">
+          <div class="fs"><span class="fsl">总分</span><div class="stpr"><button class="stb" onclick="stepScore(-5)" id="scoreMinus">−</button><span class="stv" id="scoreVal">100</span><button class="stb" onclick="stepScore(5)" id="scorePlus">+</button></div><div class="sth">范围 50–150 分</div></div>
+          <div class="fs"><span class="fsl">考试时长（分钟）</span><div class="stpr"><button class="stb" onclick="stepDuration(-10)" id="durMinus">−</button><span class="stv" id="durVal">90</span><button class="stb" onclick="stepDuration(10)" id="durPlus">+</button></div><div class="sth">范围 30–180 分钟</div></div>
+        </div>
+        <div class="fs"><span class="fsl">题目结构（每种题目的数量）</span><div class="paper-struct">
+          <label class="ps-item"><span>单选题</span><input type="number" id="psChoice" value="10" min="0" max="30"></label>
+          <label class="ps-item"><span>填空题</span><input type="number" id="psFill" value="6" min="0" max="20"></label>
+          <label class="ps-item"><span>判断题</span><input type="number" id="psJudge" value="0" min="0" max="20"></label>
+          <label class="ps-item"><span>解答题</span><input type="number" id="psSubjective" value="8" min="0" max="20"></label>
+        </div></div>
+        <div class="fs"><span class="fsl">章节范围（可选）</span><input class="inp" id="paperChapter" placeholder="如：第3-5章" style="width:100%"></div>
+        <div class="fs"><span class="fsl">知识点要求（可选）</span><input class="inp" id="paperKp" placeholder="如：重点考查牛顿运动定律、能量守恒" style="width:100%"></div>
+        <button class="btn btn-p generate-submit" id="paperGenBtn" onclick="runPaperGen()">生成试卷</button>
+      </div>
+    </section>
     <section class="page" id="page-config">
       <div class="config-wrap">
         <div class="ph config-header">
@@ -565,6 +660,16 @@ button,input,select{font-family:inherit}button{cursor:pointer}
 </div>
 <script>
 console.log('v2-desktop JS loading...');
+// === 开屏动画隐藏 ===
+(function(){
+  var sp=document.getElementById('splashScreen');
+  if(sp){
+    var hide=function(){sp.classList.add('hide');setTimeout(function(){if(sp.parentNode)sp.parentNode.removeChild(sp);},450);};
+    setTimeout(hide,1800);
+    // 兜底：5 秒后强制移除
+    setTimeout(function(){if(!sp.classList.contains('hide')){hide();}},5000);
+  }
+})();
 const API_BASE_KEY='AIQB_API_BASE';
 function cleanApiBase(v){return String(v||'').trim().replace(/\/+$/,'');}
 function resolveApiBase(){
@@ -579,7 +684,13 @@ var TK=localStorage.getItem('tk')||'', UID=localStorage.getItem('uid')||'';
 var mats=[], gQCount=5, gMID=0, quiz=null, delId=null;
 var gQT_set=new Set(['choice']);
 var gAudience='通用';
+var gSubject='通用';
+var gBatchMode=false;
+var gBatchSelected=new Set();
 var AUDIENCE_OPTIONS=['小学1-2年级','小学3-4年级','小学5-6年级','初中','高中','大学生','通用'];
+var SUBJECTS=['通用','数学','语文','英语','物理','化学','生物','历史','地理','政治'];
+var GRADE_OPTIONS=['通用','小学','初中','高中','大学'];
+var gPaperScore=100, gPaperDur=90, gPaperMID=0;
 
 function toast(m,d){
   var t=document.getElementById('toast'); t.textContent=m; t.classList.add('show');
@@ -635,7 +746,7 @@ function showPage(id){
   document.querySelectorAll('.page').forEach(function(p){p.classList.remove('active');});
   var pg=document.getElementById('page-'+id); if(pg)pg.classList.add('active');
   document.querySelectorAll('#sbNav button').forEach(function(b){b.classList.toggle('act', b.dataset.page===id);});
-  if(id==='home')loadMats(); if(id==='history')loadHist(); if(id==='wrongbook')loadWrong(); if(id==='stats')loadStats(); if(id==='config'){checkApi();loadConfigPage();}
+  if(id==='home')loadMats(); if(id==='history')loadHist(); if(id==='wrongbook')loadWrong(); if(id==='stats')loadStats(); if(id==='config'){checkApi();loadConfigPage();} if(id==='paper')loadPaperPage();
   closeAllMenus();
   window.scrollTo(0,0);
   var qs=document.getElementById('quizScreen'); if(qs)qs.classList.remove('active');
@@ -723,7 +834,7 @@ var PROVS={
   deepseek:{name:'DeepSeek',mark:'DS',base:'https://api.deepseek.com',model:'deepseek-v4-flash'},
   qwen:{name:'Qwen',mark:'QW',base:'https://dashscope.aliyuncs.com/compatible-mode/v1',model:'qwen-plus'},
   zhipu:{name:'智谱',mark:'GLM',base:'https://api.z.ai/api/paas/v4',model:'glm-4.5-flash'},
-  mimo:{name:'小米 MiMo',mark:'MI',base:'https://api.xiaomimimo.com/v1',model:'MiMo-VL-7B-RL'},
+  mimo:{name:'小米 MiMo',mark:'MI',base:'https://api.xiaomimimo.com/v1',model:'mimo-v2.5-pro'},
   kimi:{name:'Kimi',mark:'KM',base:'https://api.moonshot.ai/v1',model:'kimi-k2.6'},
   custom:{name:'自定义',mark:'···',base:'',model:'自行填写接口信息'}
 };
@@ -847,8 +958,14 @@ function renderMats(){
     const e=(m.filename||'').toLowerCase().split('.').pop();
     const t=e==='pdf'?'pdf':(e==='docx'||e==='doc')?'word':'txt';
     const l=t==='pdf'?'PDF':t==='word'?'DOC':'TXT';
-    return `<div class="mcard" data-mid="${m.id}"><div class="mct"><div class="mci ${t}">${l}</div><div class="mcb"><div class="mcn">${escapeHtml(m.filename)}</div><div class="mcti">${fd(m.created_at)}</div></div></div><div class="mca"><button class="bq" onclick="goGen('${m.id}')">出题</button><button class="bd" onclick="askDel('${m.id}')">✕ 删除</button></div></div>`;
+    const sel=gBatchMode&&gBatchSelected.has(String(m.id))?'sel':'';
+    const checkHtml=gBatchMode?`<div class="mcard-batch-check">✓</div>`:'';
+    const actions=gBatchMode
+      ? `<div class="mca"><button class="bd" onclick="toggleBatchSelect('${m.id}')">${gBatchSelected.has(String(m.id))?'取消选择':'选择'}</button></div>`
+      : `<div class="mca"><button class="bq" onclick="goGen('${m.id}')">出题</button><button class="bq" onclick="goPaper('${m.id}')" style="background:var(--gl);color:#047857">试卷</button><button class="bd" onclick="askDel('${m.id}')">✕ 删除</button></div>`;
+    return `<div class="mcard ${sel}" data-mid="${m.id}" ${gBatchMode?`onclick="toggleBatchSelect('${m.id}')"`:''} style="${gBatchMode?'cursor:pointer;position:relative;':''}">${checkHtml}<div class="mct"><div class="mci ${t}">${l}</div><div class="mcb"><div class="mcn">${escapeHtml(m.filename)}</div><div class="mcti">${fd(m.created_at)}</div></div></div>${actions}</div>`;
   }).join('');
+  updateBatchCount();
 }
 
 // === 上传 ===
@@ -880,9 +997,48 @@ function addRandomDemoMaterial(){
 function askDel(id){delId=id;const m=mats.find(x=>String(x.id)===String(id));document.getElementById('delName').textContent=m?m.filename:'';openMod('modalDelete');}
 async function confirmDeleteMaterial(){try{await api2('/api/materials/'+delId,{method:'DELETE'});closeMod('modalDelete');toast('已删除');await loadMats();}catch(e){toast(e.message);}}
 
+// === 批量删除 ===
+function toggleBatchMode(){
+  gBatchMode=!gBatchMode;
+  if(!gBatchMode)gBatchSelected.clear();
+  var bar=document.getElementById('batchBar');
+  if(bar)bar.style.display=gBatchMode?'flex':'none';
+  var btn=document.getElementById('batchToggleBtn');
+  if(btn)btn.textContent=gBatchMode?'退出批量':'批量管理';
+  renderMats();
+}
+function exitBatchMode(){gBatchMode=false;gBatchSelected.clear();var bar=document.getElementById('batchBar');if(bar)bar.style.display='none';var btn=document.getElementById('batchToggleBtn');if(btn)btn.textContent='批量管理';renderMats();}
+function toggleBatchSelect(id){
+  if(!gBatchMode)return;
+  var sid=String(id);
+  if(gBatchSelected.has(sid)){gBatchSelected.delete(sid);}else{gBatchSelected.add(sid);}
+  renderMats();
+}
+function batchSelectAll(){
+  if(gBatchSelected.size===mats.length){gBatchSelected.clear();}
+  else{mats.forEach(function(m){gBatchSelected.add(String(m.id));});}
+  renderMats();
+}
+function updateBatchCount(){var c=document.getElementById('bbCount');if(c)c.textContent=gBatchSelected.size;}
+async function confirmBatchDelete(){
+  if(!gBatchSelected.size){toast('请先选择要删除的资料');return;}
+  var count=gBatchSelected.size;
+  if(!confirm('确认删除选中的 '+count+' 份资料？删除后将无法恢复，关联的题目和练习记录也会一并清除。'))return;
+  var ids=Array.from(gBatchSelected);
+  var failed=[];
+  for(var i=0;i<ids.length;i++){
+    try{await api2('/api/materials/'+ids[i],{method:'DELETE'});}
+    catch(e){failed.push(ids[i]);toast('部分资料删除失败：'+e.message);break;}
+  }
+  toast('已删除 '+(ids.length-failed.length)+' 份资料');
+  gBatchSelected.clear();
+  exitBatchMode();
+  await loadMats();
+}
+
 // === 生成题目 ===
 function goGen(id){
-  gMID=id;gQCount=5;gAudience='通用';gQT_set=new Set(['choice']);
+  gMID=id;gQCount=5;gAudience='通用';gSubject='通用';gQT_set=new Set(['choice']);
   const m=mats.find(function(item){return String(item.id)===String(id);});
   const ext=((m&&m.filename)||'').toLowerCase().split('.').pop();
   const type=ext==='pdf'?'pdf':(ext==='docx'||ext==='doc')?'word':'txt';
@@ -894,8 +1050,16 @@ function goGen(id){
   document.getElementById('stpPlus').disabled=false;
   document.getElementById('audienceValue').textContent=gAudience;
   document.getElementById('audienceMenu').innerHTML=AUDIENCE_OPTIONS.map(function(a){return `<div class="dropdown__option ${a===gAudience?'selected':''}" onclick="setAudience('${a}')">${a}</div>`;}).join('');
+  renderSubjectRow('subjectRow');
   showPage('generate');
 }
+function renderSubjectRow(rowId){
+  const row=document.getElementById(rowId); if(!row)return;
+  row.innerHTML=SUBJECTS.map(function(s){
+    return `<button type="button" class="subj-chip ${s===gSubject?'sel':''}" onclick="setSubject('${s}')">${s}</button>`;
+  }).join('');
+}
+function setSubject(s){gSubject=s;document.querySelectorAll('#subjectRow .subj-chip').forEach(function(c){c.classList.toggle('sel',c.textContent===s);});}
 function syncTypeCards(){document.querySelectorAll('.tcard').forEach(function(card){const on=gQT_set.has(card.dataset.t);card.classList.toggle('sel',on);card.setAttribute('aria-pressed',String(on));card.setAttribute('aria-checked',String(on));});}
 function selType(el,t){
   if(gQT_set.has(t)){
@@ -909,7 +1073,7 @@ function selType(el,t){
 function toggleAudienceMenu(event){event.stopPropagation();document.getElementById('audienceDropdown').classList.toggle('open');}
 function setAudience(a){gAudience=a;document.getElementById('audienceValue').textContent=a;document.getElementById('audienceDropdown').classList.remove('open');document.querySelectorAll('#audienceMenu .dropdown__option').forEach(function(option){option.classList.toggle('selected',option.textContent===a);});}
 function stepCount(d){const n=gQCount+d;if(n<1||n>20)return;gQCount=n;document.getElementById('stpVal').textContent=n;document.getElementById('stpMinus').disabled=n<=1;document.getElementById('stpPlus').disabled=n>=20;}
-async function runGen(){if(gQT_set.size===0){toast('请至少选择一种题型');return;}const btn=document.getElementById('genBtn');btn.disabled=true;btn.innerHTML='<span class="spn"></span> AI 正在出题...';try{const types=Array.from(gQT_set).join(',');const d=await api2('/api/questions/generate',{method:'POST',body:JSON.stringify({material_id:Number(gMID),question_type:types,question_count:gQCount,target_audience:gAudience})});startQuiz(d);}catch(e){toast(e.message);}finally{btn.disabled=false;btn.textContent='生成题目';}}
+async function runGen(){if(gQT_set.size===0){toast('请至少选择一种题型');return;}const btn=document.getElementById('genBtn');btn.disabled=true;btn.innerHTML='<span class="spn"></span> AI 正在出题...';try{const types=Array.from(gQT_set).join(',');const d=await api2('/api/questions/generate',{method:'POST',body:JSON.stringify({material_id:Number(gMID),question_type:types,question_count:gQCount,target_audience:gAudience,subject:gSubject})});startQuiz(d);}catch(e){toast(e.message);}finally{btn.disabled=false;btn.textContent='生成题目';}}
 
 // === 答题 ===
 const TLBL={choice:'单选题',multi_choice:'多选题',true_false:'判断题',fill:'填空题',subjective:'主观题'};
@@ -960,7 +1124,125 @@ function confetti(){const l=document.getElementById('confettiL');l.innerHTML='';
 async function loadHist(){const body=document.getElementById('historyBody');const empty=document.getElementById('histEmpty');try{const d=await api2('/api/practice/history');if(!d||!d.length){body.innerHTML='';empty.style.display='flex';return;}empty.style.display='none';body.innerHTML=d.map(h=>{const pct=h.accuracy;const cls=pct>=80?'hi-hi':(pct>=50?'hi-md':'hi-lo');return `<div class="hi"><div class="hi-acc ${cls}">${pct}%</div><div class="hi-bd"><div class="hi-nm">${escapeHtml((h.material_name||'未知').replace(/\.[^/.]+$/,''))} #${h.sequence}</div><div class="hi-mt"><span>正确 ${h.correct_count}/${h.total_questions}</span><span>错题 ${h.wrong_count}</span></div><div class="hi-tm">${fd(h.completed_at)}</div></div></div>`;}).join('');}catch(e){body.innerHTML='';empty.style.display='flex';}}
 async function loadWrong(){const body=document.getElementById('wrongbookBody');const empty=document.getElementById('wbEmpty');try{const gs=await api2('/api/practice/wrong');if(!gs||!gs.length){body.innerHTML='';empty.style.display='flex';return;}empty.style.display='none';body.innerHTML=gs.map(g=>{const nm=(g.material_name||'未知').replace(/\.[^/.]+$/,'');const items=g.questions.map((w,i)=>{if(w.options&&w.options.length){const ops=w.options.map((o,oi)=>`<div class="wop ${Array.isArray(w.answer)?(w.answer.includes(o.charAt(0))?'cr':''):(o.charAt(0)===String(w.answer).charAt(0)?'cr':'')}">${escapeHtml(o)}</div>`).join('');return `<div class="wi2"><div class="wq">${i+1}. ${escapeHtml(w.question)}</div><div class="wo">${ops}</div><div class="we">💡 ${escapeHtml(w.explanation||'')}</div></div>`;}const ans=Array.isArray(w.answer)?w.answer.join(', '):w.answer;return `<div class="wi2"><div class="wq">${i+1}. ${escapeHtml(w.question)}</div><div class="wa">正确答案：${escapeHtml(ans)}</div><div class="we">💡 ${escapeHtml(w.explanation||'')}</div></div>`;}).join('');return `<div class="wg2"><div class="wh2"><div class="wt"><span>${escapeHtml(nm)}</span><span class="wc">${g.wrong_count}题</span></div><button class="btn btn-o btn-sm" onclick="retry(${g.bank_id})">重练</button></div><div class="wgg">${items}</div></div>`;}).join('');}catch(e){body.innerHTML='';empty.style.display='flex';}}
 async function retry(bankId){try{const ws=await api2('/api/practice/wrong');const g=ws.find(x=>x.bank_id===bankId);if(!g||!g.questions.length){toast('没有错题');return;}startQuiz({bank_id:bankId,questions:g.questions});}catch(e){toast(e.message);}}
-async function loadStats(){try{const s=await api2('/api/stats');const pct=s.total_questions?Math.round(s.correct_count/s.total_questions*100):0;animateRing('ringFg2','ringVal2',pct);document.getElementById('statsTiles').innerHTML=`<div class="stile"><div class="si b2">📄</div><div class="sv">${s.total_questions}</div><div class="sn2">累计做题（题）</div></div><div class="stile"><div class="si g2">✅</div><div class="sv">${s.correct_count}</div><div class="sn2">正确题数（题）</div></div><div class="stile"><div class="si a2">🔥</div><div class="sv">${s.practice_count}</div><div class="sn2">练习次数（次）</div></div><div class="stile"><div class="si s2">🕐</div><div class="sv" style="font-size:14px">${s.last_practice_time?fd(s.last_practice_time):'--'}</div><div class="sn2">最近练习时间</div></div>`;}catch(e){}}
+async function loadStats(){try{const s=await api2('/api/stats');const pct=s.total_questions?Math.round(s.correct_count/s.total_questions*100):0;animateRing('ringFg2','ringVal2',pct);document.getElementById('statsTiles').innerHTML=`<div class="stile"><div class="si b2">📄</div><div class="sv">${s.total_questions}</div><div class="sn2">累计做题（题）</div></div><div class="stile"><div class="si g2">✅</div><div class="sv">${s.correct_count}</div><div class="sn2">正确题数（题）</div></div><div class="stile"><div class="si a2">🔥</div><div class="sv">${s.practice_count}</div><div class="sn2">练习次数（次）</div></div><div class="stile"><div class="si s2">🕐</div><div class="sv" style="font-size:14px">${s.last_practice_time?fd(s.last_practice_time):'--'}</div><div class="sn2">最近练习时间</div></div>`;}catch(e){}loadWeeklyTrend();loadTopKp();}
+async function loadWeeklyTrend(){
+  try{
+    const d=await api2('/api/stats/weekly_trend');
+    const dates=d.dates||[],counts=d.counts||[];
+    const svg=document.getElementById('weeklyTrendSvg'); if(!svg)return;
+    if(!counts.length){svg.innerHTML='<text x="350" y="100" text-anchor="middle" fill="#94a3b8" font-size="13">暂无数据</text>';return;}
+    const max=Math.max.apply(null,counts)||1;
+    const w=700,h=200,pad=30;
+    const barW=(w-pad*2)/counts.length-12;
+    const colors=['#2563EB','#10B981','#F59E0B','#EF4444','#93C5FD','#6366F1','#8B5CF6'];
+    let html='';
+    counts.forEach(function(c,i){
+      const bh=Math.round((c/max)*(h-pad*2-30))+8;
+      const x=pad+i*((w-pad*2)/counts.length)+6;
+      const y=h-pad-bh;
+      html+=`<rect x="${x}" y="${y}" width="${barW}" height="${bh}" rx="4" fill="${colors[i%7]}"/>`;
+      html+=`<text x="${x+barW/2}" y="${y-6}" text-anchor="middle" font-size="11" font-weight="700" fill="#1e293b">${c}</text>`;
+      const dt=new Date(dates[i]);
+      const label=(dt.getMonth()+1)+'/'+dt.getDate();
+      html+=`<text x="${x+barW/2}" y="${h-pad+18}" text-anchor="middle" font-size="10" fill="#64748b">${label}</text>`;
+    });
+    svg.innerHTML=html;
+  }catch(e){const svg=document.getElementById('weeklyTrendSvg');if(svg)svg.innerHTML='<text x="350" y="100" text-anchor="middle" fill="#94a3b8" font-size="13">加载失败</text>';}
+}
+async function loadTopKp(){
+  try{
+    const list=await api2('/api/stats/top_knowledge_points');
+    const el=document.getElementById('topKpList'); if(!el)return;
+    if(!list||!list.length){el.innerHTML='<div style="text-align:center;color:var(--muted);font-size:13px;padding:24px">暂无错题知识点</div>';return;}
+    el.innerHTML=list.map(function(item,idx){
+      const barW=Math.round(item.error_rate);
+      return `<div class="kp-row">
+        <div class="kp-rank rank-${idx+1}">${idx+1}</div>
+        <div class="kp-main">
+          <div class="kp-name">${escapeHtml(item.knowledge_point)}</div>
+          <div class="kp-bar"><div class="kp-bar-inner" style="width:${barW}%;background:${barW>=70?'#EF4444':barW>=40?'#F59E0B':'#10B981'}"></div></div>
+          <div class="kp-meta">错误率 ${item.error_rate}% · 错 ${item.wrong} 题 / 共 ${item.total} 题</div>
+        </div>
+      </div>`;
+    }).join('');
+  }catch(e){const el=document.getElementById('topKpList');if(el)el.innerHTML='<div style="text-align:center;color:var(--muted);font-size:13px;padding:24px">加载失败</div>';}
+}
+
+// === 试卷生成 ===
+function goPaper(id){
+  gPaperMID=id;gPaperScore=100;gPaperDur=90;
+  const m=mats.find(function(item){return String(item.id)===String(id);});
+  const ext=((m&&m.filename)||'').toLowerCase().split('.').pop();
+  const type=ext==='pdf'?'pdf':(ext==='docx'||ext==='doc')?'word':'txt';
+  const label=type==='pdf'?'PDF':type==='word'?'DOC':'TXT';
+  document.getElementById('paperChip').innerHTML=`<div class="ci mci ${type}" aria-label="${label}"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6 2h7l5 5v13a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2Zm7 1.8V8h4.2L13 3.8Z"/></svg></div><div class="cn">${escapeHtml(m?m.filename:'')}</div>`;
+  renderSubjectRow('paperSubjectRow');
+  document.getElementById('gradeValue').textContent='通用';
+  document.getElementById('gradeMenu').innerHTML=GRADE_OPTIONS.map(function(g){return `<div class="dropdown__option ${g==='通用'?'selected':''}" onclick="setGrade('${g}')">${g}</div>`;}).join('');
+  document.getElementById('scoreVal').textContent='100';
+  document.getElementById('durVal').textContent='90';
+  showPage('paper');
+}
+function loadPaperPage(){
+  if(!gPaperMID){
+    toast('请先从资料卡片点击"试卷"');showPage('home');return;
+  }
+}
+function toggleGradeMenu(event){event.stopPropagation();document.getElementById('gradeDropdown').classList.toggle('open');}
+function setGrade(g){document.getElementById('gradeValue').textContent=g;document.getElementById('gradeDropdown').classList.remove('open');document.querySelectorAll('#gradeMenu .dropdown__option').forEach(function(o){o.classList.toggle('selected',o.textContent===g);});}
+function stepScore(d){const n=gPaperScore+d;if(n<50||n>150)return;gPaperScore=n;document.getElementById('scoreVal').textContent=n;document.getElementById('scoreMinus').disabled=n<=50;document.getElementById('scorePlus').disabled=n>=150;}
+function stepDuration(d){const n=gPaperDur+d;if(n<30||n>180)return;gPaperDur=n;document.getElementById('durVal').textContent=n;document.getElementById('durMinus').disabled=n<=30;document.getElementById('durPlus').disabled=n>=180;}
+async function runPaperGen(){
+  if(!gPaperMID){toast('请先选择资料');return;}
+  const structure={};
+  const ch=parseInt(document.getElementById('psChoice').value)||0;
+  const fi=parseInt(document.getElementById('psFill').value)||0;
+  const ju=parseInt(document.getElementById('psJudge').value)||0;
+  const su=parseInt(document.getElementById('psSubjective').value)||0;
+  if(ch>0)structure.choice=ch;
+  if(fi>0)structure.fill=fi;
+  if(ju>0)structure.true_false=ju;
+  if(su>0)structure.subjective=su;
+  const totalQ=Object.values(structure).reduce(function(a,b){return a+b;},0);
+  if(totalQ<1){toast('至少要 1 道题');return;}
+  if(totalQ>50){toast('最多 50 道题');return;}
+  const btn=document.getElementById('paperGenBtn');
+  btn.disabled=true;btn.innerHTML='<span class="spn"></span> AI 正在生成试卷...';
+  try{
+    const d=await api2('/api/paper/generate',{method:'POST',body:JSON.stringify({
+      material_id:Number(gPaperMID),
+      subject:gSubject,
+      grade:document.getElementById('gradeValue').textContent,
+      total_score:gPaperScore,
+      duration_minutes:gPaperDur,
+      structure:structure,
+      chapter_range:document.getElementById('paperChapter').value.trim(),
+      knowledge_points:document.getElementById('paperKp').value.trim()
+    })});
+    // 弹窗显示试卷
+    showPaperResult(d);
+  }catch(e){toast(e.message);}
+  finally{btn.disabled=false;btn.textContent='生成试卷';}
+}
+function showPaperResult(d){
+  var html='<div class="paper-result-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:50;display:flex;align-items:center;justify-content:center;padding:24px" onclick="if(event.target===this)this.remove()">';
+  html+='<div style="background:#fff;border-radius:18px;max-width:880px;width:100%;max-height:88vh;overflow:auto;padding:36px 40px">';
+  html+=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px"><div><div style="font-size:22px;font-weight:800">${escapeHtml(d.title)}</div><div style="font-size:12.5px;color:var(--muted);margin-top:4px">共 ${d.total_questions} 题 · 总分 ${d.total_score} 分 · ${d.duration_minutes} 分钟</div></div><button onclick="this.closest(\'.paper-result-overlay\').remove()" style="background:none;border:none;font-size:24px;cursor:pointer;color:var(--muted)">×</button></div>`;
+  (d.questions||[]).forEach(function(q,i){
+    const typeMap={choice:'单选题',multi_choice:'多选题',true_false:'判断题',fill:'填空题',subjective:'解答题'};
+    html+=`<div style="padding:14px 0;border-bottom:1px solid var(--line)"><div style="font-weight:700;margin-bottom:6px">${i+1}. [${typeMap[q.question_type]||'题'}] ${escapeHtml(q.question)}</div>`;
+    if(q.options&&q.options.length){
+      html+='<div style="padding-left:16px;color:var(--muted);font-size:13px">'+q.options.map(function(o){return escapeHtml(o);}).join('<br>')+'</div>';
+    }
+    html+=`<div style="padding-left:16px;margin-top:6px;font-size:12.5px;color:#047857"><b>答案：</b>${escapeHtml(Array.isArray(q.answer)?q.answer.join(', '):q.answer)}</div>`;
+    html+=`<div style="padding-left:16px;font-size:12.5px;color:var(--muted);margin-top:4px">💡 ${escapeHtml(q.explanation||'')}</div>`;
+    if(q.knowledge_point)html+=`<div style="padding-left:16px;font-size:11px;color:var(--blue);margin-top:4px;font-weight:600">知识点：${escapeHtml(q.knowledge_point)}</div>`;
+    html+='</div>';
+  });
+  html+='</div></div>';
+  var div=document.createElement('div');div.innerHTML=html;
+  document.body.appendChild(div.firstChild);
+}
 
 // === 键盘快捷键 ===
 document.addEventListener('keydown',function(e){
