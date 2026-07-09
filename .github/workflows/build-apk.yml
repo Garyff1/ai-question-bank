@@ -7,11 +7,9 @@ on:
       - 'android-app/**'
       - '.github/workflows/**'
   workflow_dispatch:
-    inputs:
-      version:
-        description: '版本标签 (如 v2.9.2)'
-        required: false
-        default: ''
+
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -37,15 +35,23 @@ jobs:
       - name: Get version
         id: ver
         run: |
-          VER=$(grep '^version:' pubspec.yaml | awk '{print $2}' | cut -d '+' -f 1)
+          VER=$(grep "^version:" pubspec.yaml | awk "{print \$2}" | cut -d "+" -f 1)
           echo "version=$VER" >> $GITHUB_OUTPUT
 
-      - name: Upload to GitHub Release
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: apk-v${{ steps.ver.outputs.version }}
+          path: android-app/build/app/outputs/flutter-apk/app-release.apk
+
+      - name: Upload to Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: android-v${{ steps.ver.outputs.version }}
           name: Android v${{ steps.ver.outputs.version }}
           files: android-app/build/app/outputs/flutter-apk/app-release.apk
           generate_release_notes: true
+          draft: false
+          prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
