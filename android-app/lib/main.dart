@@ -18962,6 +18962,8 @@ class _TrueFalseGameWidgetState extends State<TrueFalseGameWidget>
   late final AnimationController _cardCtrl;
   late final AnimationController _flashCtrl;
   double _dragX = 0;
+  double _flyFrom = 0;
+  double _flyTo = 0;
   bool? _result;
   bool _submitted = false;
 
@@ -18988,7 +18990,9 @@ class _TrueFalseGameWidgetState extends State<TrueFalseGameWidget>
     _result = correct;
     setState(() {});
     _flashCtrl.forward(from: 0);
-    _dragX = right ? 500 : -500;
+    _flyFrom = _dragX;
+    _flyTo = right ? 500.0 : -500.0;
+    _dragX = _flyTo;
     _cardCtrl.forward();
     if (correct) {
       HapticFeedback.mediumImpact();
@@ -19061,9 +19065,12 @@ class _TrueFalseGameWidgetState extends State<TrueFalseGameWidget>
                 child: AnimatedBuilder(
                   animation: Listenable.merge([_cardCtrl]),
                   builder: (_, child) {
-                    final angle = (_dragX / 300).clamp(-0.5, 0.5);
+                    final dx = _submitted
+                        ? _flyFrom + (_flyTo - _flyFrom) * Curves.easeIn.transform(_cardCtrl.value)
+                        : _dragX;
+                    final angle = (dx / 300).clamp(-0.5, 0.5);
                     return Transform.translate(
-                      offset: Offset(_dragX, 0),
+                      offset: Offset(dx, 0),
                       child: Transform.rotate(angle: angle, child: child),
                     );
                   },
