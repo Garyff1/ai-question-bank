@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 
@@ -262,7 +262,7 @@ class MiniGame {
         type: type,
         prompt: (json['prompt'] ?? '请将左右两列配对').toString(),
         options: lefts,
-        answer: rights.join('\u0001'), // 用 \u0001 分隔右侧答案
+        answer: rights.join('^A'), // 用 ^A 分隔右侧答案
         audioText: json['audio_text']?.toString(),
         explanation: json['explanation']?.toString(),
         knowledgePoint: json['knowledge_point']?.toString(),
@@ -13445,7 +13445,7 @@ $materialText
         type: MiniGameType.matching,
         prompt: '将左侧与右侧配对',
         options: lefts,
-        answer: rights.join('\u0001'),
+        answer: rights.join('^A'),
         knowledgePoint: '资料要点',
       ));
       idx = 4;
@@ -16153,9 +16153,9 @@ class _RpgLevelCompleteOverlayState extends State<RpgLevelCompleteOverlay>
     }
     _introCtrl.forward();
     _starCtrl.forward();
-    Future.delayed(const Duration(milliseconds: 600), () => _xpCtrl.forward());
+    Future.delayed(const Duration(milliseconds: 600), () { if (mounted) _xpCtrl.forward(); });
     if (widget.result.newBadges.isNotEmpty) {
-      Future.delayed(const Duration(milliseconds: 1500), () => _badgeCtrl.forward());
+      Future.delayed(const Duration(milliseconds: 1500), () { if (mounted) _badgeCtrl.forward(); });
     }
   }
 
@@ -17151,7 +17151,7 @@ class _MatchingGameWidgetState extends State<MatchingGameWidget>
   void initState() {
     super.initState();
     _lefts = List.from(widget.game.options);
-    final correctRights = widget.game.answer.split('\u0001');
+    final correctRights = widget.game.answer.split('^A');
     // 打乱右侧
     final indexedRights = <MapEntry<String, int>>[];
     for (var i = 0; i < correctRights.length; i++) {
@@ -19212,7 +19212,7 @@ class _LinkUpGameWidgetState extends State<LinkUpGameWidget>
   @override
   void initState() {
     super.initState();
-    final rights = widget.game.answer.split('\u0001');
+    final rights = widget.game.answer.split('^A');
     final lefts = widget.game.options;
     _totalPairs = lefts.length;
     final tiles = <_LinkTile>[];
