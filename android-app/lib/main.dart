@@ -1581,6 +1581,8 @@ class _AppShellState extends State<AppShell> {
   bool _rpgGenerating = false;
   // v2.9.0: Mini-Game 闯关会话
   MiniGameSession? _miniGameSession;
+  // 防止关卡组件重复回调或用户连续点击时并发执行两次结算。
+  bool _completingMiniGameLevel = false;
 
   @override
   void initState() {
@@ -2581,6 +2583,7 @@ class _AppShellState extends State<AppShell> {
   }
 
   Future<void> _startWrongCardChallenge() async {
+    if (!mounted) return;
     if (_wrongs.isEmpty) {
       _showSnack('暂无错题，先完成一组练习再来抽卡吧');
       return;
@@ -2674,12 +2677,24 @@ class _AppShellState extends State<AppShell> {
   // v2.8.0: 开始 RPG 关卡挑战
   Future<void> _startRpgChallenge(int chapter, int level, {bool popMap = true}) async {
     // 关闭地图页
-    if (popMap) Navigator.of(context).pop();
+    if (popMap) {
+      if (!mounted) return;
+      Navigator.of(context).pop();
+      // 等地图路由退出后再展示关卡介绍，避免两个路由动画重叠。
+      await Future<void>.delayed(const Duration(milliseconds: 180));
+      if (!mounted) return;
+    }
     if (!_config.ready) {
       _showSnack('请先配置大模型 API');
       return;
     }
-    final material = _rpgMaterial ?? _selectedMaterial ?? _materials.first;
+    final material = _rpgMaterial ??
+        _selectedMaterial ??
+        (_materials.isNotEmpty ? _materials.first : null);
+    if (material == null) {
+      _showSnack('学习资料已不存在，请重新导入后再闯关');
+      return;
+    }
     final subject = _rpgSubject;
     final isBoss = level == 5;
     // 显示关卡介绍
@@ -2717,6 +2732,7 @@ class _AppShellState extends State<AppShell> {
         _showSnack('AI 没有返回有效关卡，请重试');
         return;
       }
+      if (!mounted) return;
       HapticFeedback.mediumImpact();
       SoundService.instance.play(SoundType.levelup);
       setState(() {
@@ -2743,12 +2759,17 @@ class _AppShellState extends State<AppShell> {
 
   // v2.9.0: Mini-Game 关卡完成回调
   Future<void> _completeMiniGameLevel(MiniGameLevelResult result) async {
+    if (!mounted || _completingMiniGameLevel) return;
+    final completedSession = _miniGameSession;
+    if (completedSession == null) return;
+    _completingMiniGameLevel = true;
+
     // 转换为 PracticeResult 以复用 _settleRpg
-    final chapter = _miniGameSession?.chapter ?? 1;
-    final level = _miniGameSession?.level ?? 1;
-    final startTime = _miniGameSession?.startTime;
+    final chapter = completedSession.chapter;
+    final level = completedSession.level;
+    final startTime = completedSession.startTime;
     final fakeResult = PracticeResult(
-      materialName: _miniGameSession?.materialName ?? '',
+      materialName: completedSession.materialName,
       total: result.total,
       correct: result.correct,
       wrongs: result.wrongs,
@@ -2766,9 +2787,13 @@ class _AppShellState extends State<AppShell> {
     // 记录到练习历史
     final now = DateTime.now();
     final dateKey = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+    if (!mounted) {
+      _completingMiniGameLevel = false;
+      return;
+    }
     setState(() {
       _records.insert(0, PracticeRecord(
-        materialName: _miniGameSession?.materialName ?? 'RPG 闯关',
+        materialName: completedSession.materialName,
         total: result.total,
         correct: result.correct,
         createdAt: now,
@@ -2781,10 +2806,14 @@ class _AppShellState extends State<AppShell> {
       _practiceLog[dateKey] = (_practiceLog[dateKey] ?? 0) + 1;
       _miniGameSession = null;
     });
-    await _saveRecords();
-    await _saveWrongs();
-    await _savePracticeLog();
-    await _saveRpgProgress();
+    try {
+      await _saveRecords();
+      await _saveWrongs();
+      await _savePracticeLog();
+      await _saveRpgProgress();
+    } catch (error) {
+      _showSnack('关卡记录保存失败：${error.toString().replaceFirst('Exception: ', '')}');
+    }
 
     HapticFeedback.heavyImpact();
     if (rpgResult.stars > 0) {
@@ -2799,30 +2828,40 @@ class _AppShellState extends State<AppShell> {
       });
     }
 
-    if (!mounted) return;
-    await showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => RpgLevelCompleteOverlay(
-        result: rpgResult,
-        onNext: () {
-          Navigator.of(context).pop();
-          // 进入下一关
-          if (rpgResult.chapterCleared && rpgResult.allCleared) {
-            _showSnack('恭喜通关全部章节！');
-            return;
-          }
-          final nextChapter = rpgResult.chapterCleared ? chapter + 1 : chapter;
-          final nextLevel = rpgResult.chapterCleared ? 1 : level + 1;
-          if (nextChapter > 3) {
-            _showSnack('恭喜通关全部章节！');
-            return;
-          }
-          _startRpgChallenge(nextChapter, nextLevel, popMap: false);
-        },
-        onBack: () => Navigator.of(context).pop(),
-      ),
-    );
+    if (!mounted) {
+      _completingMiniGameLevel = false;
+      return;
+    }
+    try {
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (dialogContext) => RpgLevelCompleteOverlay(
+          result: rpgResult,
+          onNext: () {
+            Navigator.of(dialogContext).pop();
+            // 等结算弹窗退出后再进入下一关，避免使用正在销毁的路由上下文。
+            Future<void>.delayed(const Duration(milliseconds: 220), () async {
+              if (!mounted) return;
+              if (rpgResult.chapterCleared && rpgResult.allCleared) {
+                _showSnack('恭喜通关全部章节！');
+                return;
+              }
+              final nextChapter = rpgResult.chapterCleared ? chapter + 1 : chapter;
+              final nextLevel = rpgResult.chapterCleared ? 1 : level + 1;
+              if (nextChapter > 3) {
+                _showSnack('恭喜通关全部章节！');
+                return;
+              }
+              await _startRpgChallenge(nextChapter, nextLevel, popMap: false);
+            });
+          },
+          onBack: () => Navigator.of(dialogContext).pop(),
+        ),
+      );
+    } finally {
+      _completingMiniGameLevel = false;
+    }
   }
 
   // v2.8.0: RPG 关卡结算 —— 计算三星、XP、徽章
@@ -6365,7 +6404,8 @@ class _WrongCardEntry extends StatelessWidget {
         : (canBoost ? '5 题全对，开启 10 分钟三倍经验' : '错题不足 5 道也可练习，但不激活三倍经验');
     return _BouncyTap(
       onTap: onTap,
-      enabled: wrongCount != 0,
+      // 无错题时仍允许点击，由上层统一给出明确提示。
+      enabled: true,
       child: Container(
         padding: const EdgeInsets.all(18),
         decoration: BoxDecoration(
@@ -10368,7 +10408,7 @@ class _TypeHistogram extends StatelessWidget {
   }
 }
 
-/// 直方图：错题知识点 Top 5（v2.7.4: 按错误率排序，错误率高的排前面）
+/// 直方图：错题知识点 Top 5（按错误次数排序，错得最多的排前面）
 class _KnowledgeHistogram extends StatelessWidget {
   const _KnowledgeHistogram({required this.stats, required this.progress});
   final List<QuestionStat> stats;
@@ -10384,18 +10424,12 @@ class _KnowledgeHistogram extends StatelessWidget {
       'true_false': '判断题综合',
       'subjective': '解答题综合',
     };
-    final kpOf = <String, String>{};
+    final wrongMap = <String, int>{};
+    final correctMap = <String, int>{};
     for (final s in stats) {
       final kp = s.knowledgePoint.trim().isNotEmpty
           ? s.knowledgePoint.trim()
           : (typeLabels[s.type] ?? '综合');
-      kpOf[s.type] = kp;
-    }
-
-    final wrongMap = <String, int>{};
-    final correctMap = <String, int>{};
-    for (final s in stats) {
-      final kp = kpOf[s.type] ?? '综合';
       if (s.isCorrect) {
         correctMap[kp] = (correctMap[kp] ?? 0) + 1;
       } else {
@@ -10405,16 +10439,18 @@ class _KnowledgeHistogram extends StatelessWidget {
     if (wrongMap.isEmpty) {
       return const _EmptyChart('本次练习没有错题，继续保持！');
     }
-    // v2.7.4: 按错误率（wrong/(wrong+correct)）降序排序，错误率高的排前面
-    final allKps = <String>{...wrongMap.keys, ...correctMap.keys};
-    final entries = allKps.map((kp) {
+    // 只展示出现过错题的知识点；错误次数相同时按正确次数升序稳定排序。
+    final entries = wrongMap.keys.map((kp) {
       final wrong = wrongMap[kp] ?? 0;
       final correct = correctMap[kp] ?? 0;
-      final total = wrong + correct;
-      final rate = total > 0 ? wrong / total : 0.0;
-      return MapEntry(kp, (wrong, correct, rate));
+      return MapEntry(kp, (wrong, correct));
     }).toList()
-      ..sort((a, b) => b.value.$3.compareTo(a.value.$3));
+      ..sort((a, b) {
+        final wrongCompare = b.value.$1.compareTo(a.value.$1);
+        return wrongCompare != 0
+            ? wrongCompare
+            : a.value.$2.compareTo(b.value.$2);
+      });
     final top = entries.take(5).toList();
     final maxVal = top.fold<int>(1, (a, e) => a > e.value.$1 ? a : e.value.$1);
     return Column(
@@ -14367,6 +14403,7 @@ class _StaggeredAppearState extends State<_StaggeredAppear>
   late final AnimationController _controller;
   late final Animation<double> _opacity;
   late final Animation<Offset> _offset;
+  Timer? _delayTimer;
 
   @override
   void initState() {
@@ -14383,13 +14420,14 @@ class _StaggeredAppearState extends State<_StaggeredAppear>
       begin: const Offset(0, 0.06),
       end: Offset.zero,
     ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOut));
-    Future<void>.delayed(widget.delay, () {
+    _delayTimer = Timer(widget.delay, () {
       if (mounted) _controller.forward();
     });
   }
 
   @override
   void dispose() {
+    _delayTimer?.cancel();
     _controller.dispose();
     super.dispose();
   }
@@ -16131,6 +16169,14 @@ class _RpgLevelCompleteOverlayState extends State<RpgLevelCompleteOverlay>
   late final Animation<int> _xpAnim;
   // v2.9.1: 动画类型 — chest(宝箱) / fireworks(烟花) / levelup(角色升级)
   late final String _animType;
+  bool _actionTaken = false;
+
+  void _runOnce(VoidCallback action) {
+    if (_actionTaken) return;
+    setState(() => _actionTaken = true);
+    HapticFeedback.selectionClick();
+    action();
+  }
 
   @override
   void initState() {
@@ -16549,7 +16595,9 @@ class _RpgLevelCompleteOverlayState extends State<RpgLevelCompleteOverlay>
                     children: [
                       Expanded(
                         child: OutlinedButton(
-                          onPressed: widget.onBack,
+                          onPressed: _actionTaken
+                              ? null
+                              : () => _runOnce(widget.onBack),
                           style: OutlinedButton.styleFrom(
                             foregroundColor: Colors.white70,
                             side: const BorderSide(color: Colors.white24),
@@ -16562,7 +16610,9 @@ class _RpgLevelCompleteOverlayState extends State<RpgLevelCompleteOverlay>
                       const SizedBox(width: 12),
                       Expanded(
                         child: FilledButton(
-                          onPressed: widget.onNext,
+                          onPressed: _actionTaken
+                              ? null
+                              : () => _runOnce(widget.onNext),
                           style: FilledButton.styleFrom(
                             padding: const EdgeInsets.symmetric(vertical: 14),
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -16810,6 +16860,7 @@ class _MiniGamePageState extends State<MiniGamePage>
   final List<WrongItem> _wrongs = [];
   late final DateTime _startTime;
   late final AnimationController _progressCtrl;
+  bool _levelFinished = false;
 
   int get _total => widget.session.games.length;
 
@@ -16837,6 +16888,7 @@ class _MiniGamePageState extends State<MiniGamePage>
     String? userAnswer,
     String? correctAnswer,
   }) {
+    if (!mounted || _levelFinished) return;
     setState(() {
       if (correct) {
         _correct++;
@@ -16862,6 +16914,8 @@ class _MiniGamePageState extends State<MiniGamePage>
   }
 
   void _finishLevel() {
+    if (_levelFinished) return;
+    _levelFinished = true;
     final duration = DateTime.now().difference(_startTime);
     widget.onComplete(MiniGameLevelResult(
       total: _total,
