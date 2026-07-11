@@ -571,6 +571,19 @@ class AiQuestion {
         debugPrint('[RichContent] 兜底生成 ${fallback.length} 个富内容块 | 题干：$qPreview...');
       }
     }
+    final questionChart = _extractChartData('$questionText\n$explanationText');
+    if (questionChart != null) {
+      final chartIndex = richContent.indexWhere(
+        (item) => (item['type'] ?? '').toString().toLowerCase() == 'chart',
+      );
+      if (chartIndex >= 0) {
+        richContent[chartIndex] = questionChart;
+        debugPrint('[RichContent] 用题干真实数据覆盖 chart 富内容 | 题干：$qPreview...');
+      } else {
+        richContent.add(questionChart);
+        debugPrint('[RichContent] 从题干真实数据补充 chart 富内容 | 题干：$qPreview...');
+      }
+    }
     return AiQuestion(
       type: _normalizeType(type),
       question: questionText,
@@ -706,70 +719,103 @@ class AiQuestion {
       return null;
     }
 
-    // v2.7.6: 黑名单标签——这些词后的数值不是图表数据
+    // 黑名单标签——这些词后的数值不是图表数据
     const blacklistLabels = {
       '答案', '正确答案', '选项', '正确率', '错误率', '得分', '分值', '满分',
       '总分', '题号', '编号', '页码', '数量', '总数', '人数', '百分比',
       '增长率', '增长', '下降', '幅度', '比例', '占比', '部分',
+      '第', '题', '小题', '大题', '解析', '说明', '单位',
     };
 
-    // v2.7.6: 拆分行，逐行找图表关键词附近的数据；如果一行同时含"图"和数据，优先用这行
+    String normalize(String value) => value
+        .replaceAll('：', ':')
+        .replaceAll('＝', '=')
+        .replaceAll('（', '(')
+        .replaceAll('）', ')')
+        .replaceAll('，', ',')
+        .replaceAll('、', ',')
+        .replaceAll('；', ';')
+        .replaceAll('％', '%');
+
+    bool validLabel(String label) {
+      final cleaned = label.trim();
+      if (cleaned.isEmpty || cleaned.length > 10) return false;
+      if (blacklistLabels.contains(cleaned)) return false;
+      if (RegExp(r'^\d+$').hasMatch(cleaned)) return false;
+      if (cleaned.startsWith('答案') ||
+          cleaned.startsWith('选项') ||
+          cleaned.startsWith('正确') ||
+          cleaned.startsWith('错误') ||
+          cleaned.startsWith('解析')) {
+        return false;
+      }
+      return true;
+    }
+
+    String cleanLabel(String label) => label
+        .replaceAll(RegExp(r'^[\s,;:：，、。]+'), '')
+        .replaceAll(RegExp(r'(数据|项目|类别|人数|数量|比例|占比)$'), '')
+        .trim();
+
+    final dataMap = <String, double>{};
+
+    void addPair(String rawLabel, String valueStr) {
+      final label = cleanLabel(rawLabel);
+      final value = double.tryParse(valueStr);
+      if (value == null) return;
+      if (!validLabel(label)) return;
+      if (value < 0 || value > 10000) return;
+      dataMap[label] = value;
+    }
+
+    // 拆分行，逐行找图表关键词附近的数据；如果一行同时含"图"和数据，优先用这行
     final lines = text.split(RegExp(r'[\n。；;！!]'));
     // 候选文本：优先用包含"图"的行，否则用全文
     final candidateLines = lines.where((l) =>
         RegExp(r'图|数据|如下|所示').hasMatch(l) &&
         RegExp(r'\d').hasMatch(l)).toList();
-    final searchTexts = candidateLines.isNotEmpty ? candidateLines : [text];
-
-    final dataMap = <String, double>{};
+    final searchTexts =
+        (candidateLines.isNotEmpty ? candidateLines : [text]).map(normalize);
 
     void tryExtract(String searchText, RegExp regex, String Function(Match) labelFn, String Function(Match) valueFn) {
       for (final m in regex.allMatches(searchText)) {
-        final label = labelFn(m).trim();
-        final valueStr = valueFn(m);
-        final value = double.tryParse(valueStr);
-        if (value == null) continue;
-        // v2.7.6: 排除黑名单标签
-        if (blacklistLabels.contains(label)) continue;
-        // v2.7.6: 排除异常值
-        if (value < 0 || value > 10000) continue;
-        // v2.7.6: 标签长度限制（2-10 字符，避免单字"年/月"或长句）
-        if (label.length < 1 || label.length > 10) continue;
-        // 排除"答案"/"选项"开头
-        if (label.startsWith('答案') || label.startsWith('选项') ||
-            label.startsWith('正确') || label.startsWith('错误')) continue;
-        dataMap[label] = value;
+        addPair(labelFn(m), valueFn(m));
       }
     }
 
     for (final searchText in searchTexts) {
       // 优先匹配 "标签:数值" 或 "标签：数值" 格式
       if (dataMap.length < 2) {
-        final colonRegex = RegExp(r'([\u4e00-\u9fa5A-Za-z_]{1,10})\s*[:：]\s*(\d+(?:\.\d+)?)');
+        final colonRegex = RegExp(r'([\u4e00-\u9fa5A-Za-z_][\u4e00-\u9fa5A-Za-z0-9_]{0,9})\s*:\s*(\d+(?:\.\d+)?)');
         tryExtract(searchText, colonRegex, (m) => m.group(1)!, (m) => m.group(2)!);
       }
       // 如果冒号格式没匹配到，尝试 "标签=数值" 格式
       if (dataMap.length < 2) {
         dataMap.clear();
-        final eqRegex = RegExp(r'([\u4e00-\u9fa5A-Za-z_]{1,10})\s*[=＝]\s*(\d+(?:\.\d+)?)');
+        final eqRegex = RegExp(r'([\u4e00-\u9fa5A-Za-z_][\u4e00-\u9fa5A-Za-z0-9_]{0,9})\s*=\s*(\d+(?:\.\d+)?)');
         tryExtract(searchText, eqRegex, (m) => m.group(1)!, (m) => m.group(2)!);
+      }
+      // 教材常见写法："甲(30)"、"A（12.5）"
+      if (dataMap.length < 2) {
+        dataMap.clear();
+        final parenRegex = RegExp(
+          r'([\u4e00-\u9fa5A-Za-z_][\u4e00-\u9fa5A-Za-z0-9_]{0,9})\s*\(\s*(\d+(?:\.\d+)?)\s*(?:人|个|件|分|元|%|％)?\s*\)',
+        );
+        tryExtract(searchText, parenRegex, (m) => m.group(1)!, (m) => m.group(2)!);
+      }
+      // 教材自然语言写法："一班有30人"、"甲为42"
+      if (dataMap.length < 2) {
+        dataMap.clear();
+        final naturalRegex = RegExp(
+          r'([\u4e00-\u9fa5A-Za-z_][\u4e00-\u9fa5A-Za-z0-9_]{0,7})\s*(?:有|为|是|达到|约)?\s*(\d+(?:\.\d+)?)\s*(?:人|个|件|分|元|%|％)',
+        );
+        tryExtract(searchText, naturalRegex, (m) => m.group(1)!, (m) => m.group(2)!);
       }
       // 如果还是没匹配到，尝试 "汉字标签 数字" 格式（如"男生 25人"）
       if (dataMap.length < 2) {
         dataMap.clear();
-        final spaceRegex = RegExp(r'([\u4e00-\u9fa5]{1,6})\s*(\d+(?:\.\d+)?)');
-        for (final m in spaceRegex.allMatches(searchText)) {
-          final label = m.group(1)!.trim();
-          final valueStr = m.group(2)!;
-          final value = double.tryParse(valueStr);
-          if (value == null) continue;
-          if (blacklistLabels.contains(label)) continue;
-          if (value < 0 || value > 10000) continue;
-          if (label.length < 2 || label.length > 6) continue;
-          if (label.startsWith('答案') || label.startsWith('选项') ||
-              label.startsWith('正确') || label.startsWith('错误')) continue;
-          dataMap[label] = value;
-        }
+        final spaceRegex = RegExp(r'([\u4e00-\u9fa5A-Za-z_][\u4e00-\u9fa5A-Za-z0-9_]{1,7})\s+(\d+(?:\.\d+)?)');
+        tryExtract(searchText, spaceRegex, (m) => m.group(1)!, (m) => m.group(2)!);
       }
       if (dataMap.length >= 2) break;
     }
@@ -1244,6 +1290,34 @@ class WrongItem {
     createdAt:
         DateTime.tryParse(json['createdAt'] as String? ?? '') ?? DateTime.now(),
   );
+}
+
+String wrongQuestionKey(AiQuestion question) {
+  final answer = question.answer == null ? '' : jsonEncode(question.answer);
+  return [
+    question.type.trim().toLowerCase(),
+    question.question.replaceAll(RegExp(r'\s+'), ' ').trim(),
+    answer.replaceAll(RegExp(r'\s+'), ' ').trim(),
+  ].join('|');
+}
+
+List<WrongItem> mergeWrongItems(
+  List<WrongItem> existing,
+  List<WrongItem> incoming, {
+  Iterable<AiQuestion> resolvedQuestions = const [],
+  int limit = 500,
+}) {
+  final resolvedKeys = resolvedQuestions.map(wrongQuestionKey).toSet();
+  final incomingKeys =
+      incoming.map((item) => wrongQuestionKey(item.question)).toSet();
+  final kept = existing
+      .where((item) {
+        final key = wrongQuestionKey(item.question);
+        return !resolvedKeys.contains(key) && !incomingKeys.contains(key);
+      })
+      .toList(growable: false);
+  final merged = <WrongItem>[...incoming, ...kept];
+  return merged.length > limit ? merged.sublist(0, limit) : merged;
 }
 
 class XpProfile {
@@ -2608,6 +2682,7 @@ class _AppShellState extends State<AppShell> {
       _session = PracticeSession(
         materialName: '错题抽卡挑战',
         questions: picked.map((item) => item.question).toList(),
+        sourceWrongs: picked,
         isWrongCardChallenge: true,
         xpMultiplier: _xpProfile.activeMultiplier(),
       );
@@ -3340,9 +3415,12 @@ class _AppShellState extends State<AppShell> {
           questionStats: stats,
         ),
       );
-      if (!result.isWrongCardChallenge) {
-        _wrongs.insertAll(0, result.wrongs);
-      }
+      _wrongs = mergeWrongItems(
+        _wrongs,
+        result.wrongs,
+        resolvedQuestions:
+            result.isWrongCardChallenge ? result.questions : const [],
+      );
       // v2.7.3: 追加到每日练习趋势日志（独立持久化，删除历史记录不影响趋势）
       final todayKey = _dateKey(DateTime.now());
       _practiceLog[todayKey] = (_practiceLog[todayKey] ?? 0) + result.total;
@@ -5235,6 +5313,7 @@ class PracticeSession {
   const PracticeSession({
     required this.materialName,
     required this.questions,
+    this.sourceWrongs = const [],
     this.isWrongCardChallenge = false,
     this.xpMultiplier = 1,
     this.gameMode = 'normal',         // normal / wrongcard / rpg
@@ -5245,6 +5324,7 @@ class PracticeSession {
 
   final String materialName;
   final List<AiQuestion> questions;
+  final List<WrongItem> sourceWrongs;
   final bool isWrongCardChallenge;
   final int xpMultiplier;
   final String gameMode;
@@ -5333,9 +5413,17 @@ class _PracticeScreenState extends State<PracticeScreen> {
       if (correct) {
         _correct++;
       } else {
+        WrongItem? source;
+        final key = wrongQuestionKey(question);
+        for (final item in widget.session.sourceWrongs) {
+          if (wrongQuestionKey(item.question) == key) {
+            source = item;
+            break;
+          }
+        }
         _wrongs.add(
           WrongItem(
-            materialName: widget.session.materialName,
+            materialName: source?.materialName ?? widget.session.materialName,
             question: question,
             userAnswer: answer,
             createdAt: DateTime.now(),
@@ -13192,7 +13280,7 @@ class AiService {
             ? '6. 本次为纯文字题目模式，**不要返回 math/physics/chemistry/chart/svg 等 rich_content**；但**英语听力题的 listening 块例外**，必须按第 8 条要求返回 listening rich_content。'
             : '6. 本次为纯文字题目模式，不要返回 rich_content 字段或留空数组 []，避免拖长输出导致 JSON 截断。';
     final listeningNote = enableListening
-        ? '\n8. **英语听力题启用（重要·强制占比 40%）**：若资料内容含较多英文（拉丁字母占比 >= 15%），**必须**生成占总题数 40% 左右的听力题（例如 10 道题至少 4 道听力题），优先排在前面。\n   - listening 块格式：{"type":"listening","data":{"audio_text":"完整英文段落（30-80 词，必须是资料中的英文原文或基于资料改编的完整对话/短文，不要只截取零散单词）","voice":"en-US"}}\n   - audio_text 必须是完整的英文句子/段落，不能是单词或短语\n   - 题干可以是中文（描述听力场景），但 audio_text 必须是英文原文\n   - 每题 audio_text 长度 30-80 词；各题 audio_text 不得重复\n   - 听力题占比目标：约 40%（允许 30%-50% 浮动）\n   - 非英语资料（中文占比 > 85%）不要返回 listening 类型'
+        ? '\n8. **英语听力题启用（重要·强制占比 40%）**：若资料中存在可朗读英文句段（拉丁字母占比 >= 5% 或题干中含英文句段），**必须**生成占总题数 40% 左右的听力题（例如 10 道题至少 4 道听力题），优先排在前面。\n   - listening 块格式：{"type":"listening","data":{"audio_text":"完整英文段落（30-80 词，必须是资料中的英文原文或基于资料改编的完整对话/短文，不要只截取零散单词）","voice":"en-US"}}\n   - audio_text 必须是完整的英文句子/段落，不能是单词或短语\n   - 题干可以是中文（描述听力场景），但 audio_text 必须是英文原文\n   - 每题 audio_text 长度 30-80 词；各题 audio_text 不得重复\n   - 听力题占比目标：约 40%（允许 30%-50% 浮动）\n   - 非英语资料（中文占比 > 95% 且无英文句段）不要返回 listening 类型'
         : '\n8. 本次不生成英语听力题（音频开关已关闭）。';
     final prompt = enableRichContent
         ? '''
@@ -13574,7 +13662,7 @@ $materialText
     return games.take(count).toList();
   }
 
-  /// v2.7.5 听力题兜底增强：若资料英文比例 >= 15% 且 listening 题不足总题数 40%，
+  /// v2.9.7 听力题兜底增强：若资料英文比例 >= 5% 且 listening 题不足总题数 40%，
   /// 强制改造题目（追加 listening rich_content 块）使听力题占比达到 40%
   /// v2.7.5: 放宽英文片段提取条件——从 30-200字符/6词 降到 15-300字符/4词
   ///         并新增题干英文兜底（AI 出题时题干里可能含英文短语）
@@ -13592,7 +13680,7 @@ $materialText
     // 计算英文（拉丁字母）比例
     final latinCount = RegExp(r'[A-Za-z]').allMatches(material).length;
     final totalChars = material.replaceAll(RegExp(r'\s'), '').length;
-    if (totalChars == 0 || latinCount / totalChars < 0.15) return;
+    if (totalChars == 0 || latinCount / totalChars < 0.05) return;
     // v2.7.5: 放宽正则——15-300字符，至少4个连续单词的英文片段
     // 注意：用双引号 raw string，字符类里去掉 " 避免冲突
     final englishMatches =
@@ -17667,20 +17755,32 @@ class _ListeningGameWidgetState extends State<ListeningGameWidget> {
   bool _played = false;
   String? _selected;
   bool? _answered;
+  String? _audioError;
 
   Future<void> _playAudio() async {
     if (_playing) return;
-    setState(() => _playing = true);
+    // v2.9.2: audioText 为空时用 prompt 兜底，确保有音频可播
+    final ttsText = (widget.game.audioText?.isNotEmpty == true
+            ? widget.game.audioText!
+            : widget.game.prompt)
+        .trim();
+    if (ttsText.isEmpty) {
+      setState(() => _audioError = '听力文本为空，无法播放');
+      return;
+    }
+    setState(() {
+      _playing = true;
+      _audioError = null;
+    });
     SoundService.instance.play(SoundType.click);
-      // v2.9.2: audioText 为空时用 prompt 兜底，确保有音频可播
-      final ttsText = widget.game.audioText?.isNotEmpty == true
-          ? widget.game.audioText!
-          : widget.game.prompt;
+    FlutterEdgeTts? tts;
+    AudioPlayer? player;
+    var success = false;
     try {
       final isEnglish = RegExp(r'^[A-Za-z\s]').hasMatch(ttsText);
       final ttsVoiceName = isEnglish ? 'en-US-AriaNeural' : 'zh-CN-XiaoxiaoNeural';
       final ttsLocale = isEnglish ? 'en-US' : 'zh-CN';
-      final tts = FlutterEdgeTts(
+      tts = FlutterEdgeTts(
         voice: ttsVoiceName,
         voiceLocale: ttsLocale,
         outputFormat: EdgeTtsOutputFormat.audio24Khz96KbitrateMonoMp3,
@@ -17693,17 +17793,34 @@ class _ListeningGameWidgetState extends State<ListeningGameWidget> {
         audioFilePath: path,
         prosody: const EdgeTtsProsody(rate: '0.95', volume: '100'),
       );
-      final player = AudioPlayer();
+      final audioFile = File(path);
+      if (!await audioFile.exists() || await audioFile.length() == 0) {
+        throw Exception('TTS 未生成有效音频文件');
+      }
+      player = AudioPlayer();
+      await player.setReleaseMode(ReleaseMode.stop);
+      await player.setVolume(1.0);
       await player.play(DeviceFileSource(path));
-      await player.onPlayerComplete.first;
-      await player.dispose();
-    } catch (_) {
-      // 静默失败
+      final timeoutSeconds = max(8, min(60, ttsText.length ~/ 4));
+      await player.onPlayerComplete.first.timeout(
+        Duration(seconds: timeoutSeconds),
+      );
+      success = true;
+    } catch (e, stack) {
+      debugPrint('[RPG Listening] 播放失败：$e');
+      debugPrintStack(stackTrace: stack);
+      if (mounted) {
+        setState(() {
+          _audioError = '播放失败，请检查网络连接、系统音量或稍后重试';
+        });
+      }
     } finally {
+      await player?.dispose();
+      await tts?.close();
       if (mounted) {
         setState(() {
           _playing = false;
-          _played = true;
+          if (success) _played = true;
         });
       }
     }
@@ -17812,13 +17929,31 @@ class _ListeningGameWidgetState extends State<ListeningGameWidget> {
           const SizedBox(height: 8),
           Center(
             child: Text(
-              _playing ? '正在播放...' : _played ? '点击重播' : '点击播放音频',
+              _playing
+                  ? '正在播放...'
+                  : _played
+                      ? '点击重播'
+                      : '点击播放音频',
               style: TextStyle(
                 fontSize: 13,
                 color: kMuted,
               ),
             ),
           ),
+          if (_audioError != null) ...[
+            const SizedBox(height: 8),
+            Center(
+              child: Text(
+                _audioError!,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: kRed,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ],
           const SizedBox(height: 24),
           // 选项
           ...widget.game.options.map((opt) {

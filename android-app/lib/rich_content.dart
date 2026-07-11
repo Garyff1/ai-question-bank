@@ -3,6 +3,7 @@
 // 所有组件均为无状态、自包含，可直接嵌入题目详情页
 
 import 'dart:async';
+import 'dart:io';
 
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
@@ -108,7 +109,11 @@ class RichContentBlock extends StatelessWidget {
         children: [
           Row(
             children: [
-              const Icon(Icons.auto_awesome, size: 14, color: Color(0xFF2563EB)),
+              const Icon(
+                Icons.auto_awesome,
+                size: 14,
+                color: Color(0xFF2563EB),
+              ),
               const SizedBox(width: 6),
               Text(
                 title ?? _defaultTitle(t),
@@ -150,10 +155,15 @@ class RichContentBlock extends StatelessWidget {
 // ===== 英语听力（在线 TTS） =====
 
 class _ListeningWidget extends StatefulWidget {
-  const _ListeningWidget({required this.audioText, this.voice, this.hideText = false});
+  const _ListeningWidget({
+    required this.audioText,
+    this.voice,
+    this.hideText = false,
+  });
 
   final String audioText;
   final String? voice;
+
   /// v2.7.4: 是否隐藏听力原文（出题/试卷环节隐藏，错题/历史记录展示）
   final bool hideText;
 
@@ -162,12 +172,13 @@ class _ListeningWidget extends StatefulWidget {
 }
 
 class _ListeningWidgetState extends State<_ListeningWidget> {
-  static AudioPlayer? _player;
+  AudioPlayer? _player;
   bool _loading = false;
   bool _playing = false;
   String? _audioPath;
   String? _errorMsg;
   FlutterEdgeTts? _tts;
+  StreamSubscription<PlayerState>? _playerStateSub;
 
   @override
   void dispose() {
@@ -177,6 +188,8 @@ class _ListeningWidgetState extends State<_ListeningWidget> {
 
   void _stopAndReset() {
     _player?.stop();
+    _playerStateSub?.cancel();
+    _playerStateSub = null;
     _player = null;
     _tts?.close();
     _tts = null;
@@ -214,7 +227,9 @@ class _ListeningWidgetState extends State<_ListeningWidget> {
       enableSentenceBoundary: true,
     );
     _player ??= AudioPlayer();
-    _player!.onPlayerStateChanged.listen((state) {
+    await _player!.setReleaseMode(ReleaseMode.stop);
+    await _player!.setVolume(1.0);
+    _playerStateSub ??= _player!.onPlayerStateChanged.listen((state) {
       if (mounted) {
         setState(() {
           _playing = state == PlayerState.playing;
@@ -225,7 +240,8 @@ class _ListeningWidgetState extends State<_ListeningWidget> {
   }
 
   Future<void> _play() async {
-    if (widget.audioText.isEmpty) {
+    final text = widget.audioText.trim();
+    if (text.isEmpty) {
       setState(() => _errorMsg = '听力原文为空');
       return;
     }
@@ -236,21 +252,29 @@ class _ListeningWidgetState extends State<_ListeningWidget> {
     try {
       await _ensureTts();
       final dir = await getTemporaryDirectory();
-      final path = '${dir.path}/tts_${DateTime.now().millisecondsSinceEpoch}.mp3';
+      final path =
+          '${dir.path}/tts_${DateTime.now().millisecondsSinceEpoch}.mp3';
       await _tts!.synthesizeToFile(
-        widget.audioText,
+        text,
         audioFilePath: path,
         prosody: const EdgeTtsProsody(rate: '0.95', volume: '100'),
       );
+      final audioFile = File(path);
+      if (!await audioFile.exists() || await audioFile.length() == 0) {
+        throw Exception('TTS 未生成有效音频文件');
+      }
       _audioPath = path;
       if (!mounted) return;
       setState(() => _loading = false);
       await _player!.play(DeviceFileSource(path));
-    } catch (e) {
+    } catch (e, stack) {
+      debugPrint('[Listening] 播放失败：$e');
+      debugPrintStack(stackTrace: stack);
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _errorMsg = '播放失败：$e';
+        _playing = false;
+        _errorMsg = '播放失败，请检查网络连接、系统音量或稍后重试';
       });
     }
   }
@@ -275,13 +299,18 @@ class _ListeningWidgetState extends State<_ListeningWidget> {
                       height: 16,
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
-                  : Icon(_playing ? Icons.stop_rounded : Icons.play_arrow_rounded),
+                  : Icon(
+                      _playing ? Icons.stop_rounded : Icons.play_arrow_rounded,
+                    ),
               label: Text(_loading ? '合成中...' : (_playing ? '停止' : '播放听力')),
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF2563EB),
                 foregroundColor: Colors.white,
                 elevation: 0,
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 8,
+                ),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(10),
                 ),
@@ -305,7 +334,11 @@ class _ListeningWidgetState extends State<_ListeningWidget> {
             ),
             child: Text(
               widget.audioText,
-              style: const TextStyle(fontSize: 13, height: 1.5, color: Color(0xFF1F2937)),
+              style: const TextStyle(
+                fontSize: 13,
+                height: 1.5,
+                color: Color(0xFF1F2937),
+              ),
             ),
           )
         else
@@ -319,12 +352,19 @@ class _ListeningWidgetState extends State<_ListeningWidget> {
             ),
             child: Row(
               children: [
-                const Icon(Icons.visibility_off_rounded, size: 14, color: Color(0xFF92400E)),
+                const Icon(
+                  Icons.visibility_off_rounded,
+                  size: 14,
+                  color: Color(0xFF92400E),
+                ),
                 const SizedBox(width: 6),
                 Expanded(
                   child: Text(
                     '听力原文已隐藏，答题后可在错题本/历史记录查看',
-                    style: const TextStyle(fontSize: 12, color: Color(0xFF92400E)),
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: Color(0xFF92400E),
+                    ),
                   ),
                 ),
               ],
@@ -380,10 +420,7 @@ class _MathWidget extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (content.trim().isEmpty) return const SizedBox.shrink();
-    return MathContentViewer(
-      htmlContent: content,
-      minHeight: 80,
-    );
+    return MathContentViewer(htmlContent: content, minHeight: 80);
   }
 }
 
