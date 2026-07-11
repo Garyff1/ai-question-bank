@@ -1517,6 +1517,10 @@ class RpgLevelResult {
   final bool allCleared;      // 全部章节通关
 }
 
+/// 通关结算页直接返回给 Navigator 的用户动作。
+/// 使用返回值代替跨页面回调，避免弹窗关闭和下一页启动发生路由竞态。
+enum RpgCompletionAction { backToMap, next }
+
 class AppShell extends StatefulWidget {
   const AppShell({super.key});
 
@@ -2662,16 +2666,31 @@ class _AppShellState extends State<AppShell> {
     const subject = '通用';
     _rpgSubject = subject;
     _rpgMaterial = material;
+    await _pushRpgMap(material, subject);
+  }
+
+  Future<void> _pushRpgMap(StudyMaterial material, String subject) async {
+    if (!mounted) return;
     await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => RpgMapPage(
-          material: material!,
+          material: material,
           subject: subject,
           progress: _rpgProgress,
           onStartLevel: _startRpgChallenge,
         ),
       ),
     );
+  }
+
+  Future<void> _returnToRpgMap() async {
+    final material = _rpgMaterial;
+    if (!mounted) return;
+    if (material == null) {
+      _showSnack('闯关资料已不存在，请重新选择资料');
+      return;
+    }
+    await _pushRpgMap(material, _rpgSubject);
   }
 
   // v2.8.0: 开始 RPG 关卡挑战
@@ -2832,36 +2851,55 @@ class _AppShellState extends State<AppShell> {
       _completingMiniGameLevel = false;
       return;
     }
+    RpgCompletionAction? action;
     try {
-      await showDialog<void>(
+      action = await showDialog<RpgCompletionAction>(
         context: context,
         barrierDismissible: false,
-        builder: (dialogContext) => RpgLevelCompleteOverlay(
+        builder: (_) => RpgLevelCompleteOverlay(
           result: rpgResult,
-          onNext: () {
-            Navigator.of(dialogContext).pop();
-            // 等结算弹窗退出后再进入下一关，避免使用正在销毁的路由上下文。
-            Future<void>.delayed(const Duration(milliseconds: 220), () async {
-              if (!mounted) return;
-              if (rpgResult.chapterCleared && rpgResult.allCleared) {
-                _showSnack('恭喜通关全部章节！');
-                return;
-              }
-              final nextChapter = rpgResult.chapterCleared ? chapter + 1 : chapter;
-              final nextLevel = rpgResult.chapterCleared ? 1 : level + 1;
-              if (nextChapter > 3) {
-                _showSnack('恭喜通关全部章节！');
-                return;
-              }
-              await _startRpgChallenge(nextChapter, nextLevel, popMap: false);
-            });
-          },
-          onBack: () => Navigator.of(dialogContext).pop(),
         ),
       );
     } finally {
       _completingMiniGameLevel = false;
     }
+    if (!mounted || action == null) return;
+    await Future<void>.delayed(const Duration(milliseconds: 180));
+    if (!mounted) return;
+    await _handleRpgCompletionAction(action, rpgResult, chapter, level);
+  }
+
+  Future<void> _handleRpgCompletionAction(
+    RpgCompletionAction action,
+    RpgLevelResult result,
+    int chapter,
+    int level,
+  ) async {
+    if (!mounted) return;
+    if (action == RpgCompletionAction.backToMap) {
+      await _returnToRpgMap();
+      return;
+    }
+    if (result.allCleared) {
+      _showSnack('恭喜通关全部章节！');
+      await _returnToRpgMap();
+      return;
+    }
+
+    // 挑战失败时“下一步”实际为重试当前关，不允许越过失败关卡。
+    final retry = result.stars == 0;
+    final nextChapter = retry
+        ? chapter
+        : (result.chapterCleared ? chapter + 1 : chapter);
+    final nextLevel = retry
+        ? level
+        : (result.chapterCleared ? 1 : level + 1);
+    if (nextChapter > 3) {
+      _showSnack('恭喜通关全部章节！');
+      await _returnToRpgMap();
+      return;
+    }
+    await _startRpgChallenge(nextChapter, nextLevel, popMap: false);
   }
 
   // v2.8.0: RPG 关卡结算 —— 计算三星、XP、徽章
@@ -3377,14 +3415,21 @@ class _AppShellState extends State<AppShell> {
     await _saveRpgProgress();
     HapticFeedback.heavyImpact();
     if (!mounted) return;
-    await showDialog<void>(
+    final action = await showDialog<RpgCompletionAction>(
       context: context,
       barrierDismissible: false,
       builder: (_) => RpgLevelCompleteOverlay(
         result: rpgResult,
-        onNext: () => Navigator.of(context).pop(),
-        onBack: () => Navigator.of(context).pop(),
       ),
+    );
+    if (!mounted || action == null) return;
+    await Future<void>.delayed(const Duration(milliseconds: 180));
+    if (!mounted) return;
+    await _handleRpgCompletionAction(
+      action,
+      rpgResult,
+      result.rpgChapter,
+      result.rpgLevel,
     );
   }
 
@@ -13322,7 +13367,7 @@ $materialText
   }
 
   /// v2.9.0: 生成 Mini-Game 闯关题目
-  /// 根据学科和关卡自动选择 mini-game 类型组合，每关 3-5 个 mini-game
+  /// 根据学科和关卡自动选择 mini-game 类型组合，每关固定 5 个 mini-game
   static Future<List<MiniGame>> generateMiniGames({
     required ApiConfig config,
     required String material,
@@ -13355,8 +13400,8 @@ $materialText
       // 数学/物理/化学/通用：偏重配对+排序+快选+连连看
       gameTypes = ['matching', 'reorder', 'tapfast', 'linkup', 'truefalse', 'fillblank', 'flashcard', 'spell', 'listening'];
     }
-    // 关卡数：Boss 5 个，其他 3-4 个；v2.9.1 每关尽量用不同类型
-    final gameCount = isBoss ? 5 : (level >= 3 ? 4 : 3);
+    // 每个关卡固定 5 个互动题，第 5 关为难度明显提升的 Boss 关。
+    const gameCount = 5;
     // 按关卡轮转选取，保证每关类型不完全重复
     final offset = (chapter * 3 + level) % gameTypes.length;
     final rotated = <String>[];
@@ -13456,9 +13501,21 @@ $materialText
         .map((item) => MiniGame.fromJson(Map<String, dynamic>.from(item as Map)))
         .where((g) => g.prompt.trim().isNotEmpty)
         .toList();
-    // 兜底：如果 AI 返回不足，用资料片段生成简单 matching
-    if (games.length < 2) {
-      return _generateFallbackMiniGames(material, subject, level, gameCount);
+    // 兜底：模型偶尔少返回题目时，用资料片段补齐，保证每关完整 5 题。
+    if (games.length < gameCount) {
+      final completed = [...games];
+      final fallback = _generateFallbackMiniGames(
+        material,
+        subject,
+        level,
+        gameCount,
+      );
+      var index = 0;
+      while (completed.length < gameCount && fallback.isNotEmpty) {
+        completed.add(fallback[index % fallback.length]);
+        index++;
+      }
+      return completed.take(gameCount).toList();
     }
     return games.take(gameCount).toList();
   }
@@ -13496,6 +13553,19 @@ $materialText
         answer: '对,对,对,对',
         knowledgePoint: '资料要点',
       ));
+    }
+    // 极短资料也至少生成一个可玩的判断题，后续再补齐到 5 题。
+    if (games.isEmpty) {
+      final snippet = material.replaceAll(RegExp(r'\s+'), ' ').trim();
+      if (snippet.isNotEmpty) {
+        games.add(MiniGame(
+          type: MiniGameType.truefalse,
+          prompt: snippet.length > 80 ? snippet.substring(0, 80) : snippet,
+          options: const [],
+          answer: '对',
+          knowledgePoint: subject == '通用' ? '资料要点' : subject,
+        ));
+      }
     }
     // 补齐到 count
     while (games.length < count && games.isNotEmpty) {
@@ -15406,6 +15476,17 @@ class _RpgMapPageState extends State<RpgMapPage>
             '通关解锁下一章 · Boss 关掉落徽章',
             style: TextStyle(color: Colors.white.withValues(alpha: 0.6), fontSize: 12),
           ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: const [
+              _RpgMissionChip(icon: Icons.map_rounded, label: '3 章冒险'),
+              _RpgMissionChip(icon: Icons.flag_rounded, label: '每章 5 关'),
+              _RpgMissionChip(icon: Icons.extension_rounded, label: '每关 5 题'),
+              _RpgMissionChip(icon: Icons.local_fire_department_rounded, label: '终关 Boss'),
+            ],
+          ),
         ],
       ),
     );
@@ -15414,6 +15495,9 @@ class _RpgMapPageState extends State<RpgMapPage>
   Widget _buildChapterSection(RpgChapter chapter, int chIdx) {
     final isCurrentChapter = chIdx + 1 == widget.progress.currentChapter;
     final isLocked = chIdx + 1 > widget.progress.currentChapter;
+    final clearedLevels = List.generate(5, (index) => index + 1)
+        .where((level) => widget.progress.isCleared('${chIdx + 1}-$level'))
+        .length;
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       padding: const EdgeInsets.all(20),
@@ -15424,6 +15508,15 @@ class _RpgMapPageState extends State<RpgMapPage>
           color: isCurrentChapter ? chapter.color.withValues(alpha: 0.5) : const Color(0xFF334155),
           width: isCurrentChapter ? 2 : 1,
         ),
+        boxShadow: isCurrentChapter
+            ? [
+                BoxShadow(
+                  color: chapter.color.withValues(alpha: 0.14),
+                  blurRadius: 24,
+                  spreadRadius: 1,
+                ),
+              ]
+            : null,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -15483,13 +15576,30 @@ class _RpgMapPageState extends State<RpgMapPage>
                   ],
                 ),
               ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: chapter.color.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(999),
+                  border: Border.all(color: chapter.color.withValues(alpha: 0.3)),
+                ),
+                child: Text(
+                  '$clearedLevels/5',
+                  style: TextStyle(
+                    color: chapter.color,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 6),
               if (isLocked) const Icon(Icons.lock_rounded, color: Color(0xFF64748B), size: 22),
             ],
           ),
           const SizedBox(height: 16),
           // 关卡节点横排 + 连线
           SizedBox(
-            height: 80,
+            height: 92,
             child: Stack(
               children: [
                 // 连线
@@ -15615,6 +15725,40 @@ class _RpgMapPageState extends State<RpgMapPage>
   }
 }
 
+class _RpgMissionChip extends StatelessWidget {
+  const _RpgMissionChip({required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.07),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 13, color: const Color(0xFF93C5FD)),
+          const SizedBox(width: 5),
+          Text(
+            label,
+            style: const TextStyle(
+              color: Colors.white70,
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _Particle {
   const _Particle({required this.x, required this.y, required this.size, required this.color, required this.speed});
   final double x;
@@ -15694,15 +15838,25 @@ class _LevelNode extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
+    return _BouncyTap(
+      onTap: onTap ?? () {},
+      enabled: onTap != null,
       child: SizedBox(
-        width: 44,
+        width: 50,
         child: Column(
           children: [
             // 节点圆/菱形
             _buildShape(),
-            const SizedBox(height: 4),
+            const SizedBox(height: 3),
+            Text(
+              isBoss ? 'BOSS' : '第$level关',
+              style: TextStyle(
+                color: isUnlocked ? Colors.white70 : const Color(0xFF64748B),
+                fontSize: 9,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 2),
             // 星级
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -16044,7 +16198,7 @@ class RpgLevelIntroDialog extends StatelessWidget {
                       ),
                       const SizedBox(height: 6),
                       Text(
-                        isBoss ? '4 道基础 + 1 道综合大题' : '5 道题目',
+                        isBoss ? '4 个进阶挑战 + 1 个综合 Boss' : '5 个互动挑战',
                         style: TextStyle(color: Colors.white.withValues(alpha: 0.7), fontSize: 13),
                       ),
                       const SizedBox(height: 28),
@@ -16061,7 +16215,7 @@ class RpgLevelIntroDialog extends StatelessWidget {
                           children: [
                             _infoRow('难度', diff, diffColor),
                             const SizedBox(height: 8),
-                            _infoRow('题型', isBoss ? '4选择+1主观' : '3选择+2填空', Colors.white70),
+                            _infoRow('玩法', '5 种互动题随机组合', Colors.white70),
                             const SizedBox(height: 8),
                             _infoRow('奖励', isBoss ? '100 RPG XP' : '30-50 RPG XP', const Color(0xFF34D399)),
                             const SizedBox(height: 8),
@@ -16148,13 +16302,9 @@ class RpgLevelCompleteOverlay extends StatefulWidget {
   const RpgLevelCompleteOverlay({
     super.key,
     required this.result,
-    required this.onNext,
-    required this.onBack,
   });
 
   final RpgLevelResult result;
-  final VoidCallback onNext;
-  final VoidCallback onBack;
 
   @override
   State<RpgLevelCompleteOverlay> createState() => _RpgLevelCompleteOverlayState();
@@ -16171,11 +16321,11 @@ class _RpgLevelCompleteOverlayState extends State<RpgLevelCompleteOverlay>
   late final String _animType;
   bool _actionTaken = false;
 
-  void _runOnce(VoidCallback action) {
+  void _finish(RpgCompletionAction action) {
     if (_actionTaken) return;
-    setState(() => _actionTaken = true);
+    _actionTaken = true;
     HapticFeedback.selectionClick();
-    action();
+    Navigator.of(context).pop(action);
   }
 
   @override
@@ -16597,7 +16747,7 @@ class _RpgLevelCompleteOverlayState extends State<RpgLevelCompleteOverlay>
                         child: OutlinedButton(
                           onPressed: _actionTaken
                               ? null
-                              : () => _runOnce(widget.onBack),
+                              : () => _finish(RpgCompletionAction.backToMap),
                           style: OutlinedButton.styleFrom(
                             foregroundColor: Colors.white70,
                             side: const BorderSide(color: Colors.white24),
@@ -16612,12 +16762,16 @@ class _RpgLevelCompleteOverlayState extends State<RpgLevelCompleteOverlay>
                         child: FilledButton(
                           onPressed: _actionTaken
                               ? null
-                              : () => _runOnce(widget.onNext),
+                              : () => _finish(RpgCompletionAction.next),
                           style: FilledButton.styleFrom(
                             padding: const EdgeInsets.symmetric(vertical: 14),
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                           ),
-                          child: Text(r.chapterCleared ? '下一章' : '下一关'),
+                          child: Text(
+                            r.stars == 0
+                                ? '重新挑战'
+                                : (r.chapterCleared ? '下一章' : '下一关'),
+                          ),
                         ),
                       ),
                     ],
