@@ -65,6 +65,26 @@ void main() {
     expect(printable, contains('(2)/(3)'));
   });
 
+  test('PDF math formatter converts matrices and derivatives', () {
+    final printable = formatMathForPdf(
+      r'\begin{bmatrix}1 & 0 \\ 0 & 1\end{bmatrix}, '
+      r'\ddot{q}+\tau=\omega',
+    );
+    expect(printable, isNot(contains(r'\begin')));
+    expect(printable, isNot(contains(r'\\')));
+    expect(printable, contains('[1, 0; 0, 1]'));
+    expect(printable, contains('d²(q)/dt²'));
+    expect(printable, contains('τ'));
+    expect(printable, contains('ω'));
+  });
+
+  test('API handshake errors are translated to Chinese', () {
+    final error = Exception('HandshakeConnection terminated during handshake');
+    expect(isTransientApiError(error), isTrue);
+    expect(apiErrorMessage(error), contains('安全连接握手失败'));
+    expect(apiErrorMessage(error), isNot(contains('HandshakeConnection')));
+  });
+
   test(
     'paper PDF draws chart and never prints raw rich-content code',
     () async {
@@ -163,5 +183,10 @@ void main() {
     expect(tester.getCenter(stage).dx, closeTo(180, 0.5));
     expect(tester.getTopLeft(stage).dx, greaterThanOrEqualTo(0));
     expect(tester.getBottomRight(stage).dx, lessThanOrEqualTo(360));
+
+    await tester.pump(const Duration(milliseconds: 1000));
+    expect(find.byKey(const ValueKey('wrong-card-selected-card')), findsOneWidget);
+    expect(find.text('错题卡'), findsOneWidget);
+    expect(find.text('已抽 5 题'), findsOneWidget);
   });
 }
