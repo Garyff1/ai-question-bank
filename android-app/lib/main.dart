@@ -27,6 +27,49 @@ const kLine = Color(0xFFE2E8F0);
 const kGreen = Color(0xFF10B981);
 const kRed = Color(0xFFEF4444);
 
+/// 大模型接口偶发 TLS 握手中断或移动网络切换时，允许短暂重试。
+/// 只重试连接层异常，不重试服务商返回的业务错误，避免重复计费。
+bool isTransientApiError(Object error) {
+  if (error is HandshakeException ||
+      error is SocketException ||
+      error is TimeoutException ||
+      error is http.ClientException) {
+    return true;
+  }
+  final message = error.toString().toLowerCase();
+  return message.contains('handshake') ||
+      message.contains('connection terminated') ||
+      message.contains('connection reset') ||
+      message.contains('connection closed') ||
+      message.contains('socketexception') ||
+      message.contains('timed out') ||
+      message.contains('timeoutexception');
+}
+
+/// 将底层网络错误统一转换为用户可理解的中文提示。
+String apiErrorMessage(Object error) {
+  final message = error.toString().replaceFirst('Exception: ', '');
+  final lower = message.toLowerCase();
+  if (error is HandshakeException ||
+      lower.contains('handshake') ||
+      lower.contains('connection terminated')) {
+    return '安全连接握手失败，已自动重试。请检查网络、VPN或手机系统时间后再试';
+  }
+  if (error is TimeoutException ||
+      lower.contains('timed out') ||
+      lower.contains('timeoutexception')) {
+    return '接口连接超时，已自动重试，请稍后再试';
+  }
+  if (error is SocketException ||
+      error is http.ClientException ||
+      lower.contains('connection reset') ||
+      lower.contains('connection closed') ||
+      lower.contains('socketexception')) {
+    return '网络连接中断，已自动重试，请检查网络后再试';
+  }
+  return message;
+}
+
 /// 反馈邮箱：用户在"我的 → 问题反馈"里提交的内容会发到这里。
 const kFeedbackEmail = '673819340@qq.com';
 
@@ -2659,7 +2702,7 @@ class _AppShellState extends State<AppShell> {
         });
       }
     } catch (error) {
-      _showSnack(error.toString().replaceFirst('Exception: ', ''));
+      _showSnack(apiErrorMessage(error));
     } finally {
       if (mounted) setState(() => _generating = false);
     }
@@ -11400,12 +11443,25 @@ class _WrongCardDrawDialogState extends State<WrongCardDrawDialog>
                   angle: item.rotation * (1 - scaleAnim),
                   child: Transform.scale(
                     scale: scale,
-                    child: _DrawCard(
-                      active: reveal > 0.5 || _revealed,
-                      dimmed: false,
-                      width: cardWidth,
-                      height: cardHeight,
-                      badgeText: '已抽 ${widget.count} 题',
+                    child: Transform(
+                      key: const ValueKey('wrong-card-selected-card'),
+                      alignment: Alignment.center,
+                      transform: Matrix4.identity()
+                        ..setEntry(3, 2, 0.0018)
+                        ..rotateY(
+                          reveal <= 0.5
+                              ? reveal * pi
+                              : (reveal - 1) * pi,
+                        ),
+                      child: _DrawCard(
+                        // 始终保留卡面结构，由 3D 翻转负责遮挡和揭示。
+                        // 避免部分设备在动画末帧切换子树时丢失选中卡。
+                        active: true,
+                        dimmed: false,
+                        width: cardWidth,
+                        height: cardHeight,
+                        badgeText: '已抽 ${widget.count} 题',
+                      ),
                     ),
                   ),
                 ),
@@ -11423,22 +11479,34 @@ class _WrongCardDrawDialogState extends State<WrongCardDrawDialog>
       builder: (context, child) {
         final selected = _selectedIndex;
         return Stack(
-          clipBehavior: Clip.hardEdge,
+          // 流动卡片仍在 ClipRect 内；选中卡作为独立叠层，不会在短屏设备上
+          // 因结果面板展开、父级高度变化而被整体裁掉。
+          clipBehavior: Clip.none,
           children: [
-            if (selected != null)
-              Positioned.fill(
-                child: IgnorePointer(
-                  child: Container(color: Colors.black.withValues(alpha: 0.22)),
+            Positioned.fill(
+              child: ClipRect(
+                child: Stack(
+                  children: [
+                    if (selected != null)
+                      Positioned.fill(
+                        child: IgnorePointer(
+                          child: Container(
+                            color: Colors.black.withValues(alpha: 0.22),
+                          ),
+                        ),
+                      ),
+                    ...List.generate(_cards.length, (index) {
+                      if (selected == index) return const SizedBox.shrink();
+                      return _buildFlowCard(
+                        index: index,
+                        size: size,
+                        dimmed: selected != null,
+                      );
+                    }),
+                  ],
                 ),
               ),
-            ...List.generate(_cards.length, (index) {
-              if (selected == index) return const SizedBox.shrink();
-              return _buildFlowCard(
-                index: index,
-                size: size,
-                dimmed: selected != null,
-              );
-            }),
+            ),
             if (selected != null)
               _buildSelectedCard(index: selected, size: size),
           ],
@@ -12719,6 +12787,40 @@ String formatMathForPdf(String source) {
       .replaceAll(r'$$', '')
       .replaceAll(r'$', '')
       .trim();
+
+  // 先处理矩阵、分段式和换行符，避免后续通用命令清理破坏结构。
+  text = text
+      .replaceAll(
+        RegExp(r'\\begin\{(?:bmatrix|pmatrix|matrix|vmatrix|Vmatrix)\}'),
+        '[',
+      )
+      .replaceAll(
+        RegExp(r'\\end\{(?:bmatrix|pmatrix|matrix|vmatrix|Vmatrix)\}'),
+        ']',
+      )
+      .replaceAll(RegExp(r'\\begin\{cases\}'), '{ ')
+      .replaceAll(RegExp(r'\\end\{cases\}'), ' }')
+      .replaceAll(r'\\', '; ')
+      .replaceAll('&', ', ');
+
+  // 点导数转换为打印友好的微分写法。
+  text = text
+      .replaceAllMapped(
+        RegExp(r'\\ddot\{([^{}]+)\}'),
+        (match) => 'd²(${match.group(1)})/dt²',
+      )
+      .replaceAllMapped(
+        RegExp(r'\\dot\{([^{}]+)\}'),
+        (match) => 'd(${match.group(1)})/dt',
+      )
+      .replaceAllMapped(
+        RegExp(r'\\vec\{([^{}]+)\}'),
+        (match) => '向量(${match.group(1)})',
+      )
+      .replaceAllMapped(
+        RegExp(r'\\overline\{([^{}]+)\}'),
+        (match) => '平均(${match.group(1)})',
+      );
   for (var i = 0; i < 4; i++) {
     text = text.replaceAllMapped(
       RegExp(r'\\frac\{([^{}]+)\}\{([^{}]+)\}'),
@@ -12736,7 +12838,23 @@ String formatMathForPdf(String source) {
     r'\theta': 'θ',
     r'\alpha': 'α',
     r'\beta': 'β',
+    r'\gamma': 'γ',
+    r'\delta': 'δ',
+    r'\epsilon': 'ε',
+    r'\varepsilon': 'ε',
+    r'\eta': 'η',
+    r'\rho': 'ρ',
+    r'\sigma': 'σ',
+    r'\tau': 'τ',
+    r'\phi': 'φ',
+    r'\omega': 'ω',
+    r'\Omega': 'Ω',
     r'\Delta': 'Δ',
+    r'\partial': '∂',
+    r'\nabla': '∇',
+    r'\sum': 'Σ',
+    r'\int': '∫',
+    r'\infty': '∞',
     r'\times': '×',
     r'\cdot': '·',
     r'\pm': '±',
@@ -12746,7 +12864,18 @@ String formatMathForPdf(String source) {
     r'\ge': '≥',
     r'\neq': '≠',
     r'\to': '→',
+    r'\rightarrow': '→',
+    r'\leftarrow': '←',
+    r'\approx': '≈',
+    r'\propto': '∝',
+    r'\in': '∈',
+    r'\notin': '∉',
+    r'\cdots': '…',
+    r'\ldots': '…',
     r'\quad': ' ',
+    r'\qquad': '  ',
+    r'\operatorname': '',
+    r'\textnormal': '',
     r'\text': '',
     r'\mathrm': '',
     r'\mathbf': '',
@@ -12761,8 +12890,17 @@ String formatMathForPdf(String source) {
       .replaceAllMapped(RegExp(r'\^\{3\}'), (_) => '³')
       .replaceAllMapped(RegExp(r'\^\{([^{}]+)\}'), (m) => '^(${m.group(1)})')
       .replaceAllMapped(RegExp(r'_\{([^{}]+)\}'), (m) => '_${m.group(1)}')
+      .replaceAll(RegExp(r'\\[,;:! ]'), ' ')
       .replaceAll(RegExp(r'[{}]'), '')
-      .replaceAll(RegExp(r'\\[A-Za-z]+'), '')
+      // 未知命令保留名称而不是整段吞掉，避免公式信息凭空消失。
+      .replaceAllMapped(RegExp(r'\\([A-Za-z]+)'), (m) => m.group(1) ?? '')
+      .replaceAll('�', '')
+      .replaceAll(RegExp(r';\s*;'), ';')
+      .replaceAll(RegExp(r',\s*,'), ',')
+      .replaceAllMapped(
+        RegExp(r'\s+([,;\]])'),
+        (match) => match.group(1) ?? '',
+      )
       .replaceAll(RegExp(r'\s+'), ' ')
       .trim();
   return text;
@@ -14347,18 +14485,32 @@ $materialText
   }) async {
     final base = config.baseUrl.replaceAll(RegExp(r'/+$'), '');
     final uri = Uri.parse('$base/chat/completions');
-    final response = await http
-        .post(
-          uri,
-          headers: _headersFor(config),
-          body: jsonEncode({
-            'model': config.model,
-            'messages': messages,
-            'temperature': 0.2,
-            'max_tokens': maxTokens,
-          }),
-        )
-        .timeout(const Duration(seconds: 120));
+    late http.Response response;
+    const maxAttempts = 3;
+    for (var attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        response = await http
+            .post(
+              uri,
+              headers: _headersFor(config),
+              body: jsonEncode({
+                'model': config.model,
+                'messages': messages,
+                'temperature': 0.2,
+                'max_tokens': maxTokens,
+              }),
+            )
+            .timeout(const Duration(seconds: 120));
+        break;
+      } catch (error) {
+        final canRetry = isTransientApiError(error) && attempt < maxAttempts;
+        if (!canRetry) {
+          throw Exception(apiErrorMessage(error));
+        }
+        debugPrint('[API] 第 $attempt 次连接失败，准备重试：$error');
+        await Future<void>.delayed(Duration(milliseconds: 550 * attempt));
+      }
+    }
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw Exception('API 请求失败：${response.statusCode} ${response.body}');
     }
