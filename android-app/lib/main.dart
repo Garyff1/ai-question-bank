@@ -1595,6 +1595,71 @@ class RpgLevelResult {
 /// 使用返回值代替跨页面回调，避免弹窗关闭和下一页启动发生路由竞态。
 enum RpgCompletionAction { backToMap, next }
 
+class RpgCompletionPayload {
+  const RpgCompletionPayload({
+    required this.result,
+    required this.chapter,
+    required this.level,
+  });
+
+  final RpgLevelResult result;
+  final int chapter;
+  final int level;
+}
+
+/// 闯关模式专用题型轮转。听力题只属于普通出题/试卷功能，闯关中不再生成，
+/// 避免部分设备的 TTS/播放器在关卡销毁时触发原生崩溃。
+List<String> rpgMiniGameTypesFor({
+  required String subject,
+  required int chapter,
+  required int level,
+  int count = 5,
+}) {
+  final baseTypes = subject == '英语'
+      ? <String>[
+          'spell',
+          'matching',
+          'fillblank',
+          'tapfast',
+          'flashcard',
+          'reorder',
+          'truefalse',
+          'linkup',
+        ]
+      : subject == '语文'
+          ? <String>[
+              'matching',
+              'fillblank',
+              'truefalse',
+              'flashcard',
+              'spell',
+              'reorder',
+              'tapfast',
+              'linkup',
+            ]
+          : <String>[
+              'matching',
+              'reorder',
+              'tapfast',
+              'linkup',
+              'truefalse',
+              'fillblank',
+              'flashcard',
+              'spell',
+            ];
+  final offset = (chapter * 3 + level) % baseTypes.length;
+  return List<String>.generate(
+    count.clamp(1, baseTypes.length),
+    (index) => baseTypes[(index + offset) % baseTypes.length],
+  );
+}
+
+/// 富内容题型统一采用 25% 目标占比，天然落在用户要求的 20%-30% 区间。
+int richContentTargetCount(int total) {
+  if (total <= 0) return 0;
+  return (total * 0.25).round().clamp(1, total);
+}
+
 class AppShell extends StatefulWidget {
   const AppShell({super.key});
 
@@ -1661,6 +1726,10 @@ class _AppShellState extends State<AppShell> {
   MiniGameSession? _miniGameSession;
   // 防止关卡组件重复回调或用户连续点击时并发执行两次结算。
   bool _completingMiniGameLevel = false;
+  // 结算层由 AppShell 自己托管，不再通过 Navigator 弹窗返回动作。
+  // 这样可避免听力播放器/小游戏页面销毁与弹窗路由 pop 同帧发生时的崩溃。
+  RpgCompletionPayload? _pendingRpgCompletion;
+  bool _handlingRpgCompletion = false;
 
   @override
   void initState() {
@@ -2569,15 +2638,13 @@ class _AppShellState extends State<AppShell> {
     }
     setState(() => _generating = true);
     try {
-      // v2.7.5: 听力题依赖 rich_content 字段，开听力时强制启用富内容
-      final effectiveRich = _enableRichContent || _enableListening;
       final questions = await AiService.generateQuestions(
         config: _config,
         material: material.content,
         types: _selectedTypes.toList(),
         count: _questionCount,
         audience: _audience,
-        enableRichContent: effectiveRich,
+        enableRichContent: _enableRichContent,
         enableListening: _enableListening,
       );
       if (questions.isEmpty) {
@@ -2616,8 +2683,6 @@ class _AppShellState extends State<AppShell> {
     }
     setState(() => _paperGenerating = true);
     try {
-      // v2.7.5: 听力题依赖 rich_content 字段，开听力时强制启用富内容
-      final effectiveRich = _enableRichContent || _enableListening;
       final questions = await AiService.generatePaper(
         config: _config,
         material: material.content,
@@ -2626,7 +2691,7 @@ class _AppShellState extends State<AppShell> {
         pageCount: pageCount,
         scoreConfig: scoreConfig,
         template: template,
-        enableRichContent: effectiveRich,
+        enableRichContent: _enableRichContent,
         enableListening: _enableListening,
         chapterRange: chapterRange,
         knowledgePointSpec: knowledgePointSpec,
@@ -2926,22 +2991,45 @@ class _AppShellState extends State<AppShell> {
       _completingMiniGameLevel = false;
       return;
     }
-    RpgCompletionAction? action;
-    try {
-      action = await showDialog<RpgCompletionAction>(
-        context: context,
-        barrierDismissible: false,
-        builder: (_) => RpgLevelCompleteOverlay(
-          result: rpgResult,
-        ),
+    setState(() {
+      _pendingRpgCompletion = RpgCompletionPayload(
+        result: rpgResult,
+        chapter: chapter,
+        level: level,
       );
-    } finally {
       _completingMiniGameLevel = false;
-    }
-    if (!mounted || action == null) return;
-    await Future<void>.delayed(const Duration(milliseconds: 180));
+    });
+  }
+
+  Future<void> _consumeRpgCompletionAction(
+    RpgCompletionAction action,
+  ) async {
+    final payload = _pendingRpgCompletion;
+    if (!mounted || payload == null || _handlingRpgCompletion) return;
+    setState(() {
+      _handlingRpgCompletion = true;
+      _pendingRpgCompletion = null;
+    });
+    // 等结算层真正从 Widget 树移除后，再打开地图或下一关介绍。
+    await WidgetsBinding.instance.endOfFrame;
     if (!mounted) return;
-    await _handleRpgCompletionAction(action, rpgResult, chapter, level);
+    try {
+      await _handleRpgCompletionAction(
+        action,
+        payload.result,
+        payload.chapter,
+        payload.level,
+      );
+    } catch (error, stackTrace) {
+      debugPrint('[RPG] 结算动作失败：$error\n$stackTrace');
+      if (mounted) {
+        _showSnack('关卡切换失败，请返回首页后重试');
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _handlingRpgCompletion = false);
+      }
+    }
   }
 
   Future<void> _handleRpgCompletionAction(
@@ -3493,22 +3581,13 @@ class _AppShellState extends State<AppShell> {
     await _saveRpgProgress();
     HapticFeedback.heavyImpact();
     if (!mounted) return;
-    final action = await showDialog<RpgCompletionAction>(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => RpgLevelCompleteOverlay(
+    setState(() {
+      _pendingRpgCompletion = RpgCompletionPayload(
         result: rpgResult,
-      ),
-    );
-    if (!mounted || action == null) return;
-    await Future<void>.delayed(const Duration(milliseconds: 180));
-    if (!mounted) return;
-    await _handleRpgCompletionAction(
-      action,
-      rpgResult,
-      result.rpgChapter,
-      result.rpgLevel,
-    );
+        chapter: result.rpgChapter,
+        level: result.rpgLevel,
+      );
+    });
   }
 
   Future<void> _showLevelUp(int newLevel) async {
@@ -3829,7 +3908,7 @@ class _AppShellState extends State<AppShell> {
       ),
     ];
 
-    return Scaffold(
+    final mainScaffold = Scaffold(
       body: Stack(
         children: [
           const Positioned.fill(
@@ -3862,6 +3941,18 @@ class _AppShellState extends State<AppShell> {
           NavigationDestination(icon: Icon(Icons.person_rounded), label: '我的'),
         ],
       ),
+    );
+    final pendingCompletion = _pendingRpgCompletion;
+    if (pendingCompletion == null) return mainScaffold;
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        mainScaffold,
+        RpgLevelCompleteOverlay(
+          result: pendingCompletion.result,
+          onAction: _consumeRpgCompletionAction,
+        ),
+      ],
     );
   }
 }
@@ -5196,7 +5287,7 @@ class GeneratePage extends StatelessWidget {
                               ),
                             ),
                             Text(
-                              enableRichContent ? '已开启：AI 会按需生成图表/公式/音频' : '关闭：纯文字题目，生成更快',
+                              enableRichContent ? '已开启：图表题约占总题数 25%（保持在 20%-30%）' : '关闭：纯文字题目，生成更快',
                               style: const TextStyle(color: kMuted, fontSize: 11),
                             ),
                           ],
@@ -5254,7 +5345,7 @@ class GeneratePage extends StatelessWidget {
                               ),
                             ),
                             Text(
-                              enableListening ? '已开启：英语题会附带 TTS 听力原文' : '关闭：纯文字题，无听力音频',
+                              enableListening ? '已开启：听力题约占总题数 25%（保持在 20%-30%）' : '关闭：纯文字题，无听力音频',
                               style: const TextStyle(color: kMuted, fontSize: 11),
                             ),
                           ],
@@ -6699,7 +6790,7 @@ class _PaperPageState extends State<PaperPage> {
   // 主观题小问数与难度，如"第1题: 3问(简单-中-难); 第2题: 2问(中-难)"
   String _subjectiveSubQuestions = '';
 
-  // v2.7.4 试卷听力题数量设定（0=自动按40%占比，>0=指定数量）
+  // 试卷听力题数量设定（0=自动按25%占比，手动值也会限制在20%-30%）
   int _listeningCount = 0;
 
   static const _subjects = <String>[
@@ -7848,7 +7939,7 @@ class _PaperPageState extends State<PaperPage> {
                       style: TextStyle(fontWeight: FontWeight.w900, color: kInk),
                     ),
                     Text(
-                      widget.enableRichContent ? '已开启：试卷会按需含图表/公式' : '关闭：纯文字试卷，生成更快',
+                      widget.enableRichContent ? '已开启：图表题约占全卷 25%（保持在 20%-30%）' : '关闭：纯文字试卷，生成更快',
                       style: const TextStyle(color: kMuted, fontSize: 11),
                     ),
                   ],
@@ -7903,7 +7994,7 @@ class _PaperPageState extends State<PaperPage> {
                       style: TextStyle(fontWeight: FontWeight.w900, color: kInk),
                     ),
                     Text(
-                      widget.enableListening ? '已开启：英语试卷会含 TTS 听力' : '关闭：纯文字题，无听力音频',
+                      widget.enableListening ? '已开启：听力题约占全卷 25%（保持在 20%-30%）' : '关闭：纯文字题，无听力音频',
                       style: const TextStyle(color: kMuted, fontSize: 11),
                     ),
                   ],
@@ -7949,7 +8040,7 @@ class _PaperPageState extends State<PaperPage> {
                       ),
                       Text(
                         _listeningCount == 0
-                            ? '0 = 自动（按总题数 40% 占比）'
+                            ? '0 = 自动（按总题数约 25% 占比）'
                             : '$_listeningCount 道听力题',
                         style: const TextStyle(
                           color: kMuted,
@@ -11188,9 +11279,11 @@ class _WrongCardDrawDialogState extends State<WrongCardDrawDialog>
 
   Offset _positionFor(_CardStreamItem item, Size size) {
     final progress = (_streamController.value * item.speed + item.seed) % 1.0;
-    final x =
+    final rawX =
         size.width * item.xFactor +
         sin(progress * pi * 2 + item.seed * 7) * item.drift;
+    // 给卡牌半宽和发光留出安全区，窄屏手机上也不会流出左右边界。
+    final x = rawX.clamp(62.0, max(62.0, size.width - 62.0)).toDouble();
     final y = size.height + 120 - progress * (size.height + 300);
     return Offset(x, y);
   }
@@ -11257,8 +11350,6 @@ class _WrongCardDrawDialogState extends State<WrongCardDrawDialog>
 
   Widget _buildSelectedCard({required int index, required Size size}) {
     final item = _cards[index];
-    // 简化调试版：直接固定在屏幕中心，不做飞行动画
-    final center = Offset(size.width / 2, size.height * 0.47);
     final raw = _revealController.value;
     final scaleAnim = Curves.easeOutCubic.transform(_clamp01(raw / 0.72));
     final reveal = Curves.easeOut.transform(_clamp01((raw - 0.42) / 0.58));
@@ -11268,50 +11359,60 @@ class _WrongCardDrawDialogState extends State<WrongCardDrawDialog>
     const cardHeight = 170.0;
     const glowSize = 220.0;
 
-    return Positioned(
-      left: center.dx - glowSize / 2,
-      top: center.dy - glowSize / 2,
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          IgnorePointer(
-            child: Opacity(
-              opacity: glow,
-              child: Container(
-                width: glowSize,
-                height: glowSize,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                      color: kBlue.withValues(alpha: 0.55),
-                      blurRadius: 48,
-                      spreadRadius: 12,
+    // 选中卡使用填充层 + Align 锁定几何中心，不再依赖父级计算出的绝对 left。
+    // 放大和翻面只改变视觉尺寸，不改变中心坐标。
+    return Positioned.fill(
+      child: IgnorePointer(
+        child: Align(
+          alignment: const Alignment(0, -0.06),
+          child: SizedBox(
+            key: const ValueKey('wrong-card-selected-stage'),
+            width: glowSize,
+            height: glowSize,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                IgnorePointer(
+                  child: Opacity(
+                    opacity: glow,
+                    child: Container(
+                      width: glowSize,
+                      height: glowSize,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: kBlue.withValues(alpha: 0.55),
+                            blurRadius: 48,
+                            spreadRadius: 12,
+                          ),
+                          BoxShadow(
+                            color: Colors.white.withValues(alpha: 0.35),
+                            blurRadius: 18,
+                            spreadRadius: 2,
+                          ),
+                        ],
+                      ),
                     ),
-                    BoxShadow(
-                      color: Colors.white.withValues(alpha: 0.35),
-                      blurRadius: 18,
-                      spreadRadius: 2,
-                    ),
-                  ],
+                  ),
                 ),
-              ),
+                Transform.rotate(
+                  angle: item.rotation * (1 - scaleAnim),
+                  child: Transform.scale(
+                    scale: scale,
+                    child: _DrawCard(
+                      active: reveal > 0.5 || _revealed,
+                      dimmed: false,
+                      width: cardWidth,
+                      height: cardHeight,
+                      badgeText: '已抽 ${widget.count} 题',
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
-          Transform.rotate(
-            angle: item.rotation * (1 - scaleAnim),
-            child: Transform.scale(
-              scale: scale,
-              child: _DrawCard(
-                active: reveal > 0.5 || _revealed,
-                dimmed: false,
-                width: cardWidth,
-                height: cardHeight,
-                badgeText: '已抽 ${widget.count} 题',
-              ),
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -11322,7 +11423,7 @@ class _WrongCardDrawDialogState extends State<WrongCardDrawDialog>
       builder: (context, child) {
         final selected = _selectedIndex;
         return Stack(
-          clipBehavior: Clip.none,
+          clipBehavior: Clip.hardEdge,
           children: [
             if (selected != null)
               Positioned.fill(
@@ -12552,6 +12653,121 @@ class _ApiGuideCardState extends State<_ApiGuideCard> {
 
 /// ============ 试卷 PDF 生成服务 ============
 ///
+/// 将模型可能返回的字符串、Map、labels/values 或对象数组统一成 PDF 可绘制数据。
+Map<String, double> parsePdfChartData(dynamic rawData) {
+  final result = <String, double>{};
+
+  void add(dynamic rawLabel, dynamic rawValue) {
+    final label = rawLabel.toString().trim();
+    final value = rawValue is num
+        ? rawValue.toDouble()
+        : double.tryParse(rawValue.toString().replaceAll('%', '').trim());
+    if (label.isEmpty || label.length > 16 || value == null || value < 0) return;
+    result[label] = value;
+  }
+
+  if (rawData is Map) {
+    final map = Map<dynamic, dynamic>.from(rawData);
+    final labels = map['labels'];
+    final values = map['values'];
+    if (labels is List && values is List) {
+      for (var i = 0; i < min(labels.length, values.length); i++) {
+        add(labels[i], values[i]);
+      }
+    } else {
+      for (final entry in map.entries) {
+        if (entry.key == 'title' || entry.key == 'chart_type') continue;
+        add(entry.key, entry.value);
+      }
+    }
+  } else if (rawData is List) {
+    for (final item in rawData) {
+      if (item is Map) {
+        final map = Map<dynamic, dynamic>.from(item);
+        add(
+          map['label'] ?? map['name'] ?? map['category'] ?? map['x'] ?? '',
+          map['value'] ?? map['count'] ?? map['y'] ?? '',
+        );
+      } else if (item is List && item.length >= 2) {
+        add(item[0], item[1]);
+      }
+    }
+  } else {
+    final normalized = rawData
+        .toString()
+        .replaceAll('：', ':')
+        .replaceAll('＝', '=')
+        .replaceAll('，', ',')
+        .replaceAll('；', ',');
+    final pairPattern = RegExp(
+      r'([^,;:{}\[\]]{1,16}?)\s*[:=]\s*(-?\d+(?:\.\d+)?)\s*%?',
+    );
+    for (final match in pairPattern.allMatches(normalized)) {
+      add(match.group(1)!, match.group(2)!);
+    }
+  }
+  return result;
+}
+
+/// PDF 暂不直接执行 LaTeX；将常见公式转换为可打印的数学文本，避免输出源码。
+String formatMathForPdf(String source) {
+  var text = source
+      .replaceAll(r'\[', '')
+      .replaceAll(r'\]', '')
+      .replaceAll(r'\(', '')
+      .replaceAll(r'\)', '')
+      .replaceAll(r'$$', '')
+      .replaceAll(r'$', '')
+      .trim();
+  for (var i = 0; i < 4; i++) {
+    text = text.replaceAllMapped(
+      RegExp(r'\\frac\{([^{}]+)\}\{([^{}]+)\}'),
+      (match) => '(${match.group(1)})/(${match.group(2)})',
+    );
+    text = text.replaceAllMapped(
+      RegExp(r'\\sqrt\{([^{}]+)\}'),
+      (match) => '√(${match.group(1)})',
+    );
+  }
+  const replacements = <String, String>{
+    r'\lambda': 'λ',
+    r'\mu': 'μ',
+    r'\pi': 'π',
+    r'\theta': 'θ',
+    r'\alpha': 'α',
+    r'\beta': 'β',
+    r'\Delta': 'Δ',
+    r'\times': '×',
+    r'\cdot': '·',
+    r'\pm': '±',
+    r'\leq': '≤',
+    r'\le': '≤',
+    r'\geq': '≥',
+    r'\ge': '≥',
+    r'\neq': '≠',
+    r'\to': '→',
+    r'\quad': ' ',
+    r'\text': '',
+    r'\mathrm': '',
+    r'\mathbf': '',
+    r'\left': '',
+    r'\right': '',
+  };
+  for (final entry in replacements.entries) {
+    text = text.replaceAll(entry.key, entry.value);
+  }
+  text = text
+      .replaceAllMapped(RegExp(r'\^\{2\}'), (_) => '²')
+      .replaceAllMapped(RegExp(r'\^\{3\}'), (_) => '³')
+      .replaceAllMapped(RegExp(r'\^\{([^{}]+)\}'), (m) => '^(${m.group(1)})')
+      .replaceAllMapped(RegExp(r'_\{([^{}]+)\}'), (m) => '_${m.group(1)}')
+      .replaceAll(RegExp(r'[{}]'), '')
+      .replaceAll(RegExp(r'\\[A-Za-z]+'), '')
+      .replaceAll(RegExp(r'\s+'), ' ')
+      .trim();
+  return text;
+}
+
 /// 参考国内中考/高考/期末试卷排版：
 /// - 装订线区（左侧竖向 班级/姓名/学号）
 /// - 卷首标题区（学科 + 试卷名 + 学段·类型 + 满分/时间）
@@ -12983,21 +13199,19 @@ class PaperPdfService {
     double pageHeight,
     double pageWidth,
   ) {
-    final chartType = (rcData['chart_type'] ?? 'bar').toString().toLowerCase();
-    final dataStr = (rcData['data'] ?? '').toString();
+    final rawChartType = (rcData['chart_type'] ?? 'bar').toString().toLowerCase();
+    final chartType = rawChartType.contains('折') || rawChartType.contains('line')
+        ? 'line'
+        : rawChartType.contains('饼') ||
+                rawChartType.contains('扇') ||
+                rawChartType.contains('pie')
+            ? 'pie'
+            : rawChartType.contains('直方') || rawChartType.contains('histogram')
+                ? 'histogram'
+                : 'bar';
     final title = (rcData['title'] ?? '').toString();
 
-    // 解析 "A:30,B:50,C:20" 格式的数据
-    final dataMap = <String, double>{};
-    for (final pair in dataStr.split(',')) {
-      final parts = pair.split(':');
-      if (parts.length != 2) continue;
-      final label = parts[0].trim();
-      final value = double.tryParse(parts[1].trim());
-      if (label.isNotEmpty && value != null && value >= 0) {
-        dataMap[label] = value;
-      }
-    }
+    final dataMap = parsePdfChartData(rcData['data'] ?? rcData);
     if (dataMap.length < 2) return -1;
 
     // 如果空间不够，换页
@@ -13016,6 +13230,10 @@ class PaperPdfService {
       PdfColor(38, 166, 217), // 青
       PdfColor(178, 77, 128),  // 粉
     ];
+    final chartTitleFont =
+        PdfCjkStandardFont(PdfCjkFontFamily.sinoTypeSongLight, 11);
+    final chartLabelFont =
+        PdfCjkStandardFont(PdfCjkFontFamily.sinoTypeSongLight, 8);
 
     // 内边距：留出标题和坐标轴空间
     final chartX = x + 35;
@@ -13027,7 +13245,7 @@ class PaperPdfService {
     if (title.isNotEmpty) {
       g.drawString(
         title,
-        PdfStandardFont(PdfFontFamily.helvetica, 11, style: PdfFontStyle.bold),
+        chartTitleFont,
         brush: PdfSolidBrush(PdfColor(0, 0, 0)),
         bounds: Rect.fromLTWH(x, y, width, 18),
       );
@@ -13069,7 +13287,7 @@ class PaperPdfService {
         final labelText = '${entries[i].key}: ${_fmtNum(entries[i].value)}';
         g.drawString(
           labelText,
-          PdfStandardFont(PdfFontFamily.helvetica, 8),
+          chartLabelFont,
           brush: PdfSolidBrush(PdfColor(26, 26, 26)),
           bounds: Rect.fromLTWH(legendX + 12, legendY, 80, 10),
         );
@@ -13113,7 +13331,7 @@ class PaperPdfService {
         // X 轴标签
         g.drawString(
           entries[i].key,
-          PdfStandardFont(PdfFontFamily.helvetica, 7),
+          chartLabelFont,
           brush: PdfSolidBrush(PdfColor(77, 77, 77)),
           bounds: Rect.fromLTWH(px - 15, chartY + chartH + 3, 30, 10),
         );
@@ -13123,7 +13341,7 @@ class PaperPdfService {
       // 第一个 X 轴标签
       g.drawString(
         entries[0].key,
-        PdfStandardFont(PdfFontFamily.helvetica, 7),
+        chartLabelFont,
         brush: PdfSolidBrush(PdfColor(77, 77, 77)),
         bounds: Rect.fromLTWH(chartX - 15, chartY + chartH + 3, 30, 10),
       );
@@ -13149,14 +13367,14 @@ class PaperPdfService {
         // 数值标签
         g.drawString(
           _fmtNum(entries[i].value),
-          PdfStandardFont(PdfFontFamily.helvetica, 7),
+          chartLabelFont,
           brush: PdfSolidBrush(PdfColor(26, 26, 26)),
           bounds: Rect.fromLTWH(bx - 5, by - 12, barWidth + 10, 10),
         );
         // X 轴标签
         g.drawString(
           entries[i].key,
-          PdfStandardFont(PdfFontFamily.helvetica, 7),
+          chartLabelFont,
           brush: PdfSolidBrush(PdfColor(77, 77, 77)),
           bounds: Rect.fromLTWH(bx - 5, chartY + chartH + 3, barWidth + 10, 10),
         );
@@ -13178,14 +13396,14 @@ class PaperPdfService {
       case 'math':
         final content = (data['content'] ?? '').toString().trim();
         if (content.contains('[graph:')) {
-          return '函数图：${content.replaceAll('[graph:', '').replaceAll(']', '').trim()}';
+          return '函数关系：${formatMathForPdf(content.replaceAll('[graph:', '').replaceAll(']', '').trim())}';
         }
-        return '数学公式：$content';
+        final printable = formatMathForPdf(content);
+        return printable.isEmpty ? '数学公式' : '数学公式：$printable';
       case 'chart':
         final chartType = (data['chart_type'] ?? '统计图').toString();
-        final chartData = (data['data'] ?? '').toString();
         final title = (data['title'] ?? '').toString();
-        return '${title.isEmpty ? '' : '$title - '}${chartType}图：$chartData';
+        return '${title.isEmpty ? '' : '$title - '}$chartType（图表数据暂不可绘制）';
       case 'physics':
         final diagramType = (data['diagram_type'] ?? '物理图').toString();
         final params = (data['params'] ?? '').toString();
@@ -13259,6 +13477,7 @@ class AiService {
     bool enableListening = false,
   }) async {
     final typeText = types.map(_typeLabel).join('、');
+    final richTarget = richContentTargetCount(count);
     final materialText = material.length > 6500
         ? material.substring(0, 6500)
         : material;
@@ -13279,9 +13498,12 @@ class AiService {
         : enableListening
             ? '6. 本次为纯文字题目模式，**不要返回 math/physics/chemistry/chart/svg 等 rich_content**；但**英语听力题的 listening 块例外**，必须按第 8 条要求返回 listening rich_content。'
             : '6. 本次为纯文字题目模式，不要返回 rich_content 字段或留空数组 []，避免拖长输出导致 JSON 截断。';
+    final chartNote = enableRichContent
+        ? '\n8. **图表题配额（强制）**：总共 $count 道题中，必须恰好有 $richTarget 道题包含 type:"chart" 的 rich_content（约 25%，必须保持在 20%-30%）。chart.data 必须是与题干一致的真实数据，格式为“标签:数值,标签:数值”，至少 2 组；其余题目不得返回 chart。'
+        : '\n8. 本次不开启图表题，不要返回 chart 类型。';
     final listeningNote = enableListening
-        ? '\n8. **英语听力题启用（重要·强制占比 40%）**：若资料中存在可朗读英文句段（拉丁字母占比 >= 5% 或题干中含英文句段），**必须**生成占总题数 40% 左右的听力题（例如 10 道题至少 4 道听力题），优先排在前面。\n   - listening 块格式：{"type":"listening","data":{"audio_text":"完整英文段落（30-80 词，必须是资料中的英文原文或基于资料改编的完整对话/短文，不要只截取零散单词）","voice":"en-US"}}\n   - audio_text 必须是完整的英文句子/段落，不能是单词或短语\n   - 题干可以是中文（描述听力场景），但 audio_text 必须是英文原文\n   - 每题 audio_text 长度 30-80 词；各题 audio_text 不得重复\n   - 听力题占比目标：约 40%（允许 30%-50% 浮动）\n   - 非英语资料（中文占比 > 95% 且无英文句段）不要返回 listening 类型'
-        : '\n8. 本次不生成英语听力题（音频开关已关闭）。';
+        ? '\n9. **听力题配额（强制）**：总共 $count 道题中，必须恰好有 $richTarget 道题包含 type:"listening" 的 rich_content（约 25%，必须保持在 20%-30%）。\n   - listening 块格式：{"type":"listening","data":{"audio_text":"完整可朗读段落（30-80 词，来自资料或基于资料改编，不要只截取零散词语）","voice":"en-US 或 zh-CN"}}\n   - audio_text 必须是完整句子或段落，各题不得重复\n   - 若图表和听力同时开启，两类各占约 25%，不要放在同一道题中'
+        : '\n9. 本次不生成听力题（音频开关已关闭）。';
     final prompt = enableRichContent
         ? '''
 请基于下面学习资料生成 $count 道题，目标群体：$audience。
@@ -13307,6 +13529,7 @@ class AiService {
 5. question_type 必须使用：${types.join(',')}。
 $richRequireBlock
 7. 涉及图形/公式的题目，**禁止**在题干中使用"如图所示"等无法表达的描述，必须通过 rich_content 字段返回对应的图形描述。
+$chartNote
 $listeningNote
 
 学习资料：
@@ -13335,6 +13558,7 @@ $materialText
 4. 填空题和主观题 options 为空数组。
 5. question_type 必须使用：${types.join(',')}。
 $richRequireBlock
+$chartNote
 $listeningNote
 
 学习资料：
@@ -13364,6 +13588,16 @@ $materialText
     if (enableListening && questions.isNotEmpty) {
       _ensureListeningFallback(questions, materialText);
     }
+    _capRichContentType(
+      questions,
+      type: 'chart',
+      target: enableRichContent ? richTarget : 0,
+    );
+    _capRichContentType(
+      questions,
+      type: 'listening',
+      target: enableListening ? richTarget : 0,
+    );
     return questions;
   }
 
@@ -13478,25 +13712,14 @@ $materialText
         ? chapterInfo[chapter - 1].title
         : '第${chapter}章';
 
-    // v2.9.1: 通用学科混合 9 种游戏类型，避免单一枯燥
-    final List<String> gameTypes;
-    if (subject == '英语') {
-      gameTypes = ['listening', 'spell', 'matching', 'truefalse', 'fillblank', 'tapfast', 'flashcard', 'reorder', 'linkup'];
-    } else if (subject == '语文') {
-      gameTypes = ['matching', 'fillblank', 'truefalse', 'flashcard', 'spell', 'reorder', 'tapfast', 'linkup', 'listening'];
-    } else {
-      // 数学/物理/化学/通用：偏重配对+排序+快选+连连看
-      gameTypes = ['matching', 'reorder', 'tapfast', 'linkup', 'truefalse', 'fillblank', 'flashcard', 'spell', 'listening'];
-    }
     // 每个关卡固定 5 个互动题，第 5 关为难度明显提升的 Boss 关。
     const gameCount = 5;
-    // 按关卡轮转选取，保证每关类型不完全重复
-    final offset = (chapter * 3 + level) % gameTypes.length;
-    final rotated = <String>[];
-    for (var i = 0; i < gameTypes.length; i++) {
-      rotated.add(gameTypes[(i + offset) % gameTypes.length]);
-    }
-    final selectedTypes = rotated.take(gameCount).toList();
+    final selectedTypes = rpgMiniGameTypesFor(
+      subject: subject,
+      chapter: chapter,
+      level: level,
+      count: gameCount,
+    );
 
     final prompt = '''请基于下面学习资料生成闯关 RPG 的 Mini-Game 题目。
 学科：$subject
@@ -13525,10 +13748,7 @@ $materialText
 1. matching（配对匹配）：
 {"game_type":"matching","prompt":"将左侧术语与右侧定义配对","pairs":[{"left":"术语1","right":"定义1"},{"left":"术语2","right":"定义2"},{"left":"术语3","right":"定义3"},{"left":"术语4","right":"定义4"}],"explanation":"本组知识点概述","knowledge_point":"知识点"}
 
-2. listening（听力选择，所有学科可用）：
-{"game_type":"listening","prompt":"听完音频后选择正确答案","audio_text":"完整英文或中文段落（30-80词，来自资料）","options":["A. 选项","B. 选项","C. 选项","D. 选项"],"answer":"A","explanation":"解析","knowledge_point":"知识点"}
-
-3. flashcard（闪卡记忆）：
+2. flashcard（闪卡记忆）：
 {"game_type":"flashcard","prompt":"先看闪卡内容记住，然后回答问题","options":["闪卡正面内容（公式/概念/定义）"],"answer":"针对闪卡内容的一道选择题答案（A/B/C/D）","explanation":"解析","knowledge_point":"知识点"}
 注意：flashcard 的 options[0] 是闪卡展示内容，prompt 是闪卡看完后的问题（含4个选项写在prompt里）
 
@@ -13559,7 +13779,7 @@ $materialText
 要求：
 1. 每种类型的字段必须完整。
 2. matching/linkup 的 pairs 必须 3-4 组，左右内容不能重复。
-3. listening 的 audio_text 必须是完整段落（30-80词）。
+3. 不得返回 listening（听力）类型；听力题仅用于普通出题和试卷模式。
 4. reorder 的 answer 必须是打乱后到正确顺序的索引映射。
 5. tapfast 的 options 至少 4 个陈述，answer 用 对/错 标记。
 6. spell 的 answer 是要拼的单词/术语（2-10字符），options 留空。
@@ -13587,7 +13807,10 @@ $materialText
         : decoded['games'] as List? ?? [];
     final games = list
         .map((item) => MiniGame.fromJson(Map<String, dynamic>.from(item as Map)))
-        .where((g) => g.prompt.trim().isNotEmpty)
+        .where((g) =>
+            g.prompt.trim().isNotEmpty &&
+            g.type != MiniGameType.listening &&
+            selectedTypes.contains(g.type.name))
         .toList();
     // 兜底：模型偶尔少返回题目时，用资料片段补齐，保证每关完整 5 题。
     if (games.length < gameCount) {
@@ -13662,8 +13885,61 @@ $materialText
     return games.take(count).toList();
   }
 
-  /// v2.9.7 听力题兜底增强：若资料英文比例 >= 5% 且 listening 题不足总题数 40%，
-  /// 强制改造题目（追加 listening rich_content 块）使听力题占比达到 40%
+  /// 将某类富内容限制到目标数量，防止模型忽略配额后生成过多图表/听力题。
+  static void _capRichContentType(
+    List<AiQuestion> questions, {
+    required String type,
+    required int target,
+  }) {
+    var retained = 0;
+    for (var i = 0; i < questions.length; i++) {
+      final q = questions[i];
+      final blocks = <Map<String, dynamic>>[];
+      var changed = false;
+      for (final block in q.richContent) {
+        final blockType = (block['type'] ?? '').toString().toLowerCase();
+        if (blockType == type) {
+          if (retained >= target) {
+            changed = true;
+            continue;
+          }
+          retained++;
+        }
+        blocks.add(block);
+      }
+      if (changed) {
+        questions[i] = AiQuestion(
+          type: q.type,
+          question: q.question,
+          options: q.options,
+          answer: q.answer,
+          explanation: q.explanation,
+          richContent: blocks,
+        );
+      }
+    }
+  }
+
+  static void _capPaperRichContentType(
+    List<PaperQuestion> questions, {
+    required String type,
+    required int target,
+  }) {
+    final normalized = questions.map((item) => item.question).toList();
+    _capRichContentType(normalized, type: type, target: target);
+    for (var i = 0; i < questions.length; i++) {
+      final item = questions[i];
+      if (identical(item.question, normalized[i])) continue;
+      questions[i] = PaperQuestion(
+        section: item.section,
+        indexInSection: item.indexInSection,
+        question: normalized[i],
+        knowledgePoint: item.knowledgePoint,
+      );
+    }
+  }
+
+  /// v2.9.8 听力题兜底：若开关开启且模型返回不足，补齐到总题数约 25%。
   /// v2.7.5: 放宽英文片段提取条件——从 30-200字符/6词 降到 15-300字符/4词
   ///         并新增题干英文兜底（AI 出题时题干里可能含英文短语）
   static void _ensureListeningFallback(
@@ -13671,8 +13947,7 @@ $materialText
     String material,
   ) {
     if (questions.isEmpty) return;
-    // v2.7.4: 目标听力题占比 40%
-    final targetCount = (questions.length * 0.4).round().clamp(1, questions.length);
+    final targetCount = richContentTargetCount(questions.length);
     final existingListening = questions.where((q) => q.richContent.any(
           (rc) => (rc['type'] ?? '').toString() == 'listening',
         )).length;
@@ -13793,12 +14068,19 @@ $materialText
       sections.add('四、解答题（共 ${tpl.subjectiveCount} 题，每题 $ss 分）');
     }
     final totalQ = tpl.totalCount;
+    final allowRichContent = enableRichContent || enableListening;
+    final richTarget = richContentTargetCount(totalQ);
+    final minRichTarget = max(1, (totalQ * 0.20).ceil());
+    final maxRichTarget = max(minRichTarget, (totalQ * 0.30).floor());
+    final effectiveListeningTarget = listeningCount > 0
+        ? listeningCount.clamp(minRichTarget, maxRichTarget)
+        : richTarget;
 
     // 根据开关动态构建 rich_content 字段说明
-    final richFieldBlock = enableRichContent
+    final richFieldBlock = allowRichContent
         ? '''  "rich_content": []'''
         : '';
-    final richDocBlock = enableRichContent
+    final richDocBlock = allowRichContent
         ? '''
 【rich_content 字段说明（启用）】
 当题目涉及图形/公式/音频时，**必须**返回 rich_content 数组，每个元素形如 {"type": "...", "data": {...}}。
@@ -13828,7 +14110,7 @@ $materialText
 【rich_content 字段说明（已禁用）】
 本次为纯文字题目模式，**不要返回 rich_content 字段**或留空数组 []，避免拖长输出导致 JSON 截断。''';
 
-    final richRequireBlock = enableRichContent
+    final richRequireBlock = allowRichContent
         ? '''10. **rich_content 启用**：当题目涉及以下情况时**必须**返回 rich_content：
     - 数学公式（含分式、根号、上下标、求和、积分等）→ type:"math"，content 用 \$\$...\$\$
     - 函数图像（一次/二次/三角/指数等）→ type:"math"，content 用 [graph: f(x)=...]
@@ -13838,11 +14120,12 @@ $materialText
     - 英语听力原文 → type:"listening"（仅英语学科使用，audio_text 必填）''' : ''}
    普通纯文字题目可留空数组 []。'''
         : '10. 本次为纯文字题目模式，不要返回 rich_content 字段或留空数组 []。';
+    final chartPaperNote = enableRichContent
+        ? '\n12. **图表题配额（强制）**：全卷 $totalQ 题中必须恰好有 $richTarget 道题包含 type:"chart" 的 rich_content（约 25%，保持在 20%-30%）。data.data 必须使用“标签:数值,标签:数值”格式，至少 2 组，并与题干完全一致。其余题目不得返回 chart。'
+        : '\n12. 本次不开启图表题，不要返回 chart 类型。';
     final listeningPaperNote = enableListening
-        ? (listeningCount > 0
-            ? '\n12. **英语听力题启用（指定 $listeningCount 道）**：若学科为英语，**必须**生成恰好 $listeningCount 道附带 listening 类型 rich_content 的听力题，集中放在试卷开头作为"听力理解"大题。audio_text 为英文原文（30-80 词），voice 默认 "en-US"，各题 audio_text 不得重复。非英语学科不要返回 listening 类型。'
-            : '\n12. **英语听力题启用（自动占比 40%）**：若学科为英语，**必须**生成约 $totalQ*40% = ${(totalQ * 0.4).round()} 道听力题（占总题数 40%），集中放在试卷开头作为"听力理解"大题。audio_text 为英文原文（30-80 词），voice 默认 "en-US"，各题 audio_text 不得重复。非英语学科不要返回 listening 类型。')
-        : '\n12. 本次不生成英语听力题（音频开关已关闭）。';
+        ? '\n13. **听力题配额（强制）**：全卷 $totalQ 题中必须恰好有 $effectiveListeningTarget 道题包含 type:"listening" 的 rich_content（保持在 20%-30%）。audio_text 为完整可朗读段落（30-80 词），各题不得重复；若图表同时开启，两类不要放在同一道题中。'
+        : '\n13. 本次不生成听力题（音频开关已关闭）。';
     // v2.7.1 按章节/知识点出题
     final chapterNote = chapterRange.trim().isNotEmpty
         ? '\n13. **章节范围**：所有题目必须围绕【${chapterRange.trim()}】范围出题。题目内容、知识点、情境都应贴近该章节。'
@@ -13887,6 +14170,7 @@ $richDocBlock
 9. knowledge_point 必填，简短描述本题考查的知识点（5-12 字）。
 $richRequireBlock
 11. 数学、物理、化学、英语听力、统计图等学科题目应优先使用 rich_content 体现图形信息，避免在题干中使用"如图"等无法表达的描述。
+$chartPaperNote
 $listeningPaperNote
 $chapterNote
 $kpNote
@@ -13944,15 +14228,23 @@ $materialText
         })
         .whereType<PaperQuestion>()
         .toList();
-    // v2.7.5 试卷听力题兜底：英语学科 + enableListening 但 listening 题不足
-    // 目标数量：listeningCount>0 用指定值，否则按总题数 40%
-    // v2.7.5: 同步出题兜底的放宽正则（15-300字符/4词）+ 题干兜底
+    // 试卷听力题兜底：英语资料开启听力但模型返回不足时，补齐到20%-30%。
+    final actualTotal = paperQuestions.length;
+    final actualMinTarget = actualTotal == 0
+        ? 0
+        : max(1, (actualTotal * 0.20).ceil());
+    final actualMaxTarget = actualTotal == 0
+        ? 0
+        : max(actualMinTarget, (actualTotal * 0.30).floor());
+    final actualListeningTarget = actualTotal == 0
+        ? 0
+        : (listeningCount > 0
+            ? listeningCount.clamp(actualMinTarget, actualMaxTarget)
+            : richContentTargetCount(actualTotal));
     if (enableListening &&
         paperQuestions.isNotEmpty &&
         subject.contains('英语')) {
-      final target = listeningCount > 0
-          ? listeningCount
-          : (paperQuestions.length * 0.4).round().clamp(1, paperQuestions.length);
+      final target = actualListeningTarget;
       final existingListening = paperQuestions.where((p) =>
           p.question.richContent
               .any((rc) => (rc['type'] ?? '') == 'listening')).length;
@@ -14015,6 +14307,17 @@ $materialText
         }
       }
     }
+    final actualRichTarget = richContentTargetCount(paperQuestions.length);
+    _capPaperRichContentType(
+      paperQuestions,
+      type: 'chart',
+      target: enableRichContent ? actualRichTarget : 0,
+    );
+    _capPaperRichContentType(
+      paperQuestions,
+      type: 'listening',
+      target: enableListening ? actualListeningTarget : 0,
+    );
     return paperQuestions;
   }
 
@@ -16390,9 +16693,11 @@ class RpgLevelCompleteOverlay extends StatefulWidget {
   const RpgLevelCompleteOverlay({
     super.key,
     required this.result,
+    this.onAction,
   });
 
   final RpgLevelResult result;
+  final ValueChanged<RpgCompletionAction>? onAction;
 
   @override
   State<RpgLevelCompleteOverlay> createState() => _RpgLevelCompleteOverlayState();
@@ -16413,6 +16718,11 @@ class _RpgLevelCompleteOverlayState extends State<RpgLevelCompleteOverlay>
     if (_actionTaken) return;
     _actionTaken = true;
     HapticFeedback.selectionClick();
+    final callback = widget.onAction;
+    if (callback != null) {
+      callback(action);
+      return;
+    }
     Navigator.of(context).pop(action);
   }
 
@@ -16481,8 +16791,9 @@ class _RpgLevelCompleteOverlayState extends State<RpgLevelCompleteOverlay>
   Widget _buildChestAnimation(double t) {
     // 阶段1(0-0.4): 宝箱从下方滑入+缩放；阶段2(0.4-0.7): 盖子打开；阶段3(0.7-1.0): 金光迸射
     final slideIn = (t < 0.4) ? Curves.easeOut.transform(t / 0.4) : 1.0;
-    final lidOpen = (t > 0.4) ? Curves.easeOut.transform((t - 0.4) / 0.3) : 0.0;
-    final glow = (t > 0.7) ? (t - 0.7) / 0.3 : 0.0;
+    final lidProgress = ((t - 0.4) / 0.3).clamp(0.0, 1.0);
+    final lidOpen = Curves.easeOut.transform(lidProgress);
+    final glow = ((t - 0.7) / 0.3).clamp(0.0, 1.0);
     return SizedBox(
       width: 120,
       height: 120,
