@@ -23,9 +23,7 @@ void main() {
               selectedAction = await showDialog<RpgCompletionAction>(
                 context: pageContext,
                 barrierDismissible: false,
-                builder: (_) => const RpgLevelCompleteOverlay(
-                  result: _result,
-                ),
+                builder: (_) => const RpgLevelCompleteOverlay(result: _result),
               );
             },
             child: const Text('打开结算'),
@@ -53,9 +51,7 @@ void main() {
               selectedAction = await showDialog<RpgCompletionAction>(
                 context: pageContext,
                 barrierDismissible: false,
-                builder: (_) => const RpgLevelCompleteOverlay(
-                  result: _result,
-                ),
+                builder: (_) => const RpgLevelCompleteOverlay(result: _result),
               );
             },
             child: const Text('打开结算'),

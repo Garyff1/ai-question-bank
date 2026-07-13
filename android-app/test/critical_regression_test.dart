@@ -1,4 +1,5 @@
 import 'package:ai_question_bank_android/main.dart';
+import 'package:ai_question_bank_android/features/challenge/challenge_rules.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:syncfusion_flutter_pdf/pdf.dart';
@@ -14,7 +15,7 @@ const _rpgResult = RpgLevelResult(
 );
 
 void main() {
-  test('RPG every level selects five non-listening mini games', () {
+  test('RPG levels follow challenge counts and exclude listening games', () {
     for (final subject in ['通用', '语文', '英语']) {
       for (var chapter = 1; chapter <= 3; chapter++) {
         for (var level = 1; level <= 5; level++) {
@@ -23,7 +24,10 @@ void main() {
             chapter: chapter,
             level: level,
           );
-          expect(types, hasLength(5));
+          expect(
+            types,
+            hasLength(ChallengeRules.forLevel(level).questionCount),
+          );
           expect(types, isNot(contains('listening')));
         }
       }
@@ -133,7 +137,7 @@ void main() {
       expect(bytes.length, greaterThan(1000));
       expect(extracted, isNot(contains(r'\frac')));
       expect(extracted, isNot(contains('图表数据暂不可绘制')));
-    expect(extracted, contains('数学公式：x=(2)/(3)'));
+      expect(extracted, contains('数学公式：x=(2)/(3)'));
     },
   );
 
@@ -185,7 +189,10 @@ void main() {
     expect(tester.getBottomRight(stage).dx, lessThanOrEqualTo(360));
 
     await tester.pump(const Duration(milliseconds: 1000));
-    expect(find.byKey(const ValueKey('wrong-card-selected-card')), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('wrong-card-selected-card')),
+      findsOneWidget,
+    );
     expect(find.text('错题卡'), findsOneWidget);
     expect(find.text('已抽 5 题'), findsOneWidget);
   });

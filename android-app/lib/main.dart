@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 
@@ -15,6 +15,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:syncfusion_flutter_pdf/pdf.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:xml/xml.dart';
+import 'app/app.dart';
+import 'app/app_settings_controller.dart';
+import 'core/localization/localization_extensions.dart';
+import 'features/challenge/challenge_rules.dart';
+import 'features/settings/settings_center_card.dart';
 import 'rich_content.dart';
 import 'dart:io';
 import 'dart:typed_data';
@@ -76,16 +81,16 @@ const kFeedbackEmail = '673819340@qq.com';
 // ===== v2.9.0: 音效系统（程序合成，无外部资源）=====
 
 enum SoundType {
-  click,    // 按钮点击：短促清脆
-  correct,  // 答对：上升和弦
-  wrong,    // 答错：下降二音
-  star,     // 获得星星：四音上升
-  levelup,  // 通关：五音欢呼
-  boss,     // Boss出现：低沉三音
-  badge,    // 徽章解锁：高音三连
-  hint,     // 提示：中音单音
-  lose,     // 失败：下降四音
-  combo,    // 连击：上升短音
+  click, // 按钮点击：短促清脆
+  correct, // 答对：上升和弦
+  wrong, // 答错：下降二音
+  star, // 获得星星：四音上升
+  levelup, // 通关：五音欢呼
+  boss, // Boss出现：低沉三音
+  badge, // 徽章解锁：高音三连
+  hint, // 提示：中音单音
+  lose, // 失败：下降四音
+  combo, // 连击：上升短音
 }
 
 class SoundService {
@@ -188,20 +193,32 @@ class SoundService {
     final dataSize = pcm.lengthInBytes;
     final buf = ByteData(44 + dataSize);
     // RIFF header
-    buf.setUint8(0, 0x52); buf.setUint8(1, 0x49); buf.setUint8(2, 0x46); buf.setUint8(3, 0x46);
+    buf.setUint8(0, 0x52);
+    buf.setUint8(1, 0x49);
+    buf.setUint8(2, 0x46);
+    buf.setUint8(3, 0x46);
     buf.setUint32(4, 36 + dataSize, Endian.little);
-    buf.setUint8(8, 0x57); buf.setUint8(9, 0x41); buf.setUint8(10, 0x56); buf.setUint8(11, 0x45);
+    buf.setUint8(8, 0x57);
+    buf.setUint8(9, 0x41);
+    buf.setUint8(10, 0x56);
+    buf.setUint8(11, 0x45);
     // fmt chunk
-    buf.setUint8(12, 0x66); buf.setUint8(13, 0x6D); buf.setUint8(14, 0x74); buf.setUint8(15, 0x20);
+    buf.setUint8(12, 0x66);
+    buf.setUint8(13, 0x6D);
+    buf.setUint8(14, 0x74);
+    buf.setUint8(15, 0x20);
     buf.setUint32(16, 16, Endian.little);
-    buf.setUint16(20, 1, Endian.little);                       // PCM
-    buf.setUint16(22, 1, Endian.little);                       // mono
+    buf.setUint16(20, 1, Endian.little); // PCM
+    buf.setUint16(22, 1, Endian.little); // mono
     buf.setUint32(24, sampleRate, Endian.little);
-    buf.setUint32(28, sampleRate * 2, Endian.little);          // byte rate
-    buf.setUint16(32, 2, Endian.little);                       // block align
-    buf.setUint16(34, 16, Endian.little);                      // bits per sample
+    buf.setUint32(28, sampleRate * 2, Endian.little); // byte rate
+    buf.setUint16(32, 2, Endian.little); // block align
+    buf.setUint16(34, 16, Endian.little); // bits per sample
     // data chunk
-    buf.setUint8(36, 0x64); buf.setUint8(37, 0x61); buf.setUint8(38, 0x74); buf.setUint8(39, 0x61);
+    buf.setUint8(36, 0x64);
+    buf.setUint8(37, 0x61);
+    buf.setUint8(38, 0x74);
+    buf.setUint8(39, 0x61);
     buf.setUint32(40, dataSize, Endian.little);
     final bytes = buf.buffer.asUint8List();
     bytes.setRange(44, 44 + dataSize, pcm.buffer.asUint8List());
@@ -213,56 +230,85 @@ class SoundService {
 
 /// Mini-Game 类型：5 种轻量游戏化学习形式
 enum MiniGameType {
-  matching,   // 配对匹配
-  listening,  // 听力选择
-  flashcard,  // 闪卡记忆
-  reorder,    // 顺序排列
-  tapfast,    // 限时快选
+  matching, // 配对匹配
+  listening, // 听力选择
+  flashcard, // 闪卡记忆
+  reorder, // 顺序排列
+  tapfast, // 限时快选
   // v2.9.1 新增游戏类型
-  spell,      // 单词拼写（字母乱序拼词）
-  fillblank,  // 填空拼图（句子挖空填词）
-  truefalse,  // 真假快判（滑动卡片判对错）
-  linkup,     // 连连看（网格点击配对消除）
+  spell, // 单词拼写（字母乱序拼词）
+  fillblank, // 填空拼图（句子挖空填词）
+  truefalse, // 真假快判（滑动卡片判对错）
+  linkup, // 连连看（网格点击配对消除）
 }
 
 extension MiniGameTypeX on MiniGameType {
   String get label {
     switch (this) {
-      case MiniGameType.matching: return '配对匹配';
-      case MiniGameType.listening: return '听力选择';
-      case MiniGameType.flashcard: return '闪卡记忆';
-      case MiniGameType.reorder: return '顺序排列';
-      case MiniGameType.tapfast: return '限时快选';
-      case MiniGameType.spell: return '单词拼写';
-      case MiniGameType.fillblank: return '填空拼图';
-      case MiniGameType.truefalse: return '真假快判';
-      case MiniGameType.linkup: return '连连看';
+      case MiniGameType.matching:
+        return '配对匹配';
+      case MiniGameType.listening:
+        return '听力选择';
+      case MiniGameType.flashcard:
+        return '闪卡记忆';
+      case MiniGameType.reorder:
+        return '顺序排列';
+      case MiniGameType.tapfast:
+        return '限时快选';
+      case MiniGameType.spell:
+        return '单词拼写';
+      case MiniGameType.fillblank:
+        return '填空拼图';
+      case MiniGameType.truefalse:
+        return '真假快判';
+      case MiniGameType.linkup:
+        return '连连看';
     }
   }
+
   String get emoji {
     switch (this) {
-      case MiniGameType.matching: return '🔗';
-      case MiniGameType.listening: return '🎧';
-      case MiniGameType.flashcard: return '📇';
-      case MiniGameType.reorder: return '📊';
-      case MiniGameType.tapfast: return '⚡';
-      case MiniGameType.spell: return '🔤';
-      case MiniGameType.fillblank: return '🧩';
-      case MiniGameType.truefalse: return '👈';
-      case MiniGameType.linkup: return '🎯';
+      case MiniGameType.matching:
+        return '🔗';
+      case MiniGameType.listening:
+        return '🎧';
+      case MiniGameType.flashcard:
+        return '📇';
+      case MiniGameType.reorder:
+        return '📊';
+      case MiniGameType.tapfast:
+        return '⚡';
+      case MiniGameType.spell:
+        return '🔤';
+      case MiniGameType.fillblank:
+        return '🧩';
+      case MiniGameType.truefalse:
+        return '👈';
+      case MiniGameType.linkup:
+        return '🎯';
     }
   }
+
   String get desc {
     switch (this) {
-      case MiniGameType.matching: return '点击左右两列配对';
-      case MiniGameType.listening: return '听音频选答案';
-      case MiniGameType.flashcard: return '翻卡记忆再答题';
-      case MiniGameType.reorder: return '点击排正确顺序';
-      case MiniGameType.tapfast: return '限时快速点击';
-      case MiniGameType.spell: return '拖字母拼单词';
-      case MiniGameType.fillblank: return '拖词填空';
-      case MiniGameType.truefalse: return '滑动判对错';
-      case MiniGameType.linkup: return '点击配对消除';
+      case MiniGameType.matching:
+        return '点击左右两列配对';
+      case MiniGameType.listening:
+        return '听音频选答案';
+      case MiniGameType.flashcard:
+        return '翻卡记忆再答题';
+      case MiniGameType.reorder:
+        return '点击排正确顺序';
+      case MiniGameType.tapfast:
+        return '限时快速点击';
+      case MiniGameType.spell:
+        return '拖字母拼单词';
+      case MiniGameType.fillblank:
+        return '拖词填空';
+      case MiniGameType.truefalse:
+        return '滑动判对错';
+      case MiniGameType.linkup:
+        return '点击配对消除';
     }
   }
 }
@@ -280,15 +326,17 @@ class MiniGame {
   });
 
   final MiniGameType type;
-  final String prompt;             // 题目/提示文本
-  final List<String> options;      // 选项（matching: 左侧terms；reorder: 打乱项；tapfast: 选项）
-  final String answer;             // 正确答案（matching: 右侧对应；reorder: 正确顺序索引"0,2,1"；tapfast: "对"/"错"）
-  final String? audioText;         // listening 用：TTS 播放文本
-  final String? explanation;       // 解析
-  final String? knowledgePoint;    // 知识点
+  final String prompt; // 题目/提示文本
+  final List<String> options; // 选项（matching: 左侧terms；reorder: 打乱项；tapfast: 选项）
+  final String
+  answer; // 正确答案（matching: 右侧对应；reorder: 正确顺序索引"0,2,1"；tapfast: "对"/"错"）
+  final String? audioText; // listening 用：TTS 播放文本
+  final String? explanation; // 解析
+  final String? knowledgePoint; // 知识点
 
   factory MiniGame.fromJson(Map<String, dynamic> json) {
-    final typeStr = (json['game_type'] ?? json['type'] ?? 'matching').toString();
+    final typeStr = (json['game_type'] ?? json['type'] ?? 'matching')
+        .toString();
     final type = MiniGameType.values.firstWhere(
       (t) => t.name == typeStr,
       orElse: () => MiniGameType.matching,
@@ -297,7 +345,8 @@ class MiniGame {
         .map((e) => e.toString())
         .toList();
     final pairs = json['pairs'];
-    if (pairs is List && (type == MiniGameType.matching || type == MiniGameType.linkup)) {
+    if (pairs is List &&
+        (type == MiniGameType.matching || type == MiniGameType.linkup)) {
       // 配对题：pairs = [{"left":"x","right":"y"}]，options=左侧，answer=右侧(分隔)
       final lefts = pairs.map((p) => (p as Map)['left'].toString()).toList();
       final rights = pairs.map((p) => (p as Map)['right'].toString()).toList();
@@ -330,11 +379,17 @@ class MiniGameLevelResult {
     required this.correct,
     required this.duration,
     required this.wrongs,
+    this.maxCombo = 0,
+    this.remainingShield = 0,
+    this.weakKnowledgePoints = const [],
   });
   final int total;
   final int correct;
   final Duration duration;
   final List<WrongItem> wrongs;
+  final int maxCombo;
+  final int remainingShield;
+  final List<String> weakKnowledgePoints;
 
   bool get allCorrect => correct == total && total > 0;
   bool get fast => duration.inSeconds <= 120;
@@ -360,6 +415,8 @@ class MiniGameSession {
   final bool isBoss;
   final DateTime startTime;
   final int lives; // 剩余生命值，0 则失败
+
+  ChallengeRule get rule => ChallengeRules.forLevel(level);
 }
 
 // ===== 资料解析（顶层函数，供 Isolate.run() 在后台 Isolate 中调用）=====
@@ -438,35 +495,18 @@ String _extractDocxText(List<int> bytes) {
     return paragraphs.join('\n').trim();
   } catch (error) {
     // 吞掉底层英文异常，只暴露中文友好提示
-    if (error is Exception &&
-        error.toString().startsWith('Exception: 不是有效的')) {
+    if (error is Exception && error.toString().startsWith('Exception: 不是有效的')) {
       rethrow;
     }
     throw Exception('DOCX 解析失败，请用 Word 另存为 .docx 后再试');
   }
 }
 
-void main() {
-  runApp(const AiQuestionBankApp());
-}
-
-class AiQuestionBankApp extends StatelessWidget {
-  const AiQuestionBankApp({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'AI题库',
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: kBlue),
-        scaffoldBackgroundColor: kBg,
-        useMaterial3: true,
-        fontFamilyFallback: const ['PingFang SC', 'Microsoft YaHei'],
-      ),
-      home: const AppShell(),
-    );
-  }
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  final settings = await AppSettingsController.load();
+  SoundService.instance.setMuted(!settings.soundEnabled);
+  runApp(AiQuestionBankApp(settings: settings, home: const AppShell()));
 }
 
 class StudyMaterial {
@@ -546,6 +586,7 @@ class AiQuestion {
   final List<String> options;
   final dynamic answer;
   final String explanation;
+
   /// 富内容块（数学公式、函数图、物理图、化学结构、SVG、统计图、英语听力）
   /// 由 AI 在生成时通过 rich_content 字段返回，详见 rich_content.dart
   final List<Map<String, dynamic>> richContent;
@@ -581,8 +622,8 @@ class AiQuestion {
         ? rawOptions.map((item) => item.toString()).toList()
         : <String>[];
     final questionText = (json['question'] ?? json['title'] ?? '').toString();
-    final explanationText =
-        (json['explanation'] ?? json['analysis'] ?? '暂无解析').toString();
+    final explanationText = (json['explanation'] ?? json['analysis'] ?? '暂无解析')
+        .toString();
     // 解析富内容：AI 可在 rich_content 字段返回数组
     List<Map<String, dynamic>> richContent = const [];
     final rawRich = json['rich_content'];
@@ -600,18 +641,25 @@ class AiQuestion {
         ? questionText.substring(0, 30)
         : questionText;
     if (richContent.isNotEmpty) {
-      debugPrint('[RichContent] 解析到 ${richContent.length} 个富内容块：'
-          '${richContent.map((e) => e['type']).join(',')} | 题干：$qPreview...');
+      debugPrint(
+        '[RichContent] 解析到 ${richContent.length} 个富内容块：'
+        '${richContent.map((e) => e['type']).join(',')} | 题干：$qPreview...',
+      );
     } else {
       debugPrint('[RichContent] 题目无 rich_content | 题干：$qPreview...');
     }
     // 兜底：AI 未返回 rich_content 时，根据题干内容自动检测数学/化学/物理模式
     // 这是关键修复——很多 AI 模型在严格 JSON 输出时会省略 rich_content 字段
     if (richContent.isEmpty) {
-      final fallback = _detectRichContentFallback(questionText, explanationText);
+      final fallback = _detectRichContentFallback(
+        questionText,
+        explanationText,
+      );
       if (fallback.isNotEmpty) {
         richContent = fallback;
-        debugPrint('[RichContent] 兜底生成 ${fallback.length} 个富内容块 | 题干：$qPreview...');
+        debugPrint(
+          '[RichContent] 兜底生成 ${fallback.length} 个富内容块 | 题干：$qPreview...',
+        );
       }
     }
     final questionChart = _extractChartData('$questionText\n$explanationText');
@@ -671,8 +719,9 @@ class AiQuestion {
     // 2. 化学式：只识别 smart_content_viewer 明确支持的物质
     // molecule 类型仅支持：H2O/CO2/NH3/CH4/O2/N2/HCl/NaCl
     // v2.7.1：删除"无明确分子式→默认 H2O"的逻辑，避免题干没具体物质时硬塞图表
-    final chemMatch = RegExp(r'\b(H2O|CO2|NH3|CH4|O2|N2|HCl|NaCl)\b')
-        .firstMatch(combined);
+    final chemMatch = RegExp(
+      r'\b(H2O|CO2|NH3|CH4|O2|N2|HCl|NaCl)\b',
+    ).firstMatch(combined);
     if (chemMatch != null) {
       final formula = chemMatch.group(1)!;
       result.add({
@@ -706,13 +755,15 @@ class AiQuestion {
 
     // v2.7.5: 5. 听力题兜底检测——题干含 "听/Listen/audio/听力" 关键词且包含 ≥4 词英文片段时生成
     // 这能让 AI 即使没返回 rich_content 中的 listening 块，也能从题干反推出来
-    final listeningKeyword =
-        RegExp(r'听力|听下|听完|听取|listen to|listen carefully|audio', caseSensitive: false)
-            .hasMatch(question);
+    final listeningKeyword = RegExp(
+      r'听力|听下|听完|听取|listen to|listen carefully|audio',
+      caseSensitive: false,
+    ).hasMatch(question);
     if (listeningKeyword) {
       // v2.7.5: 用双引号 raw string，字符类里去掉 " 避免冲突（raw string 不识别转义）
-      final englishMatch =
-          RegExp(r"[A-Za-z][A-Za-z\s,.!?\-';:()]{14,300}").firstMatch(question + '\n' + explanation);
+      final englishMatch = RegExp(
+        r"[A-Za-z][A-Za-z\s,.!?\-';:()]{14,300}",
+      ).firstMatch(question + '\n' + explanation);
       if (englishMatch != null) {
         final seg = englishMatch
             .group(0)!
@@ -721,10 +772,7 @@ class AiQuestion {
         if (seg.split(RegExp(r'\s+')).length >= 4) {
           result.add({
             'type': 'listening',
-            'data': {
-              'audio_text': seg,
-              'voice': 'en-US',
-            },
+            'data': {'audio_text': seg, 'voice': 'en-US'},
           });
         }
       }
@@ -764,10 +812,36 @@ class AiQuestion {
 
     // 黑名单标签——这些词后的数值不是图表数据
     const blacklistLabels = {
-      '答案', '正确答案', '选项', '正确率', '错误率', '得分', '分值', '满分',
-      '总分', '题号', '编号', '页码', '数量', '总数', '人数', '百分比',
-      '增长率', '增长', '下降', '幅度', '比例', '占比', '部分',
-      '第', '题', '小题', '大题', '解析', '说明', '单位',
+      '答案',
+      '正确答案',
+      '选项',
+      '正确率',
+      '错误率',
+      '得分',
+      '分值',
+      '满分',
+      '总分',
+      '题号',
+      '编号',
+      '页码',
+      '数量',
+      '总数',
+      '人数',
+      '百分比',
+      '增长率',
+      '增长',
+      '下降',
+      '幅度',
+      '比例',
+      '占比',
+      '部分',
+      '第',
+      '题',
+      '小题',
+      '大题',
+      '解析',
+      '说明',
+      '单位',
     };
 
     String normalize(String value) => value
@@ -814,13 +888,20 @@ class AiQuestion {
     // 拆分行，逐行找图表关键词附近的数据；如果一行同时含"图"和数据，优先用这行
     final lines = text.split(RegExp(r'[\n。；;！!]'));
     // 候选文本：优先用包含"图"的行，否则用全文
-    final candidateLines = lines.where((l) =>
-        RegExp(r'图|数据|如下|所示').hasMatch(l) &&
-        RegExp(r'\d').hasMatch(l)).toList();
-    final searchTexts =
-        (candidateLines.isNotEmpty ? candidateLines : [text]).map(normalize);
+    final candidateLines = lines
+        .where(
+          (l) => RegExp(r'图|数据|如下|所示').hasMatch(l) && RegExp(r'\d').hasMatch(l),
+        )
+        .toList();
+    final searchTexts = (candidateLines.isNotEmpty ? candidateLines : [text])
+        .map(normalize);
 
-    void tryExtract(String searchText, RegExp regex, String Function(Match) labelFn, String Function(Match) valueFn) {
+    void tryExtract(
+      String searchText,
+      RegExp regex,
+      String Function(Match) labelFn,
+      String Function(Match) valueFn,
+    ) {
       for (final m in regex.allMatches(searchText)) {
         addPair(labelFn(m), valueFn(m));
       }
@@ -829,13 +910,22 @@ class AiQuestion {
     for (final searchText in searchTexts) {
       // 优先匹配 "标签:数值" 或 "标签：数值" 格式
       if (dataMap.length < 2) {
-        final colonRegex = RegExp(r'([\u4e00-\u9fa5A-Za-z_][\u4e00-\u9fa5A-Za-z0-9_]{0,9})\s*:\s*(\d+(?:\.\d+)?)');
-        tryExtract(searchText, colonRegex, (m) => m.group(1)!, (m) => m.group(2)!);
+        final colonRegex = RegExp(
+          r'([\u4e00-\u9fa5A-Za-z_][\u4e00-\u9fa5A-Za-z0-9_]{0,9})\s*:\s*(\d+(?:\.\d+)?)',
+        );
+        tryExtract(
+          searchText,
+          colonRegex,
+          (m) => m.group(1)!,
+          (m) => m.group(2)!,
+        );
       }
       // 如果冒号格式没匹配到，尝试 "标签=数值" 格式
       if (dataMap.length < 2) {
         dataMap.clear();
-        final eqRegex = RegExp(r'([\u4e00-\u9fa5A-Za-z_][\u4e00-\u9fa5A-Za-z0-9_]{0,9})\s*=\s*(\d+(?:\.\d+)?)');
+        final eqRegex = RegExp(
+          r'([\u4e00-\u9fa5A-Za-z_][\u4e00-\u9fa5A-Za-z0-9_]{0,9})\s*=\s*(\d+(?:\.\d+)?)',
+        );
         tryExtract(searchText, eqRegex, (m) => m.group(1)!, (m) => m.group(2)!);
       }
       // 教材常见写法："甲(30)"、"A（12.5）"
@@ -844,7 +934,12 @@ class AiQuestion {
         final parenRegex = RegExp(
           r'([\u4e00-\u9fa5A-Za-z_][\u4e00-\u9fa5A-Za-z0-9_]{0,9})\s*\(\s*(\d+(?:\.\d+)?)\s*(?:人|个|件|分|元|%|％)?\s*\)',
         );
-        tryExtract(searchText, parenRegex, (m) => m.group(1)!, (m) => m.group(2)!);
+        tryExtract(
+          searchText,
+          parenRegex,
+          (m) => m.group(1)!,
+          (m) => m.group(2)!,
+        );
       }
       // 教材自然语言写法："一班有30人"、"甲为42"
       if (dataMap.length < 2) {
@@ -852,13 +947,25 @@ class AiQuestion {
         final naturalRegex = RegExp(
           r'([\u4e00-\u9fa5A-Za-z_][\u4e00-\u9fa5A-Za-z0-9_]{0,7})\s*(?:有|为|是|达到|约)?\s*(\d+(?:\.\d+)?)\s*(?:人|个|件|分|元|%|％)',
         );
-        tryExtract(searchText, naturalRegex, (m) => m.group(1)!, (m) => m.group(2)!);
+        tryExtract(
+          searchText,
+          naturalRegex,
+          (m) => m.group(1)!,
+          (m) => m.group(2)!,
+        );
       }
       // 如果还是没匹配到，尝试 "汉字标签 数字" 格式（如"男生 25人"）
       if (dataMap.length < 2) {
         dataMap.clear();
-        final spaceRegex = RegExp(r'([\u4e00-\u9fa5A-Za-z_][\u4e00-\u9fa5A-Za-z0-9_]{1,7})\s+(\d+(?:\.\d+)?)');
-        tryExtract(searchText, spaceRegex, (m) => m.group(1)!, (m) => m.group(2)!);
+        final spaceRegex = RegExp(
+          r'([\u4e00-\u9fa5A-Za-z_][\u4e00-\u9fa5A-Za-z0-9_]{1,7})\s+(\d+(?:\.\d+)?)',
+        );
+        tryExtract(
+          searchText,
+          spaceRegex,
+          (m) => m.group(1)!,
+          (m) => m.group(2)!,
+        );
       }
       if (dataMap.length >= 2) break;
     }
@@ -867,20 +974,19 @@ class AiQuestion {
     if (dataMap.length < 2) return null;
 
     // 构建 data 字符串
-    final dataStr = dataMap.entries.take(10).map((e) {
-      final v = e.value == e.value.roundToDouble()
-          ? e.value.round().toString()
-          : e.value.toString();
-      return '${e.key}:$v';
-    }).join(',');
+    final dataStr = dataMap.entries
+        .take(10)
+        .map((e) {
+          final v = e.value == e.value.roundToDouble()
+              ? e.value.round().toString()
+              : e.value.toString();
+          return '${e.key}:$v';
+        })
+        .join(',');
 
     return {
       'type': 'chart',
-      'data': {
-        'chart_type': chartType,
-        'data': dataStr,
-        'title': title,
-      },
+      'data': {'chart_type': chartType, 'data': dataStr, 'title': title},
     };
   }
 
@@ -930,24 +1036,25 @@ class PaperQuestion {
   final String section;
   final int indexInSection;
   final AiQuestion question;
+
   /// AI 标注的知识点（5-12 字）。为空时回退到"综合"。
   final String knowledgePoint;
 
   Map<String, dynamic> toJson() => {
-        'section': section,
-        'indexInSection': indexInSection,
-        'question': question.toJson(),
-        'knowledgePoint': knowledgePoint,
-      };
+    'section': section,
+    'indexInSection': indexInSection,
+    'question': question.toJson(),
+    'knowledgePoint': knowledgePoint,
+  };
 
   factory PaperQuestion.fromJson(Map<String, dynamic> json) => PaperQuestion(
-        section: json['section'] as String? ?? '',
-        indexInSection: json['indexInSection'] as int? ?? 0,
-        question: AiQuestion.fromJson(
-          Map<String, dynamic>.from(json['question'] as Map? ?? {}),
-        ),
-        knowledgePoint: json['knowledgePoint'] as String? ?? '',
-      );
+    section: json['section'] as String? ?? '',
+    indexInSection: json['indexInSection'] as int? ?? 0,
+    question: AiQuestion.fromJson(
+      Map<String, dynamic>.from(json['question'] as Map? ?? {}),
+    ),
+    knowledgePoint: json['knowledgePoint'] as String? ?? '',
+  );
 }
 
 /// v2.7.2: 听力题条目（用于音频下载时携带大题/小问编号）
@@ -1011,34 +1118,36 @@ class Paper {
   }
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'subject': subject,
-        'gradeLevel': gradeLevel,
-        'pageCount': pageCount,
-        'materialName': materialName,
-        'questions': questions.map((q) => q.toJson()).toList(),
-        'createdAt': createdAt.toIso8601String(),
-        'scoreConfig': scoreConfig.toJson(),
-      };
+    'id': id,
+    'subject': subject,
+    'gradeLevel': gradeLevel,
+    'pageCount': pageCount,
+    'materialName': materialName,
+    'questions': questions.map((q) => q.toJson()).toList(),
+    'createdAt': createdAt.toIso8601String(),
+    'scoreConfig': scoreConfig.toJson(),
+  };
 
   factory Paper.fromJson(Map<String, dynamic> json) => Paper(
-        id: json['id'] as String? ?? '',
-        subject: json['subject'] as String? ?? '',
-        gradeLevel: json['gradeLevel'] as String? ?? '',
-        pageCount: json['pageCount'] as int? ?? 4,
-        materialName: json['materialName'] as String? ?? '',
-        questions: ((json['questions'] as List?) ?? [])
-            .map((item) => PaperQuestion.fromJson(
-                Map<String, dynamic>.from(item as Map)))
-            .toList(),
-        createdAt:
-            DateTime.tryParse(json['createdAt'] as String? ?? '') ??
-                DateTime.now(),
-        scoreConfig: json['scoreConfig'] is Map
-            ? PaperScoreConfig.fromJson(
-                Map<String, dynamic>.from(json['scoreConfig'] as Map))
-            : const PaperScoreConfig(),
-      );
+    id: json['id'] as String? ?? '',
+    subject: json['subject'] as String? ?? '',
+    gradeLevel: json['gradeLevel'] as String? ?? '',
+    pageCount: json['pageCount'] as int? ?? 4,
+    materialName: json['materialName'] as String? ?? '',
+    questions: ((json['questions'] as List?) ?? [])
+        .map(
+          (item) =>
+              PaperQuestion.fromJson(Map<String, dynamic>.from(item as Map)),
+        )
+        .toList(),
+    createdAt:
+        DateTime.tryParse(json['createdAt'] as String? ?? '') ?? DateTime.now(),
+    scoreConfig: json['scoreConfig'] is Map
+        ? PaperScoreConfig.fromJson(
+            Map<String, dynamic>.from(json['scoreConfig'] as Map),
+          )
+        : const PaperScoreConfig(),
+  );
 }
 
 /// 试卷分值配置：可指定总分（百分制等）和各题型小题分值
@@ -1077,13 +1186,13 @@ class PaperScoreConfig {
   }
 
   Map<String, dynamic> toJson() => {
-        'totalMode': totalMode,
-        'customTotal': customTotal,
-        'choiceScore': choiceScore,
-        'fillScore': fillScore,
-        'judgeScore': judgeScore,
-        'subjectiveScore': subjectiveScore,
-      };
+    'totalMode': totalMode,
+    'customTotal': customTotal,
+    'choiceScore': choiceScore,
+    'fillScore': fillScore,
+    'judgeScore': judgeScore,
+    'subjectiveScore': subjectiveScore,
+  };
 
   factory PaperScoreConfig.fromJson(Map<String, dynamic> json) =>
       PaperScoreConfig(
@@ -1110,8 +1219,7 @@ class PaperTemplate {
   final int judgeCount;
   final int subjectiveCount;
 
-  int get totalCount =>
-      choiceCount + fillCount + judgeCount + subjectiveCount;
+  int get totalCount => choiceCount + fillCount + judgeCount + subjectiveCount;
 
   /// 默认模板：根据学段+类型+学科+页数推算题量
   /// 参考国内中考/高考/期末/周测真实结构
@@ -1207,18 +1315,18 @@ class PaperTemplate {
   }
 
   Map<String, dynamic> toJson() => {
-        'choiceCount': choiceCount,
-        'fillCount': fillCount,
-        'judgeCount': judgeCount,
-        'subjectiveCount': subjectiveCount,
-      };
+    'choiceCount': choiceCount,
+    'fillCount': fillCount,
+    'judgeCount': judgeCount,
+    'subjectiveCount': subjectiveCount,
+  };
 
   factory PaperTemplate.fromJson(Map<String, dynamic> json) => PaperTemplate(
-        choiceCount: json['choiceCount'] as int? ?? 0,
-        fillCount: json['fillCount'] as int? ?? 0,
-        judgeCount: json['judgeCount'] as int? ?? 0,
-        subjectiveCount: json['subjectiveCount'] as int? ?? 0,
-      );
+    choiceCount: json['choiceCount'] as int? ?? 0,
+    fillCount: json['fillCount'] as int? ?? 0,
+    judgeCount: json['judgeCount'] as int? ?? 0,
+    subjectiveCount: json['subjectiveCount'] as int? ?? 0,
+  );
 
   @override
   String toString() =>
@@ -1266,8 +1374,10 @@ class PracticeRecord {
     createdAt:
         DateTime.tryParse(json['createdAt'] as String? ?? '') ?? DateTime.now(),
     questionStats: ((json['questionStats'] as List?) ?? [])
-        .map((item) => QuestionStat.fromJson(
-            Map<String, dynamic>.from(item as Map)))
+        .map(
+          (item) =>
+              QuestionStat.fromJson(Map<String, dynamic>.from(item as Map)),
+        )
         .toList(),
   );
 }
@@ -1284,8 +1394,10 @@ class QuestionStat {
   /// 'choice' | 'multi_choice' | 'fill' | 'true_false' | 'subjective'
   final String type;
   final bool isCorrect;
+
   /// 选择题的正确选项字母（如 A/B/C/D）；非选择题为空
   final String answerLetter;
+
   /// 知识点（目前用 section/题目前缀近似，未来可由 AI 显式标注）
   final String knowledgePoint;
 
@@ -1351,8 +1463,9 @@ List<WrongItem> mergeWrongItems(
   int limit = 500,
 }) {
   final resolvedKeys = resolvedQuestions.map(wrongQuestionKey).toSet();
-  final incomingKeys =
-      incoming.map((item) => wrongQuestionKey(item.question)).toSet();
+  final incomingKeys = incoming
+      .map((item) => wrongQuestionKey(item.question))
+      .toSet();
   final kept = existing
       .where((item) {
         final key = wrongQuestionKey(item.question);
@@ -1463,11 +1576,41 @@ class RpgBadge {
 
 /// 全部徽章定义（5 枚）
 const _kRpgBadges = <RpgBadge>[
-  RpgBadge(id: 'first_clear', emoji: '🏆', name: '初露锋芒', desc: '首次通关任意关卡', color: Color(0xFF3B82F6)),
-  RpgBadge(id: 'chapter_3star', emoji: '🎖️', name: '完美主义者', desc: '单章全部三星', color: Color(0xFFF59E0B)),
-  RpgBadge(id: 'no_error_3', emoji: '⚡', name: '雷霆连击', desc: '连续 3 关零错题', color: Color(0xFF10B981)),
-  RpgBadge(id: 'boss_first', emoji: '🛡️', name: '屠龙勇士', desc: '首次通关 Boss 关', color: Color(0xFFEF4444)),
-  RpgBadge(id: 'all_clear', emoji: '📚', name: '学海无涯', desc: '全部章节通关', color: Color(0xFFA855F7)),
+  RpgBadge(
+    id: 'first_clear',
+    emoji: '🏆',
+    name: '初露锋芒',
+    desc: '首次通关任意关卡',
+    color: Color(0xFF3B82F6),
+  ),
+  RpgBadge(
+    id: 'chapter_3star',
+    emoji: '🎖️',
+    name: '完美主义者',
+    desc: '单章全部三星',
+    color: Color(0xFFF59E0B),
+  ),
+  RpgBadge(
+    id: 'no_error_3',
+    emoji: '⚡',
+    name: '雷霆连击',
+    desc: '连续 3 关零错题',
+    color: Color(0xFF10B981),
+  ),
+  RpgBadge(
+    id: 'boss_first',
+    emoji: '🛡️',
+    name: '屠龙勇士',
+    desc: '首次通关 Boss 关',
+    color: Color(0xFFEF4444),
+  ),
+  RpgBadge(
+    id: 'all_clear',
+    emoji: '📚',
+    name: '学海无涯',
+    desc: '全部章节通关',
+    color: Color(0xFFA855F7),
+  ),
 ];
 
 /// 学科章节预设
@@ -1482,7 +1625,7 @@ class RpgChapter {
     required this.color,
     required this.icon,
   });
-  final int id;        // 章节序号 1-based
+  final int id; // 章节序号 1-based
   final String subject;
   final String title;
   final String subtitle;
@@ -1496,40 +1639,184 @@ class RpgChapter {
 List<RpgChapter> _rpgChaptersForSubject(String subject) {
   // v2.9.1: 通用学科叙事冒险主题 — 3 章故事旅程
   const base = <RpgChapter>[
-    RpgChapter(id: 1, subject: '通用', title: '第1章 · 启程之森', subtitle: '基础概念 · 入门探索', difficulty: '简单', color: Color(0xFF3B82F6), icon: Icons.forest_rounded),
-    RpgChapter(id: 2, subject: '通用', title: '第2章 · 智慧之峰', subtitle: '进阶应用 · 攀登挑战', difficulty: '中等', color: Color(0xFF10B981), icon: Icons.terrain_rounded),
-    RpgChapter(id: 3, subject: '通用', title: '第3章 · 真理之殿', subtitle: '综合实战 · 终极考验', difficulty: '困难', color: Color(0xFFF59E0B), icon: Icons.emoji_events_rounded),
+    RpgChapter(
+      id: 1,
+      subject: '通用',
+      title: '第1章 · 启程之森',
+      subtitle: '基础概念 · 入门探索',
+      difficulty: '简单',
+      color: Color(0xFF3B82F6),
+      icon: Icons.forest_rounded,
+    ),
+    RpgChapter(
+      id: 2,
+      subject: '通用',
+      title: '第2章 · 智慧之峰',
+      subtitle: '进阶应用 · 攀登挑战',
+      difficulty: '中等',
+      color: Color(0xFF10B981),
+      icon: Icons.terrain_rounded,
+    ),
+    RpgChapter(
+      id: 3,
+      subject: '通用',
+      title: '第3章 · 真理之殿',
+      subtitle: '综合实战 · 终极考验',
+      difficulty: '困难',
+      color: Color(0xFFF59E0B),
+      icon: Icons.emoji_events_rounded,
+    ),
   ];
   switch (subject) {
     case '数学':
       return const [
-        RpgChapter(id: 1, subject: '数学', title: '第1章 · 代数基础', subtitle: '方程·不等式·函数', difficulty: '简单', color: Color(0xFF3B82F6), icon: Icons.calculate_rounded),
-        RpgChapter(id: 2, subject: '数学', title: '第2章 · 几何进阶', subtitle: '三角形·圆·坐标', difficulty: '中等', color: Color(0xFF10B981), icon: Icons.category_rounded),
-        RpgChapter(id: 3, subject: '数学', title: '第3章 · 统计综合', subtitle: '数据·概率·建模', difficulty: '困难', color: Color(0xFFF59E0B), icon: Icons.bar_chart_rounded),
+        RpgChapter(
+          id: 1,
+          subject: '数学',
+          title: '第1章 · 代数基础',
+          subtitle: '方程·不等式·函数',
+          difficulty: '简单',
+          color: Color(0xFF3B82F6),
+          icon: Icons.calculate_rounded,
+        ),
+        RpgChapter(
+          id: 2,
+          subject: '数学',
+          title: '第2章 · 几何进阶',
+          subtitle: '三角形·圆·坐标',
+          difficulty: '中等',
+          color: Color(0xFF10B981),
+          icon: Icons.category_rounded,
+        ),
+        RpgChapter(
+          id: 3,
+          subject: '数学',
+          title: '第3章 · 统计综合',
+          subtitle: '数据·概率·建模',
+          difficulty: '困难',
+          color: Color(0xFFF59E0B),
+          icon: Icons.bar_chart_rounded,
+        ),
       ];
     case '语文':
       return const [
-        RpgChapter(id: 1, subject: '语文', title: '第1章 · 字词基础', subtitle: '字音·字形·词义', difficulty: '简单', color: Color(0xFF3B82F6), icon: Icons.menu_book_rounded),
-        RpgChapter(id: 2, subject: '语文', title: '第2章 · 句段进阶', subtitle: '病句·修辞·连贯', difficulty: '中等', color: Color(0xFF10B981), icon: Icons.edit_note_rounded),
-        RpgChapter(id: 3, subject: '语文', title: '第3章 · 阅读写作', subtitle: '古诗文·现代文·作文', difficulty: '困难', color: Color(0xFFF59E0B), icon: Icons.auto_stories_rounded),
+        RpgChapter(
+          id: 1,
+          subject: '语文',
+          title: '第1章 · 字词基础',
+          subtitle: '字音·字形·词义',
+          difficulty: '简单',
+          color: Color(0xFF3B82F6),
+          icon: Icons.menu_book_rounded,
+        ),
+        RpgChapter(
+          id: 2,
+          subject: '语文',
+          title: '第2章 · 句段进阶',
+          subtitle: '病句·修辞·连贯',
+          difficulty: '中等',
+          color: Color(0xFF10B981),
+          icon: Icons.edit_note_rounded,
+        ),
+        RpgChapter(
+          id: 3,
+          subject: '语文',
+          title: '第3章 · 阅读写作',
+          subtitle: '古诗文·现代文·作文',
+          difficulty: '困难',
+          color: Color(0xFFF59E0B),
+          icon: Icons.auto_stories_rounded,
+        ),
       ];
     case '英语':
       return const [
-        RpgChapter(id: 1, subject: '英语', title: '第1章 · 词汇语法', subtitle: '词性·时态·句型', difficulty: '简单', color: Color(0xFF3B82F6), icon: Icons.translate_rounded),
-        RpgChapter(id: 2, subject: '英语', title: '第2章 · 阅读理解', subtitle: '主旨·细节·推断', difficulty: '中等', color: Color(0xFF10B981), icon: Icons.chrome_reader_mode_rounded),
-        RpgChapter(id: 3, subject: '英语', title: '第3章 · 写作综合', subtitle: '翻译·作文·完形', difficulty: '困难', color: Color(0xFFF59E0B), icon: Icons.edit_rounded),
+        RpgChapter(
+          id: 1,
+          subject: '英语',
+          title: '第1章 · 词汇语法',
+          subtitle: '词性·时态·句型',
+          difficulty: '简单',
+          color: Color(0xFF3B82F6),
+          icon: Icons.translate_rounded,
+        ),
+        RpgChapter(
+          id: 2,
+          subject: '英语',
+          title: '第2章 · 阅读理解',
+          subtitle: '主旨·细节·推断',
+          difficulty: '中等',
+          color: Color(0xFF10B981),
+          icon: Icons.chrome_reader_mode_rounded,
+        ),
+        RpgChapter(
+          id: 3,
+          subject: '英语',
+          title: '第3章 · 写作综合',
+          subtitle: '翻译·作文·完形',
+          difficulty: '困难',
+          color: Color(0xFFF59E0B),
+          icon: Icons.edit_rounded,
+        ),
       ];
     case '物理':
       return const [
-        RpgChapter(id: 1, subject: '物理', title: '第1章 · 力学基础', subtitle: '运动·力·牛顿定律', difficulty: '简单', color: Color(0xFF3B82F6), icon: Icons.speed_rounded),
-        RpgChapter(id: 2, subject: '物理', title: '第2章 · 电学进阶', subtitle: '电路·电磁·电磁感应', difficulty: '中等', color: Color(0xFF10B981), icon: Icons.bolt_rounded),
-        RpgChapter(id: 3, subject: '物理', title: '第3章 · 综合应用', subtitle: '热学·光学·近代物理', difficulty: '困难', color: Color(0xFFF59E0B), icon: Icons.science_rounded),
+        RpgChapter(
+          id: 1,
+          subject: '物理',
+          title: '第1章 · 力学基础',
+          subtitle: '运动·力·牛顿定律',
+          difficulty: '简单',
+          color: Color(0xFF3B82F6),
+          icon: Icons.speed_rounded,
+        ),
+        RpgChapter(
+          id: 2,
+          subject: '物理',
+          title: '第2章 · 电学进阶',
+          subtitle: '电路·电磁·电磁感应',
+          difficulty: '中等',
+          color: Color(0xFF10B981),
+          icon: Icons.bolt_rounded,
+        ),
+        RpgChapter(
+          id: 3,
+          subject: '物理',
+          title: '第3章 · 综合应用',
+          subtitle: '热学·光学·近代物理',
+          difficulty: '困难',
+          color: Color(0xFFF59E0B),
+          icon: Icons.science_rounded,
+        ),
       ];
     case '化学':
       return const [
-        RpgChapter(id: 1, subject: '化学', title: '第1章 · 物质结构', subtitle: '原子·分子·元素周期', difficulty: '简单', color: Color(0xFF3B82F6), icon: Icons.scatter_plot_rounded),
-        RpgChapter(id: 2, subject: '化学', title: '第2章 · 化学反应', subtitle: '方程式·平衡·速率', difficulty: '中等', color: Color(0xFF10B981), icon: Icons.sync_rounded),
-        RpgChapter(id: 3, subject: '化学', title: '第3章 · 有机综合', subtitle: '烃·衍生物·实验', difficulty: '困难', color: Color(0xFFF59E0B), icon: Icons.water_drop_rounded),
+        RpgChapter(
+          id: 1,
+          subject: '化学',
+          title: '第1章 · 物质结构',
+          subtitle: '原子·分子·元素周期',
+          difficulty: '简单',
+          color: Color(0xFF3B82F6),
+          icon: Icons.scatter_plot_rounded,
+        ),
+        RpgChapter(
+          id: 2,
+          subject: '化学',
+          title: '第2章 · 化学反应',
+          subtitle: '方程式·平衡·速率',
+          difficulty: '中等',
+          color: Color(0xFF10B981),
+          icon: Icons.sync_rounded,
+        ),
+        RpgChapter(
+          id: 3,
+          subject: '化学',
+          title: '第3章 · 有机综合',
+          subtitle: '烃·衍生物·实验',
+          difficulty: '困难',
+          color: Color(0xFFF59E0B),
+          icon: Icons.water_drop_rounded,
+        ),
       ];
     default:
       return base;
@@ -1544,7 +1831,7 @@ class RpgProgress {
     this.stars = const {},
     this.unlockedBadges = const {},
     this.totalRpgXp = 0,
-    this.noErrorStreak = 0,  // 连续零错题关卡数
+    this.noErrorStreak = 0, // 连续零错题关卡数
   });
 
   final int currentChapter;
@@ -1624,19 +1911,31 @@ class RpgLevelResult {
     required this.newBadges,
     required this.chapterCleared,
     required this.allCleared,
+    this.total = 0,
+    this.correct = 0,
+    this.maxCombo = 0,
+    this.remainingShield = 0,
+    this.weakKnowledgePoints = const [],
   });
   final int chapter;
   final int level;
-  final int stars;          // 0-3
-  final int earnedXp;       // 本次获得 XP（含三星加成）
+  final int stars; // 0-3
+  final int earnedXp; // 本次获得 XP（含三星加成）
   final List<RpgBadge> newBadges; // 新解锁徽章
-  final bool chapterCleared;  // 本章通关
-  final bool allCleared;      // 全部章节通关
+  final bool chapterCleared; // 本章通关
+  final bool allCleared; // 全部章节通关
+  final int total;
+  final int correct;
+  final int maxCombo;
+  final int remainingShield;
+  final List<String> weakKnowledgePoints;
+
+  int get accuracy => total == 0 ? 0 : (correct / total * 100).round();
 }
 
 /// 通关结算页直接返回给 Navigator 的用户动作。
 /// 使用返回值代替跨页面回调，避免弹窗关闭和下一页启动发生路由竞态。
-enum RpgCompletionAction { backToMap, next }
+enum RpgCompletionAction { backToMap, next, reviewWrongs }
 
 class RpgCompletionPayload {
   const RpgCompletionPayload({
@@ -1656,7 +1955,7 @@ List<String> rpgMiniGameTypesFor({
   required String subject,
   required int chapter,
   required int level,
-  int count = 5,
+  int? count,
 }) {
   final baseTypes = subject == '英语'
       ? <String>[
@@ -1670,29 +1969,30 @@ List<String> rpgMiniGameTypesFor({
           'linkup',
         ]
       : subject == '语文'
-          ? <String>[
-              'matching',
-              'fillblank',
-              'truefalse',
-              'flashcard',
-              'spell',
-              'reorder',
-              'tapfast',
-              'linkup',
-            ]
-          : <String>[
-              'matching',
-              'reorder',
-              'tapfast',
-              'linkup',
-              'truefalse',
-              'fillblank',
-              'flashcard',
-              'spell',
-            ];
+      ? <String>[
+          'matching',
+          'fillblank',
+          'truefalse',
+          'flashcard',
+          'spell',
+          'reorder',
+          'tapfast',
+          'linkup',
+        ]
+      : <String>[
+          'matching',
+          'reorder',
+          'tapfast',
+          'linkup',
+          'truefalse',
+          'fillblank',
+          'flashcard',
+          'spell',
+        ];
   final offset = (chapter * 3 + level) % baseTypes.length;
+  final targetCount = count ?? ChallengeRules.forLevel(level).questionCount;
   return List<String>.generate(
-    count.clamp(1, baseTypes.length),
+    targetCount.clamp(1, baseTypes.length),
     (index) => baseTypes[(index + offset) % baseTypes.length],
   );
 }
@@ -1787,17 +2087,17 @@ class _AppShellState extends State<AppShell> {
     // 每一类数据单独 try-catch：即使某类本地数据损坏，也只丢那一类，App 仍能启动
     List<StudyMaterial> materials;
     try {
-      materials = _decodeList(prefs.getString(_materialsKey))
-          .map((item) => StudyMaterial.fromJson(item))
-          .toList();
+      materials = _decodeList(
+        prefs.getString(_materialsKey),
+      ).map((item) => StudyMaterial.fromJson(item)).toList();
     } catch (_) {
       materials = [];
     }
     List<PracticeRecord> records;
     try {
-      records = _decodeList(prefs.getString(_recordsKey))
-          .map((item) => PracticeRecord.fromJson(item))
-          .toList();
+      records = _decodeList(
+        prefs.getString(_recordsKey),
+      ).map((item) => PracticeRecord.fromJson(item)).toList();
     } catch (_) {
       records = [];
     }
@@ -1817,9 +2117,9 @@ class _AppShellState extends State<AppShell> {
     }
     List<WrongItem> wrongs;
     try {
-      wrongs = _decodeList(prefs.getString(_wrongsKey))
-          .map((item) => WrongItem.fromJson(item))
-          .toList();
+      wrongs = _decodeList(
+        prefs.getString(_wrongsKey),
+      ).map((item) => WrongItem.fromJson(item)).toList();
     } catch (_) {
       wrongs = [];
     }
@@ -1838,9 +2138,9 @@ class _AppShellState extends State<AppShell> {
     }
     List<Paper> papers;
     try {
-      papers = _decodeList(prefs.getString(_papersKey))
-          .map((item) => Paper.fromJson(item))
-          .toList();
+      papers = _decodeList(
+        prefs.getString(_papersKey),
+      ).map((item) => Paper.fromJson(item)).toList();
     } catch (_) {
       papers = [];
     }
@@ -1849,8 +2149,7 @@ class _AppShellState extends State<AppShell> {
       final configJson = prefs.getString(_configKey);
       config = configJson == null
           ? const ApiConfig()
-          : ApiConfig.fromJson(
-              jsonDecode(configJson) as Map<String, dynamic>);
+          : ApiConfig.fromJson(jsonDecode(configJson) as Map<String, dynamic>);
     } catch (_) {
       config = const ApiConfig();
     }
@@ -1958,10 +2257,7 @@ class _AppShellState extends State<AppShell> {
   /// v2.7.3: 保存每日练习趋势日志（独立于 records，删除历史记录不影响趋势）
   Future<void> _savePracticeLog() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(
-      _practiceLogKey,
-      jsonEncode(_practiceLog),
-    );
+    await prefs.setString(_practiceLogKey, jsonEncode(_practiceLog));
   }
 
   Future<void> _saveWrongs() async {
@@ -2045,7 +2341,9 @@ class _AppShellState extends State<AppShell> {
 
   void _selectTab(int index) {
     if (index == _tab) return;
-    HapticFeedback.lightImpact();
+    if (AppSettingsScope.of(context).hapticsEnabled) {
+      HapticFeedback.lightImpact();
+    }
     setState(() => _tab = index);
   }
 
@@ -2165,14 +2463,16 @@ class _AppShellState extends State<AppShell> {
           final data = rc['data'] is Map
               ? Map<String, dynamic>.from(rc['data'] as Map)
               : <String, dynamic>{};
-          listeningItems.add(_ListeningItem(
-            sectionIdx: sectionIdx,
-            sectionName: sec,
-            questionIdx: i + 1,
-            indexInSection: indexInSection,
-            audioText: (data['audio_text'] ?? '').toString().trim(),
-            voice: (data['voice'] ?? 'en-US').toString(),
-          ));
+          listeningItems.add(
+            _ListeningItem(
+              sectionIdx: sectionIdx,
+              sectionName: sec,
+              questionIdx: i + 1,
+              indexInSection: indexInSection,
+              audioText: (data['audio_text'] ?? '').toString().trim(),
+              voice: (data['voice'] ?? 'en-US').toString(),
+            ),
+          );
         }
       }
     }
@@ -2232,7 +2532,8 @@ class _AppShellState extends State<AppShell> {
           );
           segments.add(File(prefixPath));
           // 英文原文
-          final contentPath = '${tmpDir.path}/seg_${idx}_r${repeat}_content.mp3';
+          final contentPath =
+              '${tmpDir.path}/seg_${idx}_r${repeat}_content.mp3';
           await enTts.synthesizeToFile(
             item.audioText,
             audioFilePath: contentPath,
@@ -2286,9 +2587,11 @@ class _AppShellState extends State<AppShell> {
       // v2.7.2: 详细错误信息，避免英文报错让用户困惑
       final errStr = error.toString();
       String userMsg;
-      if (errStr.contains('SocketException') || errStr.contains('HandshakeException')) {
+      if (errStr.contains('SocketException') ||
+          errStr.contains('HandshakeException')) {
         userMsg = '网络连接失败，请检查网络后重试';
-      } else if (errStr.contains('FileSystemException') || errStr.contains('Permission')) {
+      } else if (errStr.contains('FileSystemException') ||
+          errStr.contains('Permission')) {
         userMsg = '文件保存失败，请检查存储权限';
       } else if (errStr.contains('TimeoutException')) {
         userMsg = 'TTS 合成超时，请稍后重试';
@@ -2345,11 +2648,14 @@ class _AppShellState extends State<AppShell> {
                 ..writeln('---')
                 ..writeln(content)
                 ..writeln('---')
-                ..writeln('App 版本：v${const String.fromEnvironment('appVersion', defaultValue: '2.0.x')}');
+                ..writeln(
+                  'App 版本：v${const String.fromEnvironment('appVersion', defaultValue: '2.0.x')}',
+                );
               final uri = Uri(
                 scheme: 'mailto',
                 path: kFeedbackEmail,
-                query: 'subject=${Uri.encodeComponent(subject)}&body=${Uri.encodeComponent(body.toString())}',
+                query:
+                    'subject=${Uri.encodeComponent(subject)}&body=${Uri.encodeComponent(body.toString())}',
               );
               final ok = await launchUrl(uri);
               if (!ok) {
@@ -2372,7 +2678,9 @@ class _AppShellState extends State<AppShell> {
             return SafeArea(
               child: Padding(
                 padding: EdgeInsets.fromLTRB(
-                  18, 14, 18,
+                  18,
+                  14,
+                  18,
                   18 + MediaQuery.of(context).viewInsets.bottom,
                 ),
                 child: SingleChildScrollView(
@@ -2425,9 +2733,7 @@ class _AppShellState extends State<AppShell> {
                             ),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12),
-                              side: BorderSide(
-                                color: selected ? kBlue : kLine,
-                              ),
+                              side: BorderSide(color: selected ? kBlue : kLine),
                             ),
                           );
                         }).toList(),
@@ -2584,8 +2890,7 @@ class _AppShellState extends State<AppShell> {
       final msg = error.toString().replaceFirst('Exception: ', '');
       if (msg.contains('PDF') || name.toLowerCase().endsWith('.pdf')) {
         _showSnack('PDF 解析失败：请确认不是扫描件/图片型 PDF/加密文档');
-      } else if (msg.contains('DOCX') ||
-          name.toLowerCase().endsWith('.docx')) {
+      } else if (msg.contains('DOCX') || name.toLowerCase().endsWith('.docx')) {
         _showSnack('DOCX 解析失败：请用 Word 另存为 .docx 后再试');
       } else {
         _showSnack('文件解析失败：$msg');
@@ -2681,6 +2986,12 @@ class _AppShellState extends State<AppShell> {
     }
     setState(() => _generating = true);
     try {
+      final language = AppSettingsScope.of(context).generationLanguage;
+      final outputLanguage = switch (language) {
+        GenerationLanguage.followMaterial => '跟随资料主要语言',
+        GenerationLanguage.zh => '简体中文',
+        GenerationLanguage.en => 'English',
+      };
       final questions = await AiService.generateQuestions(
         config: _config,
         material: material.content,
@@ -2689,6 +3000,7 @@ class _AppShellState extends State<AppShell> {
         audience: _audience,
         enableRichContent: _enableRichContent,
         enableListening: _enableListening,
+        outputLanguage: outputLanguage,
       );
       if (questions.isEmpty) {
         _showSnack('AI 没有返回有效题目，请换个模型或缩短资料');
@@ -2819,27 +3131,45 @@ class _AppShellState extends State<AppShell> {
         builder: (ctx) => SimpleDialog(
           title: const Text('选择闯关教材'),
           children: _materials
-              .map((m) => SimpleDialogOption(
-                    onPressed: () => Navigator.pop(ctx, m),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 4),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.menu_book_rounded, size: 20, color: Color(0xFF6366F1)),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(m.name, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
-                                Text('${m.content.length} 字', style: const TextStyle(fontSize: 11, color: Colors.grey)),
-                              ],
-                            ),
+              .map(
+                (m) => SimpleDialogOption(
+                  onPressed: () => Navigator.pop(ctx, m),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    child: Row(
+                      children: [
+                        const Icon(
+                          Icons.menu_book_rounded,
+                          size: 20,
+                          color: Color(0xFF6366F1),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                m.name,
+                                style: const TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              Text(
+                                '${m.content.length} 字',
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  color: Colors.grey,
+                                ),
+                              ),
+                            ],
                           ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
-                  ))
+                  ),
+                ),
+              )
               .toList(),
         ),
       );
@@ -2877,7 +3207,11 @@ class _AppShellState extends State<AppShell> {
   }
 
   // v2.8.0: 开始 RPG 关卡挑战
-  Future<void> _startRpgChallenge(int chapter, int level, {bool popMap = true}) async {
+  Future<void> _startRpgChallenge(
+    int chapter,
+    int level, {
+    bool popMap = true,
+  }) async {
     // 关闭地图页
     if (popMap) {
       if (!mounted) return;
@@ -2890,7 +3224,8 @@ class _AppShellState extends State<AppShell> {
       _showSnack('请先配置大模型 API');
       return;
     }
-    final material = _rpgMaterial ??
+    final material =
+        _rpgMaterial ??
         _selectedMaterial ??
         (_materials.isNotEmpty ? _materials.first : null);
     if (material == null) {
@@ -2946,16 +3281,17 @@ class _AppShellState extends State<AppShell> {
           level: level,
           isBoss: isBoss,
           startTime: DateTime.now(),
-          lives: isBoss ? 5 : 3,
+          lives: ChallengeRules.forLevel(level).shield,
         );
       });
     } catch (error) {
       _showSnack(error.toString().replaceFirst('Exception: ', ''));
     } finally {
-      if (mounted) setState(() {
-        _generating = false;
-        _rpgGenerating = false;
-      });
+      if (mounted)
+        setState(() {
+          _generating = false;
+          _rpgGenerating = false;
+        });
     }
   }
 
@@ -2984,23 +3320,27 @@ class _AppShellState extends State<AppShell> {
       rpgLevel: level,
       rpgStartTime: startTime,
     );
-    final rpgResult = _settleRpg(fakeResult);
+    final rpgResult = _settleRpg(fakeResult, miniGameResult: result);
 
     // 记录到练习历史
     final now = DateTime.now();
-    final dateKey = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+    final dateKey =
+        '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
     if (!mounted) {
       _completingMiniGameLevel = false;
       return;
     }
     setState(() {
-      _records.insert(0, PracticeRecord(
-        materialName: completedSession.materialName,
-        total: result.total,
-        correct: result.correct,
-        createdAt: now,
-        xpEarned: rpgResult.earnedXp,
-      ));
+      _records.insert(
+        0,
+        PracticeRecord(
+          materialName: completedSession.materialName,
+          total: result.total,
+          correct: result.correct,
+          createdAt: now,
+          xpEarned: rpgResult.earnedXp,
+        ),
+      );
       if (_records.length > 500) _records = _records.sublist(0, 500);
       _wrongs.insertAll(0, result.wrongs);
       if (_wrongs.length > 500) _wrongs = _wrongs.sublist(0, 500);
@@ -3014,7 +3354,9 @@ class _AppShellState extends State<AppShell> {
       await _savePracticeLog();
       await _saveRpgProgress();
     } catch (error) {
-      _showSnack('关卡记录保存失败：${error.toString().replaceFirst('Exception: ', '')}');
+      _showSnack(
+        '关卡记录保存失败：${error.toString().replaceFirst('Exception: ', '')}',
+      );
     }
 
     HapticFeedback.heavyImpact();
@@ -3044,9 +3386,7 @@ class _AppShellState extends State<AppShell> {
     });
   }
 
-  Future<void> _consumeRpgCompletionAction(
-    RpgCompletionAction action,
-  ) async {
+  Future<void> _consumeRpgCompletionAction(RpgCompletionAction action) async {
     final payload = _pendingRpgCompletion;
     if (!mounted || payload == null || _handlingRpgCompletion) return;
     setState(() {
@@ -3086,6 +3426,10 @@ class _AppShellState extends State<AppShell> {
       await _returnToRpgMap();
       return;
     }
+    if (action == RpgCompletionAction.reviewWrongs) {
+      setState(() => _tab = 3);
+      return;
+    }
     if (result.allCleared) {
       _showSnack('恭喜通关全部章节！');
       await _returnToRpgMap();
@@ -3097,9 +3441,7 @@ class _AppShellState extends State<AppShell> {
     final nextChapter = retry
         ? chapter
         : (result.chapterCleared ? chapter + 1 : chapter);
-    final nextLevel = retry
-        ? level
-        : (result.chapterCleared ? 1 : level + 1);
+    final nextLevel = retry ? level : (result.chapterCleared ? 1 : level + 1);
     if (nextChapter > 3) {
       _showSnack('恭喜通关全部章节！');
       await _returnToRpgMap();
@@ -3109,7 +3451,10 @@ class _AppShellState extends State<AppShell> {
   }
 
   // v2.8.0: RPG 关卡结算 —— 计算三星、XP、徽章
-  RpgLevelResult _settleRpg(PracticeResult result) {
+  RpgLevelResult _settleRpg(
+    PracticeResult result, {
+    MiniGameLevelResult? miniGameResult,
+  }) {
     final chapter = result.rpgChapter;
     final level = result.rpgLevel;
     final isBoss = level == 5;
@@ -3120,10 +3465,13 @@ class _AppShellState extends State<AppShell> {
         : const Duration(minutes: 5);
     final fast = duration.inSeconds <= 120;
 
-    // 三星规则：完成=1星，2分钟内=2星，全对且2分钟内=3星
-    int stars = 1;
-    if (fast) stars = 2;
-    if (allCorrect && fast) stars = 3;
+    final survived =
+        miniGameResult == null || miniGameResult.remainingShield > 0;
+    // 三星规则：护盾未耗尽=1星，2分钟内=2星，全对且2分钟内=3星。
+    // 护盾归零时保留学习记录与错题，但不解锁下一关。
+    int stars = survived ? 1 : 0;
+    if (survived && fast) stars = 2;
+    if (survived && allCorrect && fast) stars = 3;
 
     // XP 计算：基础每题5分 + 3星加成 + Boss加成
     final baseXp = result.correct * 5;
@@ -3139,12 +3487,15 @@ class _AppShellState extends State<AppShell> {
     newStarsMap[levelKey] = newStars;
 
     // 连续零错题
-    final newStreak = allCorrect ? _rpgProgress.noErrorStreak + 1 : 0;
+    final newStreak = survived && allCorrect
+        ? _rpgProgress.noErrorStreak + 1
+        : 0;
 
     // 解锁下一关
     int newChapter = _rpgProgress.currentChapter;
     int newLevel = _rpgProgress.currentLevel;
-    if (chapter == _rpgProgress.currentChapter &&
+    if (stars > 0 &&
+        chapter == _rpgProgress.currentChapter &&
         level == _rpgProgress.currentLevel) {
       if (level == 5) {
         if (chapter < 3) {
@@ -3159,27 +3510,28 @@ class _AppShellState extends State<AppShell> {
     // 徽章检测
     final currentBadges = Set<String>.from(_rpgProgress.unlockedBadges);
     final newBadges = <RpgBadge>[];
-    RpgBadge findBadge(String id) =>
-        _kRpgBadges.firstWhere((b) => b.id == id);
+    RpgBadge findBadge(String id) => _kRpgBadges.firstWhere((b) => b.id == id);
 
     // 1. 初露锋芒：首次通关
-    if (_rpgProgress.stars.isEmpty && !currentBadges.contains('first_clear')) {
+    if (stars > 0 &&
+        _rpgProgress.stars.isEmpty &&
+        !currentBadges.contains('first_clear')) {
       newBadges.add(findBadge('first_clear'));
       currentBadges.add('first_clear');
     }
     // 2. 雷霆连击：连续3关零错
-    if (newStreak >= 3 && !currentBadges.contains('no_error_3')) {
+    if (stars > 0 && newStreak >= 3 && !currentBadges.contains('no_error_3')) {
       newBadges.add(findBadge('no_error_3'));
       currentBadges.add('no_error_3');
     }
     // 3. 屠龙勇士：首次通关 Boss
-    if (isBoss && !currentBadges.contains('boss_first')) {
+    if (stars > 0 && isBoss && !currentBadges.contains('boss_first')) {
       newBadges.add(findBadge('boss_first'));
       currentBadges.add('boss_first');
     }
 
     // 检查章节通关
-    bool chapterCleared = level == 5;
+    final chapterCleared = stars > 0 && level == 5;
     bool allCleared = false;
     // 4. 完美主义者：单章全三星
     if (chapterCleared) {
@@ -3232,6 +3584,11 @@ class _AppShellState extends State<AppShell> {
       newBadges: newBadges,
       chapterCleared: chapterCleared,
       allCleared: allCleared,
+      total: result.total,
+      correct: result.correct,
+      maxCombo: miniGameResult?.maxCombo ?? 0,
+      remainingShield: miniGameResult?.remainingShield ?? 0,
+      weakKnowledgePoints: miniGameResult?.weakKnowledgePoints ?? const [],
     );
   }
 
@@ -3255,9 +3612,11 @@ class _AppShellState extends State<AppShell> {
   /// 删除单条错题（从错题本调用）
   Future<void> _deleteWrongItem(WrongItem item) async {
     setState(() {
-      _wrongs.removeWhere((w) =>
-          w.createdAt == item.createdAt &&
-          w.question.question == item.question.question);
+      _wrongs.removeWhere(
+        (w) =>
+            w.createdAt == item.createdAt &&
+            w.question.question == item.question.question,
+      );
     });
     await _saveWrongs();
     if (mounted) {
@@ -3349,7 +3708,10 @@ class _AppShellState extends State<AppShell> {
                 const SizedBox(height: 10),
                 Container(
                   width: double.infinity,
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 10,
+                  ),
                   decoration: BoxDecoration(
                     color: const Color(0xFFFFF8E1),
                     borderRadius: BorderRadius.circular(12),
@@ -3358,12 +3720,20 @@ class _AppShellState extends State<AppShell> {
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: const [
-                      Icon(Icons.info_outline, size: 16, color: Color(0xFFF57C00)),
+                      Icon(
+                        Icons.info_outline,
+                        size: 16,
+                        color: Color(0xFFF57C00),
+                      ),
                       SizedBox(width: 8),
                       Expanded(
                         child: Text(
                           '支持格式：PDF、Word（.docx / .doc）；其他格式可使用「粘贴文本」导入。',
-                          style: TextStyle(fontSize: 12, color: kInk, height: 1.4),
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: kInk,
+                            height: 1.4,
+                          ),
                         ),
                       ),
                     ],
@@ -3391,30 +3761,32 @@ class _AppShellState extends State<AppShell> {
                     ),
                   ),
                   const SizedBox(height: 8),
-                  ..._materials.map((m) => Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            '${m.name} · ${m.content.length} 字',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              color: kInk,
-                              fontWeight: FontWeight.w700,
+                  ..._materials.map(
+                    (m) => Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              '${m.name} · ${m.content.length} 字',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: kInk,
+                                fontWeight: FontWeight.w700,
+                              ),
                             ),
                           ),
-                        ),
-                        TextButton.icon(
-                          onPressed: () => _deleteMaterial(m),
-                          icon: const Icon(Icons.delete_outline, size: 18),
-                          label: const Text('删除'),
-                          style: TextButton.styleFrom(foregroundColor: kRed),
-                        ),
-                      ],
+                          TextButton.icon(
+                            onPressed: () => _deleteMaterial(m),
+                            icon: const Icon(Icons.delete_outline, size: 18),
+                            label: const Text('删除'),
+                            style: TextButton.styleFrom(foregroundColor: kRed),
+                          ),
+                        ],
+                      ),
                     ),
-                  )),
+                  ),
                 ],
                 const SizedBox(height: 6),
               ],
@@ -3524,14 +3896,19 @@ class _AppShellState extends State<AppShell> {
       }
       // 知识点近似：取题干前 12 个字符作为分组依据（无显式知识点标注时的兜底）
       final kp = q.question.length > 12
-          ? q.question.substring(0, 12).replaceAll(RegExp(r'[\s\n]+'), ' ').trim()
+          ? q.question
+                .substring(0, 12)
+                .replaceAll(RegExp(r'[\s\n]+'), ' ')
+                .trim()
           : q.question.trim();
-      stats.add(QuestionStat(
-        type: q.type,
-        isCorrect: isCorrect,
-        answerLetter: letter,
-        knowledgePoint: kp.isEmpty ? '综合' : kp,
-      ));
+      stats.add(
+        QuestionStat(
+          type: q.type,
+          isCorrect: isCorrect,
+          answerLetter: letter,
+          knowledgePoint: kp.isEmpty ? '综合' : kp,
+        ),
+      );
     }
     setState(() {
       _records.insert(
@@ -3549,8 +3926,9 @@ class _AppShellState extends State<AppShell> {
       _wrongs = mergeWrongItems(
         _wrongs,
         result.wrongs,
-        resolvedQuestions:
-            result.isWrongCardChallenge ? result.questions : const [],
+        resolvedQuestions: result.isWrongCardChallenge
+            ? result.questions
+            : const [],
       );
       // v2.7.3: 追加到每日练习趋势日志（独立持久化，删除历史记录不影响趋势）
       final todayKey = _dateKey(DateTime.now());
@@ -3590,14 +3968,19 @@ class _AppShellState extends State<AppShell> {
       final isCorrect =
           i < result.correctFlags.length && result.correctFlags[i];
       final kp = q.question.length > 12
-          ? q.question.substring(0, 12).replaceAll(RegExp(r'[\s\n]+'), ' ').trim()
+          ? q.question
+                .substring(0, 12)
+                .replaceAll(RegExp(r'[\s\n]+'), ' ')
+                .trim()
           : q.question.trim();
-      stats.add(QuestionStat(
-        type: q.type,
-        isCorrect: isCorrect,
-        answerLetter: '',
-        knowledgePoint: kp.isEmpty ? 'RPG' : kp,
-      ));
+      stats.add(
+        QuestionStat(
+          type: q.type,
+          isCorrect: isCorrect,
+          answerLetter: '',
+          knowledgePoint: kp.isEmpty ? 'RPG' : kp,
+        ),
+      );
     }
     setState(() {
       _records.insert(
@@ -3639,10 +4022,8 @@ class _AppShellState extends State<AppShell> {
       context: context,
       barrierColor: Colors.transparent,
       barrierDismissible: false,
-      builder: (_) => LevelUpOverlay(
-        newLevel: newLevel,
-        title: _levelTitle(newLevel),
-      ),
+      builder: (_) =>
+          LevelUpOverlay(newLevel: newLevel, title: _levelTitle(newLevel)),
     );
   }
 
@@ -3691,6 +4072,8 @@ class _AppShellState extends State<AppShell> {
 
   @override
   Widget build(BuildContext context) {
+    final appSettings = AppSettingsScope.of(context);
+    SoundService.instance.setMuted(!appSettings.soundEnabled);
     if (_loading) {
       return const Scaffold(body: _SplashLoadingView());
     }
@@ -3722,6 +4105,7 @@ class _AppShellState extends State<AppShell> {
         records: _records,
         wrongs: _wrongs,
         xpProfile: _xpProfile,
+        rpgProgress: _rpgProgress,
         configReady: _config.ready,
         onPickFile: _pickFile,
         onPaste: _openPasteDialog,
@@ -3738,6 +4122,7 @@ class _AppShellState extends State<AppShell> {
         onCheckIn: _dailyCheckIn,
         onOpenConfig: _openConfigPage,
         onRpgChallenge: _openRpgMap,
+        onScan: () => _showSnack(context.l10n.scanComingSoon),
       ),
       GeneratePage(
         materials: _materials,
@@ -3831,7 +4216,10 @@ class _AppShellState extends State<AppShell> {
           await _savePapers();
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('已删除 ${toDelete.length} 份试卷'), duration: const Duration(seconds: 1)),
+              SnackBar(
+                content: Text('已删除 ${toDelete.length} 份试卷'),
+                duration: const Duration(seconds: 1),
+              ),
             );
           }
         },
@@ -3847,15 +4235,20 @@ class _AppShellState extends State<AppShell> {
           if (toDelete.isEmpty) return;
           setState(() {
             for (final w in toDelete) {
-              _wrongs.removeWhere((x) =>
-                  x.createdAt == w.createdAt &&
-                  x.question.question == w.question.question);
+              _wrongs.removeWhere(
+                (x) =>
+                    x.createdAt == w.createdAt &&
+                    x.question.question == w.question.question,
+              );
             }
           });
           await _saveWrongs();
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('已删除 ${toDelete.length} 道错题'), duration: const Duration(seconds: 1)),
+              SnackBar(
+                content: Text('已删除 ${toDelete.length} 道错题'),
+                duration: const Duration(seconds: 1),
+              ),
             );
           }
         },
@@ -3875,7 +4268,10 @@ class _AppShellState extends State<AppShell> {
           await _saveRecords();
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('已清空全部历史记录'), duration: Duration(seconds: 1)),
+              const SnackBar(
+                content: Text('已清空全部历史记录'),
+                duration: Duration(seconds: 1),
+              ),
             );
           }
         },
@@ -3885,33 +4281,46 @@ class _AppShellState extends State<AppShell> {
           await _saveWrongs();
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('已清空全部错题'), duration: Duration(seconds: 1)),
+              const SnackBar(
+                content: Text('已清空全部错题'),
+                duration: Duration(seconds: 1),
+              ),
             );
           }
         },
         onDeleteRecord: (record) async {
           setState(() {
-            _records.removeWhere((r) =>
-                r.createdAt == record.createdAt &&
-                r.materialName == record.materialName);
+            _records.removeWhere(
+              (r) =>
+                  r.createdAt == record.createdAt &&
+                  r.materialName == record.materialName,
+            );
           });
           await _saveRecords();
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('已删除该记录'), duration: Duration(seconds: 1)),
+              const SnackBar(
+                content: Text('已删除该记录'),
+                duration: Duration(seconds: 1),
+              ),
             );
           }
         },
         onDeleteWrong: (item) async {
           setState(() {
-            _wrongs.removeWhere((w) =>
-                w.createdAt == item.createdAt &&
-                w.question.question == item.question.question);
+            _wrongs.removeWhere(
+              (w) =>
+                  w.createdAt == item.createdAt &&
+                  w.question.question == item.question.question,
+            );
           });
           await _saveWrongs();
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('已删除该错题'), duration: Duration(seconds: 1)),
+              const SnackBar(
+                content: Text('已删除该错题'),
+                duration: Duration(seconds: 1),
+              ),
             );
           }
         },
@@ -3920,14 +4329,20 @@ class _AppShellState extends State<AppShell> {
           if (toDelete.isEmpty) return;
           setState(() {
             for (final r in toDelete) {
-              _records.removeWhere((x) =>
-                  x.createdAt == r.createdAt && x.materialName == r.materialName);
+              _records.removeWhere(
+                (x) =>
+                    x.createdAt == r.createdAt &&
+                    x.materialName == r.materialName,
+              );
             }
           });
           await _saveRecords();
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('已删除 ${toDelete.length} 条历史记录'), duration: const Duration(seconds: 1)),
+              SnackBar(
+                content: Text('已删除 ${toDelete.length} 条历史记录'),
+                duration: const Duration(seconds: 1),
+              ),
             );
           }
         },
@@ -3936,15 +4351,20 @@ class _AppShellState extends State<AppShell> {
           if (toDelete.isEmpty) return;
           setState(() {
             for (final w in toDelete) {
-              _wrongs.removeWhere((x) =>
-                  x.createdAt == w.createdAt &&
-                  x.question.question == w.question.question);
+              _wrongs.removeWhere(
+                (x) =>
+                    x.createdAt == w.createdAt &&
+                    x.question.question == w.question.question,
+              );
             }
           });
           await _saveWrongs();
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('已删除 ${toDelete.length} 道错题'), duration: const Duration(seconds: 1)),
+              SnackBar(
+                content: Text('已删除 ${toDelete.length} 道错题'),
+                duration: const Duration(seconds: 1),
+              ),
             );
           }
         },
@@ -3954,15 +4374,10 @@ class _AppShellState extends State<AppShell> {
     final mainScaffold = Scaffold(
       body: Stack(
         children: [
-          const Positioned.fill(
-            child: _FloatingQuestionsBackground(),
-          ),
+          const Positioned.fill(child: _FloatingQuestionsBackground()),
           SafeArea(
             // v2.7.2: 改用 IndexedStack 保持所有页面常驻，避免切换时重建卡顿
-            child: IndexedStack(
-              index: _tab,
-              children: pages,
-            ),
+            child: IndexedStack(index: _tab, children: pages),
           ),
           if (_parsing) _buildParsingOverlay(),
         ],
@@ -3970,18 +4385,27 @@ class _AppShellState extends State<AppShell> {
       bottomNavigationBar: NavigationBar(
         selectedIndex: _tab,
         onDestinationSelected: _selectTab,
-        destinations: const [
+        destinations: [
           NavigationDestination(
-            icon: Icon(Icons.dashboard_rounded),
-            label: '首页',
+            icon: const Icon(Icons.dashboard_rounded),
+            label: context.l10n.navHome,
           ),
-          NavigationDestination(icon: Icon(Icons.auto_awesome), label: '出题'),
           NavigationDestination(
-            icon: Icon(Icons.description_outlined),
-            label: '试卷',
+            icon: const Icon(Icons.auto_awesome),
+            label: context.l10n.navGenerate,
           ),
-          NavigationDestination(icon: Icon(Icons.book_outlined), label: '错题'),
-          NavigationDestination(icon: Icon(Icons.person_rounded), label: '我的'),
+          NavigationDestination(
+            icon: const Icon(Icons.description_outlined),
+            label: context.l10n.navPaper,
+          ),
+          NavigationDestination(
+            icon: const Icon(Icons.book_outlined),
+            label: context.l10n.navWrong,
+          ),
+          NavigationDestination(
+            icon: const Icon(Icons.person_rounded),
+            label: context.l10n.navMe,
+          ),
         ],
       ),
     );
@@ -4163,12 +4587,13 @@ class _GuideStepCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: colors.surface,
         borderRadius: BorderRadius.circular(28),
-        border: Border.all(color: kLine),
+        border: Border.all(color: Theme.of(context).dividerColor),
         boxShadow: const [
           BoxShadow(
             color: Color(0x120F172A),
@@ -4275,6 +4700,7 @@ class HomePage extends StatelessWidget {
     required this.records,
     required this.wrongs,
     required this.xpProfile,
+    required this.rpgProgress,
     required this.configReady,
     required this.onPickFile,
     required this.onPaste,
@@ -4286,12 +4712,14 @@ class HomePage extends StatelessWidget {
     required this.onCheckIn,
     required this.onOpenConfig,
     required this.onRpgChallenge,
+    required this.onScan,
   });
 
   final List<StudyMaterial> materials;
   final List<PracticeRecord> records;
   final List<WrongItem> wrongs;
   final XpProfile xpProfile;
+  final RpgProgress rpgProgress;
   final bool configReady;
   final VoidCallback onPickFile;
   final VoidCallback onPaste;
@@ -4303,6 +4731,7 @@ class HomePage extends StatelessWidget {
   final VoidCallback onCheckIn;
   final VoidCallback onOpenConfig;
   final VoidCallback onRpgChallenge;
+  final VoidCallback onScan;
 
   @override
   Widget build(BuildContext context) {
@@ -4315,6 +4744,19 @@ class HomePage extends StatelessWidget {
     final accuracy = totalDone == 0 ? 0 : (correct / totalDone * 100).round();
     final latestRecord = records.isEmpty ? null : records.first;
     final latestMaterials = materials.take(3).toList();
+    final todayRecords = records
+        .where((record) => _dateKey(record.createdAt) == today)
+        .toList();
+    final challengeDone = todayRecords.any(
+      (record) =>
+          record.materialName.contains('第') &&
+          record.materialName.contains('章'),
+    );
+    final wrongReviewDone = todayRecords.any(
+      (record) => record.materialName.contains('错题') && record.total >= 5,
+    );
+    final checkedIn = xpProfile.lastCheckinDate == today;
+    final practiceDone = todayRecords.isNotEmpty;
     return ListView(
       padding: const EdgeInsets.all(18),
       children: [
@@ -4327,7 +4769,29 @@ class HomePage extends StatelessWidget {
         ),
         const SizedBox(height: 16),
         _StaggeredAppear(
-          delay: const Duration(milliseconds: 80),
+          delay: const Duration(milliseconds: 60),
+          child: _TodayTasksCard(
+            challengeDone: challengeDone,
+            wrongReviewDone: wrongReviewDone,
+            checkedIn: checkedIn,
+            practiceDone: practiceDone,
+            onChallenge: onRpgChallenge,
+            onWrongReview: onGoWrong,
+            onCheckIn: onCheckIn,
+            onPractice: onGoGenerate,
+          ),
+        ),
+        const SizedBox(height: 16),
+        _StaggeredAppear(
+          delay: const Duration(milliseconds: 120),
+          child: _ContinueChallengeCard(
+            progress: rpgProgress,
+            onTap: onRpgChallenge,
+          ),
+        ),
+        const SizedBox(height: 16),
+        _StaggeredAppear(
+          delay: const Duration(milliseconds: 180),
           child: _LearningStatusCard(
             todayXp: todayXp,
             totalDone: totalDone,
@@ -4339,18 +4803,19 @@ class HomePage extends StatelessWidget {
         ),
         const SizedBox(height: 16),
         _StaggeredAppear(
-          delay: const Duration(milliseconds: 160),
+          delay: const Duration(milliseconds: 240),
           child: _HomeActionGrid(
             onPickFile: onPickFile,
             onPaste: onPaste,
             onGenerate: onGoGenerate,
             onWrongCards: onGoWrong,
             onRpgChallenge: onRpgChallenge,
+            onScan: onScan,
           ),
         ),
         const SizedBox(height: 16),
         _StaggeredAppear(
-          delay: const Duration(milliseconds: 240),
+          delay: const Duration(milliseconds: 300),
           child: _WrongCardEntry(
             wrongCount: wrongs.length,
             xpProfile: xpProfile,
@@ -4416,7 +4881,10 @@ class _HomeHeroCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final hour = DateTime.now().hour;
-    final greeting = hour < 12 ? '早上好，同学' : (hour < 18 ? '下午好，同学' : '晚上好，同学');
+    final l10n = context.l10n;
+    final greeting = hour < 12
+        ? l10n.homeGreetingMorning
+        : (hour < 18 ? l10n.homeGreetingAfternoon : l10n.homeGreetingEvening);
     return Container(
       padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
       decoration: BoxDecoration(
@@ -4479,8 +4947,8 @@ class _HomeHeroCard extends StatelessWidget {
                             fontWeight: FontWeight.w800,
                           ),
                         ),
-                        const Text(
-                          '今天也来巩固一点知识吧',
+                        Text(
+                          l10n.homeKnowledgePrompt,
                           style: TextStyle(
                             color: Colors.white,
                             fontSize: 24,
@@ -4500,7 +4968,10 @@ class _HomeHeroCard extends StatelessWidget {
                   Expanded(
                     child: _GlassStatusPill(
                       icon: Icons.bolt_rounded,
-                      label: _levelTitle(xpProfile.level),
+                      label: _levelTitle(
+                        xpProfile.level,
+                        Localizations.localeOf(context),
+                      ),
                       value: 'Lv.${xpProfile.level} · ${xpProfile.totalXp} XP',
                     ),
                   ),
@@ -4508,8 +4979,11 @@ class _HomeHeroCard extends StatelessWidget {
                   Expanded(
                     child: _GlassStatusPill(
                       icon: Icons.local_fire_department_rounded,
-                      label: '连续打卡',
-                      value: '${xpProfile.checkinStreak} 天',
+                      label: l10n.streakLabel,
+                      value:
+                          Localizations.localeOf(context).languageCode == 'en'
+                          ? '${xpProfile.checkinStreak} days'
+                          : '${xpProfile.checkinStreak} 天',
                     ),
                   ),
                 ],
@@ -4523,7 +4997,7 @@ class _HomeHeroCard extends StatelessWidget {
                           ? Icons.check_circle_rounded
                           : Icons.key_rounded,
                       label: 'API',
-                      value: configReady ? '已配置' : '待配置',
+                      value: configReady ? l10n.configured : l10n.notConfigured,
                     ),
                   ),
                   if (!configReady) ...[
@@ -4532,7 +5006,7 @@ class _HomeHeroCard extends StatelessWidget {
                       child: FilledButton.tonalIcon(
                         onPressed: onOpenConfig,
                         icon: const Icon(Icons.key_rounded, size: 18),
-                        label: const Text('配置 Key'),
+                        label: Text(l10n.configureKey),
                       ),
                     ),
                   ],
@@ -4597,6 +5071,246 @@ class _GlassStatusPill extends StatelessWidget {
   }
 }
 
+class _TodayTasksCard extends StatelessWidget {
+  const _TodayTasksCard({
+    required this.challengeDone,
+    required this.wrongReviewDone,
+    required this.checkedIn,
+    required this.practiceDone,
+    required this.onChallenge,
+    required this.onWrongReview,
+    required this.onCheckIn,
+    required this.onPractice,
+  });
+
+  final bool challengeDone;
+  final bool wrongReviewDone;
+  final bool checkedIn;
+  final bool practiceDone;
+  final VoidCallback onChallenge;
+  final VoidCallback onWrongReview;
+  final VoidCallback onCheckIn;
+  final VoidCallback onPractice;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = context.l10n;
+    final completed = [
+      challengeDone,
+      wrongReviewDone,
+      checkedIn,
+      practiceDone,
+    ].where((value) => value).length;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 42,
+                  height: 42,
+                  decoration: BoxDecoration(
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.primary.withValues(alpha: 0.10),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Icon(
+                    Icons.checklist_rounded,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        l10n.todayTasks,
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                      Text(
+                        '$completed/4',
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                    ],
+                  ),
+                ),
+                SizedBox(
+                  width: 64,
+                  child: LinearProgressIndicator(
+                    value: completed / 4,
+                    minHeight: 7,
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            _TodayTaskTile(
+              label: l10n.taskChallenge,
+              icon: Icons.flag_rounded,
+              done: challengeDone,
+              onTap: onChallenge,
+            ),
+            _TodayTaskTile(
+              label: l10n.taskWrongReview,
+              icon: Icons.bookmark_remove_rounded,
+              done: wrongReviewDone,
+              onTap: onWrongReview,
+            ),
+            _TodayTaskTile(
+              label: l10n.taskCheckIn,
+              icon: Icons.local_fire_department_rounded,
+              done: checkedIn,
+              onTap: onCheckIn,
+            ),
+            _TodayTaskTile(
+              label: l10n.taskPractice,
+              icon: Icons.auto_awesome_rounded,
+              done: practiceDone,
+              onTap: onPractice,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _TodayTaskTile extends StatelessWidget {
+  const _TodayTaskTile({
+    required this.label,
+    required this.icon,
+    required this.done,
+    required this.onTap,
+  });
+
+  final String label;
+  final IconData icon;
+  final bool done;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = done ? kGreen : Theme.of(context).colorScheme.primary;
+    return InkWell(
+      onTap: done ? null : onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 7),
+        child: Row(
+          children: [
+            Icon(
+              done ? Icons.check_circle_rounded : icon,
+              color: color,
+              size: 19,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                label,
+                style: TextStyle(
+                  decoration: done ? TextDecoration.lineThrough : null,
+                  color: done
+                      ? Theme.of(context).colorScheme.onSurfaceVariant
+                      : null,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+            if (!done) const Icon(Icons.chevron_right_rounded, size: 18),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ContinueChallengeCard extends StatelessWidget {
+  const _ContinueChallengeCard({required this.progress, required this.onTap});
+
+  final RpgProgress progress;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final rule = ChallengeRules.forLevel(progress.currentLevel);
+    final locale = Localizations.localeOf(context);
+    final completedLevels = progress.stars.entries
+        .where((entry) => entry.value > 0)
+        .length;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(22),
+      child: Ink(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [
+              const Color(0xFF172554),
+              rule.isBoss ? const Color(0xFF7F1D1D) : const Color(0xFF312E81),
+            ],
+          ),
+          borderRadius: BorderRadius.circular(22),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 52,
+              height: 52,
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(17),
+              ),
+              child: Icon(rule.icon, color: Colors.white),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    context.l10n.continueChallenge,
+                    style: const TextStyle(
+                      color: Colors.white70,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    locale.languageCode == 'en'
+                        ? 'Chapter ${progress.currentChapter} · ${rule.title(locale)}'
+                        : '第${progress.currentChapter}章 · ${rule.title(locale)}',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 17,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  const SizedBox(height: 7),
+                  LinearProgressIndicator(
+                    value: (completedLevels / 15).clamp(0, 1),
+                    minHeight: 6,
+                    borderRadius: BorderRadius.circular(999),
+                    backgroundColor: Colors.white12,
+                    valueColor: const AlwaysStoppedAnimation(Color(0xFF60A5FA)),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 12),
+            const Icon(Icons.arrow_forward_rounded, color: Colors.white),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _LearningStatusCard extends StatelessWidget {
   const _LearningStatusCard({
     required this.todayXp,
@@ -4616,25 +5330,27 @@ class _LearningStatusCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     final checkedIn = xpProfile.lastCheckinDate == _dateKey(DateTime.now());
     final boostActive = xpProfile.isBoostActive();
+    final colors = Theme.of(context).colorScheme;
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: colors.surface,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: kLine),
+        border: Border.all(color: Theme.of(context).dividerColor),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              const Expanded(
+              Expanded(
                 child: Text(
-                  '今日学习状态',
+                  l10n.todayLearningStatus,
                   style: TextStyle(
-                    color: kInk,
+                    color: colors.onSurface,
                     fontSize: 18,
                     fontWeight: FontWeight.w900,
                   ),
@@ -4645,7 +5361,7 @@ class _LearningStatusCard extends StatelessWidget {
                 icon: Icon(
                   checkedIn ? Icons.check_rounded : Icons.event_available,
                 ),
-                label: Text(checkedIn ? '今日已打卡' : '立即打卡'),
+                label: Text(checkedIn ? l10n.checkedInToday : l10n.checkInNow),
               ),
             ],
           ),
@@ -4654,13 +5370,13 @@ class _LearningStatusCard extends StatelessWidget {
             children: [
               _MiniMetric(
                 icon: Icons.bolt_rounded,
-                label: '今日 XP',
+                label: l10n.todayXp,
                 value: '+$todayXp',
               ),
               const SizedBox(width: 10),
               _MiniMetric(
                 icon: Icons.task_alt_rounded,
-                label: '累计做题',
+                label: l10n.totalQuestions,
                 value: '$totalDone',
               ),
             ],
@@ -4670,13 +5386,13 @@ class _LearningStatusCard extends StatelessWidget {
             children: [
               _MiniMetric(
                 icon: Icons.speed_rounded,
-                label: '正确率',
+                label: l10n.accuracy,
                 value: '$accuracy%',
               ),
               const SizedBox(width: 10),
               _MiniMetric(
                 icon: Icons.bookmark_remove_outlined,
-                label: '错题',
+                label: l10n.mistakes,
                 value: '$wrongCount',
               ),
             ],
@@ -4706,8 +5422,8 @@ class _LearningStatusCard extends StatelessWidget {
                 Expanded(
                   child: Text(
                     boostActive
-                        ? '三倍经验进行中 · 剩余 ${_durationText(xpProfile.boostRemaining())}'
-                        : '错题抽卡 5 题全对，可开启 10 分钟三倍经验',
+                        ? '${l10n.boostActive} · ${_durationText(xpProfile.boostRemaining())}'
+                        : l10n.boostHint,
                     style: TextStyle(
                       color: boostActive ? const Color(0xFF9A3412) : kMuted,
                       fontWeight: FontWeight.w800,
@@ -4730,6 +5446,7 @@ class _HomeActionGrid extends StatelessWidget {
     required this.onGenerate,
     required this.onWrongCards,
     required this.onRpgChallenge,
+    required this.onScan,
   });
 
   final VoidCallback onPickFile;
@@ -4737,6 +5454,7 @@ class _HomeActionGrid extends StatelessWidget {
   final VoidCallback onGenerate;
   final VoidCallback onWrongCards;
   final VoidCallback onRpgChallenge;
+  final VoidCallback onScan;
 
   @override
   Widget build(BuildContext context) {
@@ -4750,35 +5468,42 @@ class _HomeActionGrid extends StatelessWidget {
       children: [
         _HomeActionCard(
           icon: Icons.upload_file_rounded,
-          title: '上传资料',
+          title: context.l10n.uploadMaterial,
           subtitle: 'PDF / Word / TXT',
           onTap: onPickFile,
         ),
         _HomeActionCard(
           icon: Icons.edit_note_rounded,
-          title: '粘贴资料',
-          subtitle: '快速录入文本',
+          title: context.l10n.pasteMaterial,
+          subtitle: context.l10n.quickTextEntry,
           onTap: onPaste,
           color: const Color(0xFF10B981),
         ),
         _HomeActionCard(
+          icon: Icons.document_scanner_rounded,
+          title: context.l10n.scanMaterial,
+          subtitle: 'OCR · Phase 2',
+          onTap: onScan,
+          color: const Color(0xFF0891B2),
+        ),
+        _HomeActionCard(
           icon: Icons.auto_awesome_rounded,
-          title: '开始出题',
-          subtitle: '按步骤生成练习',
+          title: context.l10n.startGeneration,
+          subtitle: context.l10n.generationShortcutSubtitle,
           onTap: onGenerate,
           color: const Color(0xFF7C3AED),
         ),
         _HomeActionCard(
           icon: Icons.style_rounded,
-          title: '错题抽卡',
-          subtitle: '随机复习薄弱点',
+          title: context.l10n.wrongCardChallenge,
+          subtitle: context.l10n.wrongCardSubtitle,
           onTap: onWrongCards,
           color: const Color(0xFFF97316),
         ),
         _HomeActionCard(
           icon: Icons.flag_rounded,
-          title: '闯关挑战',
-          subtitle: 'RPG 闯关赢徽章',
+          title: context.l10n.rpgChallenge,
+          subtitle: context.l10n.rpgChallengeSubtitle,
           onTap: onRpgChallenge,
           color: const Color(0xFFEC4899),
         ),
@@ -4804,14 +5529,15 @@ class _HomeActionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     return _BouncyTap(
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: colors.surface,
           borderRadius: BorderRadius.circular(22),
-          border: Border.all(color: kLine),
+          border: Border.all(color: Theme.of(context).dividerColor),
           boxShadow: const [
             BoxShadow(
               color: Color(0x070F172A),
@@ -4838,8 +5564,8 @@ class _HomeActionCard extends StatelessWidget {
               children: [
                 Text(
                   title,
-                  style: const TextStyle(
-                    color: kInk,
+                  style: TextStyle(
+                    color: colors.onSurface,
                     fontWeight: FontWeight.w900,
                     fontSize: 16,
                   ),
@@ -4847,7 +5573,10 @@ class _HomeActionCard extends StatelessWidget {
                 const SizedBox(height: 3),
                 Text(
                   subtitle,
-                  style: const TextStyle(color: kMuted, fontSize: 12),
+                  style: TextStyle(
+                    color: colors.onSurfaceVariant,
+                    fontSize: 12,
+                  ),
                 ),
               ],
             ),
@@ -4866,13 +5595,14 @@ class _RecentMaterialTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: colors.surface,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: kLine),
+        border: Border.all(color: Theme.of(context).dividerColor),
       ),
       child: Row(
         children: [
@@ -4894,8 +5624,8 @@ class _RecentMaterialTile extends StatelessWidget {
                   material.name,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: kInk,
+                  style: TextStyle(
+                    color: colors.onSurface,
                     fontWeight: FontWeight.w900,
                   ),
                 ),
@@ -4904,7 +5634,10 @@ class _RecentMaterialTile extends StatelessWidget {
                   '${_fileTypeLabel(material.name)} · ${material.content.length} 字 · ${_dateText(material.createdAt)}',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(color: kMuted, fontSize: 12),
+                  style: TextStyle(
+                    color: colors.onSurfaceVariant,
+                    fontSize: 12,
+                  ),
                 ),
               ],
             ),
@@ -4963,6 +5696,7 @@ class GeneratePage extends StatelessWidget {
   final VoidCallback onPaste;
   final VoidCallback onDemo;
   final ValueChanged<StudyMaterial> onDeleteMaterial;
+
   /// 打开"管理资料"底部弹窗（导入文件 / 粘贴 / 示例 / 删除）
   final VoidCallback onManageMaterials;
 
@@ -4974,7 +5708,10 @@ class GeneratePage extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.all(18),
       children: [
-        _PageTitle(title: '出题练习', subtitle: '选择资料、题型和数量，AI 将在手机端直接生成练习。'),
+        _PageTitle(
+          title: context.l10n.generatePageTitle,
+          subtitle: context.l10n.generatePageSubtitle,
+        ),
         const SizedBox(height: 16),
         const _FlowStepHeader(
           step: '01',
@@ -5292,12 +6029,19 @@ class GeneratePage extends StatelessWidget {
                 ),
                 const SizedBox(height: 14),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 6,
+                  ),
                   decoration: BoxDecoration(
-                    color: enableRichContent ? const Color(0xFFEFF6FF) : const Color(0xFFF8FAFC),
+                    color: enableRichContent
+                        ? const Color(0xFFEFF6FF)
+                        : const Color(0xFFF8FAFC),
                     borderRadius: BorderRadius.circular(14),
                     border: Border.all(
-                      color: enableRichContent ? const Color(0xFF93C5FD) : kLine,
+                      color: enableRichContent
+                          ? const Color(0xFF93C5FD)
+                          : kLine,
                     ),
                   ),
                   child: Row(
@@ -5330,8 +6074,13 @@ class GeneratePage extends StatelessWidget {
                               ),
                             ),
                             Text(
-                              enableRichContent ? '已开启：图表题约占总题数 25%（保持在 20%-30%）' : '关闭：纯文字题目，生成更快',
-                              style: const TextStyle(color: kMuted, fontSize: 11),
+                              enableRichContent
+                                  ? '已开启：图表题约占总题数 25%（保持在 20%-30%）'
+                                  : '关闭：纯文字题目，生成更快',
+                              style: const TextStyle(
+                                color: kMuted,
+                                fontSize: 11,
+                              ),
                             ),
                           ],
                         ),
@@ -5350,9 +6099,14 @@ class GeneratePage extends StatelessWidget {
                 const SizedBox(height: 10),
                 // 启用音频题（英语听力）开关
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 6,
+                  ),
                   decoration: BoxDecoration(
-                    color: enableListening ? const Color(0xFFECFDF5) : const Color(0xFFF8FAFC),
+                    color: enableListening
+                        ? const Color(0xFFECFDF5)
+                        : const Color(0xFFF8FAFC),
                     borderRadius: BorderRadius.circular(14),
                     border: Border.all(
                       color: enableListening ? const Color(0xFF86EFAC) : kLine,
@@ -5388,8 +6142,13 @@ class GeneratePage extends StatelessWidget {
                               ),
                             ),
                             Text(
-                              enableListening ? '已开启：听力题约占总题数 25%（保持在 20%-30%）' : '关闭：纯文字题，无听力音频',
-                              style: const TextStyle(color: kMuted, fontSize: 11),
+                              enableListening
+                                  ? '已开启：听力题约占总题数 25%（保持在 20%-30%）'
+                                  : '关闭：纯文字题，无听力音频',
+                              style: const TextStyle(
+                                color: kMuted,
+                                fontSize: 11,
+                              ),
                             ),
                           ],
                         ),
@@ -5450,10 +6209,10 @@ class PracticeSession {
     this.sourceWrongs = const [],
     this.isWrongCardChallenge = false,
     this.xpMultiplier = 1,
-    this.gameMode = 'normal',         // normal / wrongcard / rpg
-    this.rpgChapter = 0,              // RPG 章节（仅 rpg 模式）
-    this.rpgLevel = 0,                // RPG 关卡（仅 rpg 模式）
-    this.rpgStartTime,                // RPG 开始时间（用于三星计时）
+    this.gameMode = 'normal', // normal / wrongcard / rpg
+    this.rpgChapter = 0, // RPG 章节（仅 rpg 模式）
+    this.rpgLevel = 0, // RPG 关卡（仅 rpg 模式）
+    this.rpgStartTime, // RPG 开始时间（用于三星计时）
   });
 
   final String materialName;
@@ -5665,148 +6424,158 @@ class _PracticeScreenState extends State<PracticeScreen> {
           icon: const Icon(Icons.close),
         ),
       ),
-      body: Stack(children: [
-        const Positioned.fill(child: _FloatingQuestionsBackground()),
-        SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.all(18),
-          children: [
-            LinearProgressIndicator(
-              value: progress,
-              minHeight: 8,
-              borderRadius: BorderRadius.circular(999),
-            ),
-            const SizedBox(height: 18),
-            Card(
-              elevation: 0,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(24),
-                side: const BorderSide(color: kLine),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.all(20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Chip(
-                      label: Text(question.label),
-                      backgroundColor: const Color(0xFFEFF6FF),
-                      side: BorderSide.none,
-                    ),
-                    const SizedBox(height: 10),
-                    // 图表状态指示器（debug）：帮助用户/AI 验证 rich_content 是否生效
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                      decoration: BoxDecoration(
-                        color: question.richContent.isNotEmpty
-                            ? const Color(0xFFDCFCE7)
-                            : const Color(0xFFFFF7ED),
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(
-                          color: question.richContent.isNotEmpty
-                              ? const Color(0xFF86EFAC)
-                              : const Color(0xFFFED7AA),
+      body: Stack(
+        children: [
+          const Positioned.fill(child: _FloatingQuestionsBackground()),
+          SafeArea(
+            child: ListView(
+              padding: const EdgeInsets.all(18),
+              children: [
+                LinearProgressIndicator(
+                  value: progress,
+                  minHeight: 8,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                const SizedBox(height: 18),
+                Card(
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(24),
+                    side: const BorderSide(color: kLine),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(20),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Chip(
+                          label: Text(question.label),
+                          backgroundColor: const Color(0xFFEFF6FF),
+                          side: BorderSide.none,
                         ),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            question.richContent.isNotEmpty
-                                ? Icons.image_rounded
-                                : Icons.info_outline_rounded,
-                            size: 14,
-                            color: question.richContent.isNotEmpty
-                                ? const Color(0xFF16A34A)
-                                : const Color(0xFFEA580C),
+                        const SizedBox(height: 10),
+                        // 图表状态指示器（debug）：帮助用户/AI 验证 rich_content 是否生效
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 5,
                           ),
-                          const SizedBox(width: 6),
-                          Flexible(
-                            child: Text(
-                              question.richContent.isNotEmpty
-                                  ? '图表 ${question.richContent.length} 个：${question.richContent.map((r) => r['type']).join(',')}'
-                                  : '纯文字题（无图表）',
-                              style: TextStyle(
-                                fontSize: 11,
+                          decoration: BoxDecoration(
+                            color: question.richContent.isNotEmpty
+                                ? const Color(0xFFDCFCE7)
+                                : const Color(0xFFFFF7ED),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: question.richContent.isNotEmpty
+                                  ? const Color(0xFF86EFAC)
+                                  : const Color(0xFFFED7AA),
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                question.richContent.isNotEmpty
+                                    ? Icons.image_rounded
+                                    : Icons.info_outline_rounded,
+                                size: 14,
                                 color: question.richContent.isNotEmpty
-                                    ? const Color(0xFF166534)
-                                    : const Color(0xFF9A3412),
-                                fontWeight: FontWeight.w700,
+                                    ? const Color(0xFF16A34A)
+                                    : const Color(0xFFEA580C),
                               ),
+                              const SizedBox(width: 6),
+                              Flexible(
+                                child: Text(
+                                  question.richContent.isNotEmpty
+                                      ? '图表 ${question.richContent.length} 个：${question.richContent.map((r) => r['type']).join(',')}'
+                                      : '纯文字题（无图表）',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: question.richContent.isNotEmpty
+                                        ? const Color(0xFF166534)
+                                        : const Color(0xFF9A3412),
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        Text(
+                          question.question,
+                          style: const TextStyle(
+                            fontSize: 20,
+                            height: 1.55,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        if (question.richContent.isNotEmpty) ...[
+                          const SizedBox(height: 10),
+                          ...question.richContent.map(
+                            (rc) => RichContentBlock(
+                              type: rc['type'] as String? ?? '',
+                              data:
+                                  (rc['data'] as Map?)
+                                      ?.cast<String, dynamic>() ??
+                                  const {},
+                              hideListeningText: true,
                             ),
                           ),
                         ],
-                      ),
+                        const SizedBox(height: 18),
+                        if (question.type == 'fill' ||
+                            question.type == 'subjective')
+                          TextField(
+                            controller: _answerCtrl,
+                            enabled: !_answered,
+                            minLines: question.type == 'subjective' ? 4 : 1,
+                            maxLines: question.type == 'subjective' ? 6 : 1,
+                            decoration: InputDecoration(
+                              labelText: question.type == 'subjective'
+                                  ? '输入你的简答'
+                                  : '输入答案',
+                              border: const OutlineInputBorder(),
+                            ),
+                          )
+                        else
+                          ...List.generate(
+                            question.options.length,
+                            (index) => _optionTile(question, index),
+                          ),
+                        if (_answered) ...[
+                          const SizedBox(height: 18),
+                          _ResultBox(
+                            correct: _lastCorrect == true,
+                            answer: _answerString(question.answer),
+                            explanation: question.explanation,
+                            userAnswer: _userAnswer,
+                            richContent: question.richContent,
+                          ),
+                        ],
+                      ],
                     ),
-                    const SizedBox(height: 10),
-                    Text(
-                      question.question,
-                      style: const TextStyle(
-                        fontSize: 20,
-                        height: 1.55,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                    if (question.richContent.isNotEmpty) ...[
-                      const SizedBox(height: 10),
-                      ...question.richContent.map((rc) => RichContentBlock(
-                            type: rc['type'] as String? ?? '',
-                            data: (rc['data'] as Map?)?.cast<String, dynamic>() ?? const {},
-                            hideListeningText: true,
-                          )),
-                    ],
-                    const SizedBox(height: 18),
-                    if (question.type == 'fill' ||
-                        question.type == 'subjective')
-                      TextField(
-                        controller: _answerCtrl,
-                        enabled: !_answered,
-                        minLines: question.type == 'subjective' ? 4 : 1,
-                        maxLines: question.type == 'subjective' ? 6 : 1,
-                        decoration: InputDecoration(
-                          labelText: question.type == 'subjective'
-                              ? '输入你的简答'
-                              : '输入答案',
-                          border: const OutlineInputBorder(),
-                        ),
-                      )
-                    else
-                      ...List.generate(
-                        question.options.length,
-                        (index) => _optionTile(question, index),
-                      ),
-                    if (_answered) ...[
-                      const SizedBox(height: 18),
-                      _ResultBox(
-                        correct: _lastCorrect == true,
-                        answer: _answerString(question.answer),
-                        explanation: question.explanation,
-                        userAnswer: _userAnswer,
-                        richContent: question.richContent,
-                      ),
-                    ],
-                  ],
+                  ),
                 ),
-              ),
+                const SizedBox(height: 18),
+                FilledButton(
+                  onPressed: _answered ? _next : _submit,
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size.fromHeight(54),
+                  ),
+                  child: Text(
+                    _answered
+                        ? (_index == widget.session.questions.length - 1
+                              ? '查看结果'
+                              : '下一题')
+                        : '提交答案',
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: 18),
-            FilledButton(
-              onPressed: _answered ? _next : _submit,
-              style: FilledButton.styleFrom(
-                minimumSize: const Size.fromHeight(54),
-              ),
-              child: Text(
-                _answered
-                    ? (_index == widget.session.questions.length - 1
-                          ? '查看结果'
-                          : '下一题')
-                    : '提交答案',
-              ),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
-      ]),
     );
   }
 
@@ -5884,6 +6653,7 @@ class _ResultBox extends StatefulWidget {
   final String answer;
   final String explanation;
   final String userAnswer;
+
   /// 富内容块（来自 AiQuestion.richContent）
   final List<Map<String, dynamic>> richContent;
 
@@ -5905,12 +6675,14 @@ class _ResultBoxState extends State<_ResultBox>
       vsync: this,
       duration: const Duration(milliseconds: 450),
     );
-    _scale = Tween<double>(begin: 0.7, end: 1.0).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeOutBack),
-    );
-    _opacity = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeOut),
-    );
+    _scale = Tween<double>(
+      begin: 0.7,
+      end: 1.0,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOutBack));
+    _opacity = Tween<double>(
+      begin: 0.0,
+      end: 1.0,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOut));
     _slide = Tween<Offset>(
       begin: const Offset(0, 0.15),
       end: Offset.zero,
@@ -5970,14 +6742,20 @@ class _ResultBoxState extends State<_ResultBox>
                 Text('你的答案：${widget.userAnswer}'),
                 Text('参考答案：${widget.answer}'),
                 const SizedBox(height: 8),
-                Text('解析：${widget.explanation}',
-                    style: const TextStyle(height: 1.5)),
+                Text(
+                  '解析：${widget.explanation}',
+                  style: const TextStyle(height: 1.5),
+                ),
                 if (widget.richContent.isNotEmpty) ...[
                   const SizedBox(height: 10),
-                  ...widget.richContent.map((rc) => RichContentBlock(
-                        type: rc['type'] as String? ?? '',
-                        data: (rc['data'] as Map?)?.cast<String, dynamic>() ?? const {},
-                      )),
+                  ...widget.richContent.map(
+                    (rc) => RichContentBlock(
+                      type: rc['type'] as String? ?? '',
+                      data:
+                          (rc['data'] as Map?)?.cast<String, dynamic>() ??
+                          const {},
+                    ),
+                  ),
                 ],
               ],
             ),
@@ -6002,10 +6780,13 @@ class WrongBookPage extends StatefulWidget {
   final List<WrongItem> wrongs;
   final XpProfile xpProfile;
   final VoidCallback onDrawCards;
+
   /// 错题练习：传入某资料下的所有错题，启动针对性练习（不走抽卡动画）
   final void Function(List<WrongItem> items) onPracticeGroup;
+
   /// 删除单条错题
   final void Function(WrongItem item) onDeleteWrong;
+
   /// v2.7.3: 批量删除错题（与 MePage 统一）
   final void Function(List<WrongItem> items) onDeleteWrongs;
 
@@ -6065,7 +6846,10 @@ class _WrongBookPageState extends State<WrongBookPage> {
     final wrongs = widget.wrongs;
     if (wrongs.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('错题本已经是空的'), duration: Duration(seconds: 1)),
+        const SnackBar(
+          content: Text('错题本已经是空的'),
+          duration: Duration(seconds: 1),
+        ),
       );
       return;
     }
@@ -6083,7 +6867,10 @@ class _WrongBookPageState extends State<WrongBookPage> {
             return SafeArea(
               child: Padding(
                 padding: EdgeInsets.fromLTRB(
-                  18, 14, 18, 18 + MediaQuery.of(ctx).viewInsets.bottom,
+                  18,
+                  14,
+                  18,
+                  18 + MediaQuery.of(ctx).viewInsets.bottom,
                 ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
@@ -6091,9 +6878,13 @@ class _WrongBookPageState extends State<WrongBookPage> {
                   children: [
                     Center(
                       child: Container(
-                        width: 40, height: 4,
+                        width: 40,
+                        height: 4,
                         margin: const EdgeInsets.only(bottom: 14),
-                        decoration: BoxDecoration(color: kLine, borderRadius: BorderRadius.circular(2)),
+                        decoration: BoxDecoration(
+                          color: kLine,
+                          borderRadius: BorderRadius.circular(2),
+                        ),
                       ),
                     ),
                     Row(
@@ -6101,7 +6892,11 @@ class _WrongBookPageState extends State<WrongBookPage> {
                         const Expanded(
                           child: Text(
                             '批量删除错题',
-                            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: kInk),
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w900,
+                              color: kInk,
+                            ),
                           ),
                         ),
                         TextButton(
@@ -6110,13 +6905,18 @@ class _WrongBookPageState extends State<WrongBookPage> {
                               if (selected.length == wrongs.length) {
                                 selected.clear();
                               } else {
-                                selected.addAll(List.generate(wrongs.length, (i) => i));
+                                selected.addAll(
+                                  List.generate(wrongs.length, (i) => i),
+                                );
                               }
                             });
                           },
                           child: Text(
                             selected.length == wrongs.length ? '取消全选' : '全选',
-                            style: const TextStyle(color: kRed, fontWeight: FontWeight.w800),
+                            style: const TextStyle(
+                              color: kRed,
+                              fontWeight: FontWeight.w800,
+                            ),
                           ),
                         ),
                       ],
@@ -6154,25 +6954,34 @@ class _WrongBookPageState extends State<WrongBookPage> {
                               child: Row(
                                 children: [
                                   Icon(
-                                    checked ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded,
+                                    checked
+                                        ? Icons.check_circle_rounded
+                                        : Icons.radio_button_unchecked_rounded,
                                     color: checked ? kRed : kMuted,
                                     size: 22,
                                   ),
                                   const SizedBox(width: 12),
                                   Expanded(
                                     child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
                                       children: [
                                         Text(
                                           w.question.question,
                                           maxLines: 2,
                                           overflow: TextOverflow.ellipsis,
-                                          style: const TextStyle(fontWeight: FontWeight.w800, color: kInk),
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.w800,
+                                            color: kInk,
+                                          ),
                                         ),
                                         const SizedBox(height: 2),
                                         Text(
                                           '${w.materialName} · ${_dateText(w.createdAt)}',
-                                          style: const TextStyle(color: kMuted, fontSize: 11),
+                                          style: const TextStyle(
+                                            color: kMuted,
+                                            fontSize: 11,
+                                          ),
                                         ),
                                       ],
                                     ),
@@ -6201,8 +7010,14 @@ class _WrongBookPageState extends State<WrongBookPage> {
                                 ? null
                                 : () => Navigator.pop(ctx, true),
                             icon: const Icon(Icons.delete_outline, size: 18),
-                            label: Text(selected.isEmpty ? '未选择' : '删除选中 (${selected.length})'),
-                            style: FilledButton.styleFrom(backgroundColor: kRed),
+                            label: Text(
+                              selected.isEmpty
+                                  ? '未选择'
+                                  : '删除选中 (${selected.length})',
+                            ),
+                            style: FilledButton.styleFrom(
+                              backgroundColor: kRed,
+                            ),
                           ),
                         ),
                       ],
@@ -6245,7 +7060,10 @@ class _WrongBookPageState extends State<WrongBookPage> {
         Row(
           children: [
             Expanded(
-              child: _PageTitle(title: '错题本', subtitle: '错题全部保存在手机本地。'),
+              child: _PageTitle(
+                title: context.l10n.wrongPageTitle,
+                subtitle: context.l10n.wrongPageSubtitle,
+              ),
             ),
             IconButton(
               tooltip: _searchMode ? '关闭检索' : '检索错题',
@@ -6313,7 +7131,11 @@ class _WrongBookPageState extends State<WrongBookPage> {
               padding: const EdgeInsets.only(top: 8),
               child: Text(
                 '命中 $filteredCount / ${wrongs.length} 道错题',
-                style: const TextStyle(color: kMuted, fontSize: 12, fontWeight: FontWeight.w700),
+                style: const TextStyle(
+                  color: kMuted,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
             ),
           const SizedBox(height: 12),
@@ -6460,6 +7282,7 @@ class _WrongMaterialGroup extends StatelessWidget {
   final MapEntry<String, List<WrongItem>> group;
   final VoidCallback onPractice;
   final void Function(WrongItem item) onDeleteWrong;
+
   /// 默认只显示前 N 个错题，其余折叠
   final int wrongVisibleCount;
 
@@ -6471,7 +7294,10 @@ class _WrongMaterialGroup extends StatelessWidget {
         title: const Text('删除该错题？'),
         content: const Text('将删除该错题，删除后无法恢复。'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: kRed),
             onPressed: () => Navigator.pop(ctx, true),
@@ -6569,7 +7395,9 @@ class _WrongQuestionCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return RepaintBoundary(
       child: Dismissible(
-        key: ValueKey('wrong_card_${item.createdAt.toIso8601String()}_${item.question.question.hashCode}'),
+        key: ValueKey(
+          'wrong_card_${item.createdAt.toIso8601String()}_${item.question.question.hashCode}',
+        ),
         direction: DismissDirection.endToStart,
         background: Container(
           alignment: Alignment.centerRight,
@@ -6611,7 +7439,10 @@ class _WrongQuestionCard extends StatelessWidget {
                     Expanded(
                       child: Text(
                         '${item.question.label} · ${_dateText(item.createdAt)}',
-                        style: const TextStyle(color: kMuted, fontWeight: FontWeight.w800),
+                        style: const TextStyle(
+                          color: kMuted,
+                          fontWeight: FontWeight.w800,
+                        ),
                       ),
                     ),
                     if (onDelete != null)
@@ -6621,19 +7452,29 @@ class _WrongQuestionCard extends StatelessWidget {
                 const SizedBox(height: 8),
                 Text(
                   item.question.question,
-                  style: const TextStyle(fontWeight: FontWeight.w900, height: 1.45),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w900,
+                    height: 1.45,
+                  ),
                 ),
                 if (item.question.richContent.isNotEmpty) ...[
                   const SizedBox(height: 8),
-                  ...item.question.richContent.map((rc) => RepaintBoundary(
-                        child: RichContentBlock(
-                          type: rc['type'] as String? ?? '',
-                          data: (rc['data'] as Map?)?.cast<String, dynamic>() ?? const {},
-                        ),
-                      )),
+                  ...item.question.richContent.map(
+                    (rc) => RepaintBoundary(
+                      child: RichContentBlock(
+                        type: rc['type'] as String? ?? '',
+                        data:
+                            (rc['data'] as Map?)?.cast<String, dynamic>() ??
+                            const {},
+                      ),
+                    ),
+                  ),
                 ],
                 const SizedBox(height: 8),
-                Text('你的答案：${item.userAnswer}', style: const TextStyle(color: kRed)),
+                Text(
+                  '你的答案：${item.userAnswer}',
+                  style: const TextStyle(color: kRed),
+                ),
                 Text(
                   '参考答案：${_answerString(item.question.answer)}',
                   style: const TextStyle(color: kGreen),
@@ -6778,13 +7619,15 @@ class PaperPage extends StatefulWidget {
     String chapterRange,
     String knowledgePointSpec,
     int listeningCount,
-  }) onGenerate;
+  })
+  onGenerate;
   final ValueChanged<Paper> onView;
   final void Function(String id, String name) onDelete;
   final ValueChanged<Paper> onDownload;
   final ValueChanged<Paper> onDownloadAnswer;
   final ValueChanged<Paper> onDownloadAudio;
   final VoidCallback onOpenConfig;
+
   /// v2.7.3: 批量删除试卷（与 MePage 统一风格）
   final void Function(List<Paper> papers) onDeletePapers;
 
@@ -6837,12 +7680,18 @@ class _PaperPageState extends State<PaperPage> {
   int _listeningCount = 0;
 
   static const _subjects = <String>[
-    '语文', '数学', '英语', '物理', '化学', '生物', '政治', '历史', '地理',
+    '语文',
+    '数学',
+    '英语',
+    '物理',
+    '化学',
+    '生物',
+    '政治',
+    '历史',
+    '地理',
   ];
   static const _stages = <String>['小学', '初中', '高中', '成年人'];
-  static const _examTypes = <String>[
-    '期末', '期中', '中考模拟', '高考模拟', '周测', '小测',
-  ];
+  static const _examTypes = <String>['期末', '期中', '中考模拟', '高考模拟', '周测', '小测'];
   static const _pageOptions = <int>[2, 4, 6, 8];
 
   @override
@@ -6951,7 +7800,10 @@ class _PaperPageState extends State<PaperPage> {
     final papers = widget.papers;
     if (papers.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('还没有生成过试卷'), duration: Duration(seconds: 1)),
+        const SnackBar(
+          content: Text('还没有生成过试卷'),
+          duration: Duration(seconds: 1),
+        ),
       );
       return;
     }
@@ -6969,7 +7821,10 @@ class _PaperPageState extends State<PaperPage> {
             return SafeArea(
               child: Padding(
                 padding: EdgeInsets.fromLTRB(
-                  18, 14, 18, 18 + MediaQuery.of(ctx).viewInsets.bottom,
+                  18,
+                  14,
+                  18,
+                  18 + MediaQuery.of(ctx).viewInsets.bottom,
                 ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
@@ -6977,9 +7832,13 @@ class _PaperPageState extends State<PaperPage> {
                   children: [
                     Center(
                       child: Container(
-                        width: 40, height: 4,
+                        width: 40,
+                        height: 4,
                         margin: const EdgeInsets.only(bottom: 14),
-                        decoration: BoxDecoration(color: kLine, borderRadius: BorderRadius.circular(2)),
+                        decoration: BoxDecoration(
+                          color: kLine,
+                          borderRadius: BorderRadius.circular(2),
+                        ),
                       ),
                     ),
                     Row(
@@ -6987,7 +7846,11 @@ class _PaperPageState extends State<PaperPage> {
                         const Expanded(
                           child: Text(
                             '批量删除试卷',
-                            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: kInk),
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w900,
+                              color: kInk,
+                            ),
                           ),
                         ),
                         TextButton(
@@ -6996,13 +7859,18 @@ class _PaperPageState extends State<PaperPage> {
                               if (selected.length == papers.length) {
                                 selected.clear();
                               } else {
-                                selected.addAll(List.generate(papers.length, (i) => i));
+                                selected.addAll(
+                                  List.generate(papers.length, (i) => i),
+                                );
                               }
                             });
                           },
                           child: Text(
                             selected.length == papers.length ? '取消全选' : '全选',
-                            style: const TextStyle(color: kBlue, fontWeight: FontWeight.w800),
+                            style: const TextStyle(
+                              color: kBlue,
+                              fontWeight: FontWeight.w800,
+                            ),
                           ),
                         ),
                       ],
@@ -7040,25 +7908,34 @@ class _PaperPageState extends State<PaperPage> {
                               child: Row(
                                 children: [
                                   Icon(
-                                    checked ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded,
+                                    checked
+                                        ? Icons.check_circle_rounded
+                                        : Icons.radio_button_unchecked_rounded,
                                     color: checked ? kBlue : kMuted,
                                     size: 22,
                                   ),
                                   const SizedBox(width: 12),
                                   Expanded(
                                     child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
                                       children: [
                                         Text(
                                           '${p.subject} · ${p.pageCount}面 · ${p.questions.length}题',
                                           maxLines: 1,
                                           overflow: TextOverflow.ellipsis,
-                                          style: const TextStyle(fontWeight: FontWeight.w800, color: kInk),
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.w800,
+                                            color: kInk,
+                                          ),
                                         ),
                                         const SizedBox(height: 2),
                                         Text(
                                           '${p.materialName} · ${_dateText(p.createdAt)}',
-                                          style: const TextStyle(color: kMuted, fontSize: 11),
+                                          style: const TextStyle(
+                                            color: kMuted,
+                                            fontSize: 11,
+                                          ),
                                         ),
                                       ],
                                     ),
@@ -7087,8 +7964,14 @@ class _PaperPageState extends State<PaperPage> {
                                 ? null
                                 : () => Navigator.pop(ctx, true),
                             icon: const Icon(Icons.delete_outline, size: 18),
-                            label: Text(selected.isEmpty ? '未选择' : '删除选中 (${selected.length})'),
-                            style: FilledButton.styleFrom(backgroundColor: kRed),
+                            label: Text(
+                              selected.isEmpty
+                                  ? '未选择'
+                                  : '删除选中 (${selected.length})',
+                            ),
+                            style: FilledButton.styleFrom(
+                              backgroundColor: kRed,
+                            ),
                           ),
                         ),
                       ],
@@ -7144,13 +8027,13 @@ class _PaperPageState extends State<PaperPage> {
   }
 
   PaperScoreConfig _buildScoreConfig() => PaperScoreConfig(
-        totalMode: _totalScoreMode,
-        customTotal: _customTotal,
-        choiceScore: _choiceScore,
-        fillScore: _fillScore,
-        judgeScore: _judgeScore,
-        subjectiveScore: _subjectiveScore,
-      );
+    totalMode: _totalScoreMode,
+    customTotal: _customTotal,
+    choiceScore: _choiceScore,
+    fillScore: _fillScore,
+    judgeScore: _judgeScore,
+    subjectiveScore: _subjectiveScore,
+  );
 
   /// 计算当前生效的题量模板
   PaperTemplate? _buildTemplate() {
@@ -7246,7 +8129,10 @@ class _PaperPageState extends State<PaperPage> {
       _removeCustomItem(list, value);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('已删除「$value」'), duration: const Duration(seconds: 1)),
+          SnackBar(
+            content: Text('已删除「$value」'),
+            duration: const Duration(seconds: 1),
+          ),
         );
       }
     }
@@ -7327,9 +8213,9 @@ class _PaperPageState extends State<PaperPage> {
     if (n == null || n < 1 || n > 12) {
       HapticFeedback.heavyImpact();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('页数必须是 1-12 之间的整数')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('页数必须是 1-12 之间的整数')));
       return;
     }
     HapticFeedback.selectionClick();
@@ -7370,9 +8256,9 @@ class _PaperPageState extends State<PaperPage> {
     if (n == null || n <= 0 || n > 500) {
       HapticFeedback.heavyImpact();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('请输入 1-500 之间的正整数')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('请输入 1-500 之间的正整数')));
       return;
     }
     HapticFeedback.selectionClick();
@@ -7381,8 +8267,8 @@ class _PaperPageState extends State<PaperPage> {
 
   @override
   Widget build(BuildContext context) {
-    final activeMaterial = _material ??
-        (widget.materials.isEmpty ? null : widget.materials.first);
+    final activeMaterial =
+        _material ?? (widget.materials.isEmpty ? null : widget.materials.first);
 
     // 历史试卷按资料分组（保留插入顺序）
     final grouped = <String, List<Paper>>{};
@@ -7391,16 +8277,36 @@ class _PaperPageState extends State<PaperPage> {
     }
 
     // 中文序号
-    const cnNum = ['一', '二', '三', '四', '五', '六', '七', '八', '九', '十',
-      '十一', '十二', '十三', '十四', '十五', '十六', '十七', '十八', '十九', '二十'];
+    const cnNum = [
+      '一',
+      '二',
+      '三',
+      '四',
+      '五',
+      '六',
+      '七',
+      '八',
+      '九',
+      '十',
+      '十一',
+      '十二',
+      '十三',
+      '十四',
+      '十五',
+      '十六',
+      '十七',
+      '十八',
+      '十九',
+      '二十',
+    ];
     String cn(int i) => i < cnNum.length ? cnNum[i] : '${i + 1}';
 
     return ListView(
       padding: const EdgeInsets.all(18),
       children: [
-        const _PageTitle(
-          title: '试卷生成',
-          subtitle: '按期末/期中/中高考/周测等模板，生成一整套可预览、可下载的试卷。仅支持纯文本题型，涉及作图的题目暂不支持。',
+        _PageTitle(
+          title: context.l10n.paperPageTitle,
+          subtitle: context.l10n.paperPageSubtitle,
         ),
         const SizedBox(height: 16),
         const _FlowStepHeader(
@@ -7432,13 +8338,15 @@ class _PaperPageState extends State<PaperPage> {
                 ),
               ),
               items: widget.materials
-                  .map((m) => DropdownMenuItem(
-                        value: m,
-                        child: Text(
-                          '${m.name} · ${m.content.length}字',
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ))
+                  .map(
+                    (m) => DropdownMenuItem(
+                      value: m,
+                      child: Text(
+                        '${m.name} · ${m.content.length}字',
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  )
                   .toList(),
               onChanged: (v) => setState(() => _material = v),
             ),
@@ -7603,8 +8511,7 @@ class _PaperPageState extends State<PaperPage> {
           ),
           child: ExpansionTile(
             initiallyExpanded: _moreExpanded,
-            onExpansionChanged: (v) =>
-                setState(() => _moreExpanded = v),
+            onExpansionChanged: (v) => setState(() => _moreExpanded = v),
             tilePadding: const EdgeInsets.symmetric(horizontal: 18),
             shape: const Border(),
             collapsedShape: const Border(),
@@ -7624,7 +8531,9 @@ class _PaperPageState extends State<PaperPage> {
                 if (_totalScoreMode > 0)
                   Container(
                     padding: const EdgeInsets.symmetric(
-                        horizontal: 8, vertical: 2),
+                      horizontal: 8,
+                      vertical: 2,
+                    ),
                     decoration: BoxDecoration(
                       color: kBlue.withValues(alpha: 0.12),
                       borderRadius: BorderRadius.circular(8),
@@ -7698,14 +8607,12 @@ class _PaperPageState extends State<PaperPage> {
                       _ScoreNumberField(
                         label: '填空题数',
                         value: _customFillCount,
-                        onChanged: (v) =>
-                            setState(() => _customFillCount = v),
+                        onChanged: (v) => setState(() => _customFillCount = v),
                       ),
                       _ScoreNumberField(
                         label: '判断题数',
                         value: _customJudgeCount,
-                        onChanged: (v) =>
-                            setState(() => _customJudgeCount = v),
+                        onChanged: (v) => setState(() => _customJudgeCount = v),
                       ),
                       _ScoreNumberField(
                         label: '解答题数',
@@ -7784,8 +8691,7 @@ class _PaperPageState extends State<PaperPage> {
                     _ScoreNumberField(
                       label: '选择题 / 题',
                       value: _choiceScore,
-                      onChanged: (v) =>
-                          setState(() => _choiceScore = v),
+                      onChanged: (v) => setState(() => _choiceScore = v),
                     ),
                     _ScoreNumberField(
                       label: '填空题 / 空',
@@ -7795,14 +8701,12 @@ class _PaperPageState extends State<PaperPage> {
                     _ScoreNumberField(
                       label: '判断题 / 题',
                       value: _judgeScore,
-                      onChanged: (v) =>
-                          setState(() => _judgeScore = v),
+                      onChanged: (v) => setState(() => _judgeScore = v),
                     ),
                     _ScoreNumberField(
                       label: '解答题 / 题',
                       value: _subjectiveScore,
-                      onChanged: (v) =>
-                          setState(() => _subjectiveScore = v),
+                      onChanged: (v) => setState(() => _subjectiveScore = v),
                     ),
                     const Divider(height: 32),
                     // v2.7.1 按章节/知识点出题
@@ -7824,8 +8728,7 @@ class _PaperPageState extends State<PaperPage> {
                       label: '出题章节范围',
                       hint: '如：第1-3章 / 第2章第3节',
                       initialValue: _chapterRange,
-                      onChanged: (v) =>
-                          setState(() => _chapterRange = v),
+                      onChanged: (v) => setState(() => _chapterRange = v),
                     ),
                     _PaperTextField(
                       label: '选择题 知识点',
@@ -7866,7 +8769,11 @@ class _PaperPageState extends State<PaperPage> {
                         children: [
                           Row(
                             children: [
-                              Icon(Icons.tune, size: 16, color: Color(0xFFD97706)),
+                              Icon(
+                                Icons.tune,
+                                size: 16,
+                                color: Color(0xFFD97706),
+                              ),
                               SizedBox(width: 6),
                               Text(
                                 '每题知识点细化（可选）',
@@ -7909,7 +8816,11 @@ class _PaperPageState extends State<PaperPage> {
                         children: [
                           Row(
                             children: [
-                              Icon(Icons.format_list_numbered, size: 16, color: kBlue),
+                              Icon(
+                                Icons.format_list_numbered,
+                                size: 16,
+                                color: kBlue,
+                              ),
                               SizedBox(width: 6),
                               Text(
                                 '解答题小问与难度（可选）',
@@ -7935,7 +8846,8 @@ class _PaperPageState extends State<PaperPage> {
                       hint: '第1题: 3问(简单-中-难)\n第2题: 2问(中-难)\n第3题: 2问(难-难)',
                       initialValue: _subjectiveSubQuestions,
                       maxLines: 4,
-                      onChanged: (v) => setState(() => _subjectiveSubQuestions = v),
+                      onChanged: (v) =>
+                          setState(() => _subjectiveSubQuestions = v),
                     ),
                   ],
                 ),
@@ -7949,7 +8861,9 @@ class _PaperPageState extends State<PaperPage> {
           margin: const EdgeInsets.only(bottom: 10),
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
           decoration: BoxDecoration(
-            color: widget.enableRichContent ? const Color(0xFFEFF6FF) : const Color(0xFFF8FAFC),
+            color: widget.enableRichContent
+                ? const Color(0xFFEFF6FF)
+                : const Color(0xFFF8FAFC),
             borderRadius: BorderRadius.circular(14),
             border: Border.all(
               color: widget.enableRichContent ? const Color(0xFF93C5FD) : kLine,
@@ -7979,10 +8893,15 @@ class _PaperPageState extends State<PaperPage> {
                   children: [
                     const Text(
                       '启用图表/公式渲染',
-                      style: TextStyle(fontWeight: FontWeight.w900, color: kInk),
+                      style: TextStyle(
+                        fontWeight: FontWeight.w900,
+                        color: kInk,
+                      ),
                     ),
                     Text(
-                      widget.enableRichContent ? '已开启：图表题约占全卷 25%（保持在 20%-30%）' : '关闭：纯文字试卷，生成更快',
+                      widget.enableRichContent
+                          ? '已开启：图表题约占全卷 25%（保持在 20%-30%）'
+                          : '关闭：纯文字试卷，生成更快',
                       style: const TextStyle(color: kMuted, fontSize: 11),
                     ),
                   ],
@@ -8004,7 +8923,9 @@ class _PaperPageState extends State<PaperPage> {
           margin: const EdgeInsets.only(bottom: 18),
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
           decoration: BoxDecoration(
-            color: widget.enableListening ? const Color(0xFFECFDF5) : const Color(0xFFF8FAFC),
+            color: widget.enableListening
+                ? const Color(0xFFECFDF5)
+                : const Color(0xFFF8FAFC),
             borderRadius: BorderRadius.circular(14),
             border: Border.all(
               color: widget.enableListening ? const Color(0xFF86EFAC) : kLine,
@@ -8034,10 +8955,15 @@ class _PaperPageState extends State<PaperPage> {
                   children: [
                     const Text(
                       '启用音频题（英语听力）',
-                      style: TextStyle(fontWeight: FontWeight.w900, color: kInk),
+                      style: TextStyle(
+                        fontWeight: FontWeight.w900,
+                        color: kInk,
+                      ),
                     ),
                     Text(
-                      widget.enableListening ? '已开启：听力题约占全卷 25%（保持在 20%-30%）' : '关闭：纯文字题，无听力音频',
+                      widget.enableListening
+                          ? '已开启：听力题约占全卷 25%（保持在 20%-30%）'
+                          : '关闭：纯文字题，无听力音频',
                       style: const TextStyle(color: kMuted, fontSize: 11),
                     ),
                   ],
@@ -8066,8 +8992,11 @@ class _PaperPageState extends State<PaperPage> {
             ),
             child: Row(
               children: [
-                const Icon(Icons.format_list_numbered_rounded,
-                    color: Color(0xFF0D9488), size: 20),
+                const Icon(
+                  Icons.format_list_numbered_rounded,
+                  color: Color(0xFF0D9488),
+                  size: 20,
+                ),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Column(
@@ -8085,10 +9014,7 @@ class _PaperPageState extends State<PaperPage> {
                         _listeningCount == 0
                             ? '0 = 自动（按总题数约 25% 占比）'
                             : '$_listeningCount 道听力题',
-                        style: const TextStyle(
-                          color: kMuted,
-                          fontSize: 11,
-                        ),
+                        style: const TextStyle(color: kMuted, fontSize: 11),
                       ),
                     ],
                   ),
@@ -8100,10 +9026,13 @@ class _PaperPageState extends State<PaperPage> {
                       onPressed: _listeningCount <= 0
                           ? null
                           : () {
-                          HapticFeedback.selectionClick();
-                          setState(() => _listeningCount = (_listeningCount - 1).clamp(0, 30));
-                          _saveLastSelection();
-                        },
+                              HapticFeedback.selectionClick();
+                              setState(
+                                () => _listeningCount = (_listeningCount - 1)
+                                    .clamp(0, 30),
+                              );
+                              _saveLastSelection();
+                            },
                       icon: const Icon(Icons.remove_circle_outline_rounded),
                       color: const Color(0xFF0D9488),
                       iconSize: 26,
@@ -8124,10 +9053,13 @@ class _PaperPageState extends State<PaperPage> {
                       onPressed: _listeningCount >= 30
                           ? null
                           : () {
-                          HapticFeedback.selectionClick();
-                          setState(() => _listeningCount = (_listeningCount + 1).clamp(0, 30));
-                          _saveLastSelection();
-                        },
+                              HapticFeedback.selectionClick();
+                              setState(
+                                () => _listeningCount = (_listeningCount + 1)
+                                    .clamp(0, 30),
+                              );
+                              _saveLastSelection();
+                            },
                       icon: const Icon(Icons.add_circle_outline_rounded),
                       color: const Color(0xFF0D9488),
                       iconSize: 26,
@@ -8208,7 +9140,11 @@ class _PaperPageState extends State<PaperPage> {
                   const SizedBox(width: 8),
                   PopupMenuButton<String>(
                     tooltip: '清理',
-                    icon: const Icon(Icons.cleaning_services_outlined, color: kInk, size: 22),
+                    icon: const Icon(
+                      Icons.cleaning_services_outlined,
+                      color: kInk,
+                      size: 22,
+                    ),
                     itemBuilder: (_) => [
                       const PopupMenuItem(
                         value: 'batch_papers',
@@ -8283,6 +9219,7 @@ class _ChipGroup extends StatelessWidget {
   final String customHint;
   final ValueChanged<String> onSelected;
   final void Function(String preset) onPickCustom;
+
   /// 长按自定义项删除回调（仅自定义项触发）
   final void Function(String customItem)? onRemoveCustom;
 
@@ -8302,15 +9239,17 @@ class _ChipGroup extends StatelessWidget {
         spacing: 10,
         runSpacing: 10,
         children: [
-          ...allPresets.map((s) => _PresetChip(
-                label: s,
-                selected: selected == s,
-                onTap: () => onSelected(s),
-                onLongPress: customSet.contains(s) && onRemoveCustom != null
-                    ? () => onRemoveCustom!(s)
-                    : null,
-                isCustomAdded: customSet.contains(s),
-              )),
+          ...allPresets.map(
+            (s) => _PresetChip(
+              label: s,
+              selected: selected == s,
+              onTap: () => onSelected(s),
+              onLongPress: customSet.contains(s) && onRemoveCustom != null
+                  ? () => onRemoveCustom!(s)
+                  : null,
+              isCustomAdded: customSet.contains(s),
+            ),
+          ),
           _PresetChip(
             label: isCustomSelected ? selected : '自定义',
             selected: isCustomSelected,
@@ -8336,6 +9275,7 @@ class _PresetChip extends StatelessWidget {
   final bool selected;
   final VoidCallback onTap;
   final bool isCustom;
+
   /// 是否为用户已添加的自定义项（用于显示删除提示小圆点）
   final bool isCustomAdded;
   final VoidCallback? onLongPress;
@@ -8565,7 +9505,9 @@ class _PaperTextFieldState extends State<_PaperTextField> {
               hintText: widget.hint,
               isDense: true,
               contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 12, vertical: 10),
+                horizontal: 12,
+                vertical: 10,
+              ),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(10),
                 borderSide: BorderSide(color: kLine),
@@ -8645,7 +9587,9 @@ class _PaperGroupCard extends StatelessWidget {
                 ),
                 Container(
                   padding: const EdgeInsets.symmetric(
-                      horizontal: 8, vertical: 2),
+                    horizontal: 8,
+                    vertical: 2,
+                  ),
                   decoration: BoxDecoration(
                     color: const Color(0xFFEFF6FF),
                     borderRadius: BorderRadius.circular(8),
@@ -8703,8 +9647,10 @@ class _PaperListTile extends StatelessWidget {
   final VoidCallback onDownloadAudio;
 
   /// 是否含听力题
-  bool get _hasListening => paper.questions.any((q) =>
-      q.question.richContent.any((rc) => (rc['type'] ?? '') == 'listening'));
+  bool get _hasListening => paper.questions.any(
+    (q) =>
+        q.question.richContent.any((rc) => (rc['type'] ?? '') == 'listening'),
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -8719,8 +9665,11 @@ class _PaperListTile extends StatelessWidget {
               color: const Color(0xFFEFF6FF),
               borderRadius: BorderRadius.circular(12),
             ),
-            child: const Icon(Icons.description_outlined,
-                color: kBlue, size: 20),
+            child: const Icon(
+              Icons.description_outlined,
+              color: kBlue,
+              size: 20,
+            ),
           ),
           const SizedBox(width: 10),
           Expanded(
@@ -8742,7 +9691,9 @@ class _PaperListTile extends StatelessWidget {
                       const SizedBox(width: 6),
                       Container(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 6, vertical: 1),
+                          horizontal: 6,
+                          vertical: 1,
+                        ),
                         decoration: BoxDecoration(
                           color: const Color(0xFFF1F5F9),
                           borderRadius: BorderRadius.circular(4),
@@ -8775,15 +9726,13 @@ class _PaperListTile extends StatelessWidget {
           ),
           IconButton(
             tooltip: '预览',
-            icon: const Icon(Icons.visibility_outlined,
-                color: kBlue, size: 20),
+            icon: const Icon(Icons.visibility_outlined, color: kBlue, size: 20),
             onPressed: onView,
             visualDensity: VisualDensity.compact,
           ),
           IconButton(
             tooltip: '下载试卷',
-            icon: const Icon(Icons.download_outlined,
-                color: kMuted, size: 20),
+            icon: const Icon(Icons.download_outlined, color: kMuted, size: 20),
             onPressed: onDownload,
             visualDensity: VisualDensity.compact,
           ),
@@ -8796,15 +9745,17 @@ class _PaperListTile extends StatelessWidget {
           if (_hasListening)
             IconButton(
               tooltip: '下载听力音频（mp3）',
-              icon: const Icon(Icons.headphones,
-                  color: Color(0xFF7C3AED), size: 20),
+              icon: const Icon(
+                Icons.headphones,
+                color: Color(0xFF7C3AED),
+                size: 20,
+              ),
               onPressed: onDownloadAudio,
               visualDensity: VisualDensity.compact,
             ),
           IconButton(
             tooltip: '删除',
-            icon: const Icon(Icons.delete_outline,
-                color: kRed, size: 20),
+            icon: const Icon(Icons.delete_outline, color: kRed, size: 20),
             onPressed: onDelete,
             visualDensity: VisualDensity.compact,
           ),
@@ -8817,7 +9768,13 @@ class _PaperListTile extends StatelessWidget {
 // ============ 试卷预览页 ============
 
 class PaperViewer extends StatefulWidget {
-  const PaperViewer({super.key, required this.paper, this.onDownload, this.onDownloadAnswer, this.onDownloadAudio});
+  const PaperViewer({
+    super.key,
+    required this.paper,
+    this.onDownload,
+    this.onDownloadAnswer,
+    this.onDownloadAudio,
+  });
   final Paper paper;
   final VoidCallback? onDownload;
   final VoidCallback? onDownloadAnswer;
@@ -8835,11 +9792,15 @@ class _PaperViewerState extends State<PaperViewer> {
     final paper = widget.paper;
     final sections = <String, List<PaperQuestion>>{};
     for (final q in paper.questions) {
-      sections.putIfAbsent(q.section.isEmpty ? '题目' : q.section, () => []).add(q);
+      sections
+          .putIfAbsent(q.section.isEmpty ? '题目' : q.section, () => [])
+          .add(q);
     }
     final sectionKeys = sections.keys.toList();
-    final hasListening = paper.questions.any((q) =>
-        q.question.richContent.any((rc) => (rc['type'] ?? '') == 'listening'));
+    final hasListening = paper.questions.any(
+      (q) =>
+          q.question.richContent.any((rc) => (rc['type'] ?? '') == 'listening'),
+    );
 
     return Scaffold(
       backgroundColor: kBg,
@@ -8874,10 +9835,7 @@ class _PaperViewerState extends State<PaperViewer> {
                 child: ListTile(
                   leading: Icon(Icons.description_outlined),
                   title: Text('下载试卷'),
-                  subtitle: Text(
-                    '导出为 PDF 文件',
-                    style: TextStyle(fontSize: 11),
-                  ),
+                  subtitle: Text('导出为 PDF 文件', style: TextStyle(fontSize: 11)),
                   dense: true,
                   contentPadding: EdgeInsets.zero,
                 ),
@@ -8949,9 +9907,13 @@ class _PaperViewerState extends State<PaperViewer> {
                     children: [
                       _PaperMeta(label: '页数', value: '${paper.pageCount}'),
                       _PaperMeta(
-                          label: '题数', value: '${paper.questions.length}'),
+                        label: '题数',
+                        value: '${paper.questions.length}',
+                      ),
                       _PaperMeta(
-                          label: '生成', value: _dateText(paper.createdAt)),
+                        label: '生成',
+                        value: _dateText(paper.createdAt),
+                      ),
                     ],
                   ),
                   const SizedBox(height: 12),
@@ -9004,7 +9966,9 @@ class _PaperViewerState extends State<PaperViewer> {
                 Container(
                   margin: const EdgeInsets.only(bottom: 8),
                   padding: const EdgeInsets.symmetric(
-                      horizontal: 14, vertical: 10),
+                    horizontal: 14,
+                    vertical: 10,
+                  ),
                   decoration: BoxDecoration(
                     color: const Color(0xFFEFF6FF),
                     borderRadius: BorderRadius.circular(12),
@@ -9044,13 +10008,20 @@ class _PaperMeta extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     return Column(
       children: [
-        Text(label, style: const TextStyle(color: kMuted, fontSize: 12)),
+        Text(
+          label,
+          style: TextStyle(color: colors.onSurfaceVariant, fontSize: 12),
+        ),
         const SizedBox(height: 2),
         Text(
           value,
-          style: const TextStyle(fontWeight: FontWeight.w900, color: kInk),
+          style: TextStyle(
+            fontWeight: FontWeight.w900,
+            color: colors.onSurface,
+          ),
         ),
       ],
     );
@@ -9107,7 +10078,9 @@ class _PaperQuestionTile extends StatelessWidget {
                     const SizedBox(height: 4),
                     Container(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 2),
+                        horizontal: 8,
+                        vertical: 2,
+                      ),
                       decoration: BoxDecoration(
                         color: const Color(0xFFF1F5F9),
                         borderRadius: BorderRadius.circular(6),
@@ -9156,23 +10129,27 @@ class _PaperQuestionTile extends StatelessWidget {
           ),
           if (q.options.isNotEmpty) ...[
             const SizedBox(height: 10),
-            ...q.options.map((o) => Padding(
-                  padding: const EdgeInsets.only(bottom: 4),
-                  child: Text(
-                    o,
-                    style: const TextStyle(color: kInk, height: 1.5),
-                  ),
-                )),
+            ...q.options.map(
+              (o) => Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: Text(
+                  o,
+                  style: const TextStyle(color: kInk, height: 1.5),
+                ),
+              ),
+            ),
           ],
           // v2.7.3: 富内容（听力音频/图表/公式）始终随题目显示，不只在答案模式下显示
           // v2.7.4: 试卷预览中听力原文隐藏，只显示播放按钮
           if (q.richContent.isNotEmpty) ...[
             const SizedBox(height: 10),
-            ...q.richContent.map((rc) => RichContentBlock(
-                  type: rc['type'] as String? ?? '',
-                  data: (rc['data'] as Map?)?.cast<String, dynamic>() ?? const {},
-                  hideListeningText: true,
-                )),
+            ...q.richContent.map(
+              (rc) => RichContentBlock(
+                type: rc['type'] as String? ?? '',
+                data: (rc['data'] as Map?)?.cast<String, dynamic>() ?? const {},
+                hideListeningText: true,
+              ),
+            ),
           ],
           if (showAnswer) ...[
             const SizedBox(height: 10),
@@ -9205,10 +10182,7 @@ class _PaperQuestionTile extends StatelessWidget {
               children: [
                 const Text(
                   '解析：',
-                  style: TextStyle(
-                    fontWeight: FontWeight.w900,
-                    color: kMuted,
-                  ),
+                  style: TextStyle(fontWeight: FontWeight.w900, color: kMuted),
                 ),
                 Expanded(
                   child: Text(
@@ -9251,18 +10225,25 @@ class MePage extends StatefulWidget {
   final VoidCallback onCheckIn;
   final VoidCallback onOpenConfig;
   final VoidCallback onOpenFeedback;
+
   /// 一键清空全部历史记录
   final VoidCallback onClearRecords;
+
   /// 一键清空全部错题
   final VoidCallback onClearWrongs;
+
   /// 删除单条历史记录
   final void Function(PracticeRecord record) onDeleteRecord;
+
   /// 删除单条错题
   final void Function(WrongItem item) onDeleteWrong;
+
   /// 批量删除历史记录
   final void Function(List<PracticeRecord> records) onDeleteRecords;
+
   /// 批量删除错题
   final void Function(List<WrongItem> wrongs) onDeleteWrongs;
+
   /// v2.7.3: 每日练习趋势日志（date_key -> 当日做题数），独立于 records
   final Map<String, int> practiceLog;
 
@@ -9325,7 +10306,10 @@ class _MePageState extends State<MePage> {
     final records = widget.records;
     if (records.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('历史记录已经是空的'), duration: Duration(seconds: 1)),
+        const SnackBar(
+          content: Text('历史记录已经是空的'),
+          duration: Duration(seconds: 1),
+        ),
       );
       return;
     }
@@ -9343,7 +10327,10 @@ class _MePageState extends State<MePage> {
             return SafeArea(
               child: Padding(
                 padding: EdgeInsets.fromLTRB(
-                  18, 14, 18, 18 + MediaQuery.of(ctx).viewInsets.bottom,
+                  18,
+                  14,
+                  18,
+                  18 + MediaQuery.of(ctx).viewInsets.bottom,
                 ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
@@ -9351,9 +10338,13 @@ class _MePageState extends State<MePage> {
                   children: [
                     Center(
                       child: Container(
-                        width: 40, height: 4,
+                        width: 40,
+                        height: 4,
                         margin: const EdgeInsets.only(bottom: 14),
-                        decoration: BoxDecoration(color: kLine, borderRadius: BorderRadius.circular(2)),
+                        decoration: BoxDecoration(
+                          color: kLine,
+                          borderRadius: BorderRadius.circular(2),
+                        ),
                       ),
                     ),
                     Row(
@@ -9361,7 +10352,11 @@ class _MePageState extends State<MePage> {
                         const Expanded(
                           child: Text(
                             '批量删除历史记录',
-                            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: kInk),
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w900,
+                              color: kInk,
+                            ),
                           ),
                         ),
                         TextButton(
@@ -9370,13 +10365,18 @@ class _MePageState extends State<MePage> {
                               if (selected.length == records.length) {
                                 selected.clear();
                               } else {
-                                selected.addAll(List.generate(records.length, (i) => i));
+                                selected.addAll(
+                                  List.generate(records.length, (i) => i),
+                                );
                               }
                             });
                           },
                           child: Text(
                             selected.length == records.length ? '取消全选' : '全选',
-                            style: const TextStyle(color: kBlue, fontWeight: FontWeight.w800),
+                            style: const TextStyle(
+                              color: kBlue,
+                              fontWeight: FontWeight.w800,
+                            ),
                           ),
                         ),
                       ],
@@ -9414,25 +10414,34 @@ class _MePageState extends State<MePage> {
                               child: Row(
                                 children: [
                                   Icon(
-                                    checked ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded,
+                                    checked
+                                        ? Icons.check_circle_rounded
+                                        : Icons.radio_button_unchecked_rounded,
                                     color: checked ? kBlue : kMuted,
                                     size: 22,
                                   ),
                                   const SizedBox(width: 12),
                                   Expanded(
                                     child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
                                       children: [
                                         Text(
                                           r.materialName,
                                           maxLines: 1,
                                           overflow: TextOverflow.ellipsis,
-                                          style: const TextStyle(fontWeight: FontWeight.w800, color: kInk),
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.w800,
+                                            color: kInk,
+                                          ),
                                         ),
                                         const SizedBox(height: 2),
                                         Text(
                                           '${_dateText(r.createdAt)} · 正确 ${r.correct}/${r.total}',
-                                          style: const TextStyle(color: kMuted, fontSize: 11),
+                                          style: const TextStyle(
+                                            color: kMuted,
+                                            fontSize: 11,
+                                          ),
                                         ),
                                       ],
                                     ),
@@ -9461,8 +10470,14 @@ class _MePageState extends State<MePage> {
                                 ? null
                                 : () => Navigator.pop(ctx, true),
                             icon: const Icon(Icons.delete_outline, size: 18),
-                            label: Text(selected.isEmpty ? '未选择' : '删除选中 (${selected.length})'),
-                            style: FilledButton.styleFrom(backgroundColor: kRed),
+                            label: Text(
+                              selected.isEmpty
+                                  ? '未选择'
+                                  : '删除选中 (${selected.length})',
+                            ),
+                            style: FilledButton.styleFrom(
+                              backgroundColor: kRed,
+                            ),
                           ),
                         ),
                       ],
@@ -9491,7 +10506,10 @@ class _MePageState extends State<MePage> {
     final wrongs = widget.wrongs;
     if (wrongs.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('错题本已经是空的'), duration: Duration(seconds: 1)),
+        const SnackBar(
+          content: Text('错题本已经是空的'),
+          duration: Duration(seconds: 1),
+        ),
       );
       return;
     }
@@ -9509,7 +10527,10 @@ class _MePageState extends State<MePage> {
             return SafeArea(
               child: Padding(
                 padding: EdgeInsets.fromLTRB(
-                  18, 14, 18, 18 + MediaQuery.of(ctx).viewInsets.bottom,
+                  18,
+                  14,
+                  18,
+                  18 + MediaQuery.of(ctx).viewInsets.bottom,
                 ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
@@ -9517,9 +10538,13 @@ class _MePageState extends State<MePage> {
                   children: [
                     Center(
                       child: Container(
-                        width: 40, height: 4,
+                        width: 40,
+                        height: 4,
                         margin: const EdgeInsets.only(bottom: 14),
-                        decoration: BoxDecoration(color: kLine, borderRadius: BorderRadius.circular(2)),
+                        decoration: BoxDecoration(
+                          color: kLine,
+                          borderRadius: BorderRadius.circular(2),
+                        ),
                       ),
                     ),
                     Row(
@@ -9527,7 +10552,11 @@ class _MePageState extends State<MePage> {
                         const Expanded(
                           child: Text(
                             '批量删除错题',
-                            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: kInk),
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w900,
+                              color: kInk,
+                            ),
                           ),
                         ),
                         TextButton(
@@ -9536,13 +10565,18 @@ class _MePageState extends State<MePage> {
                               if (selected.length == wrongs.length) {
                                 selected.clear();
                               } else {
-                                selected.addAll(List.generate(wrongs.length, (i) => i));
+                                selected.addAll(
+                                  List.generate(wrongs.length, (i) => i),
+                                );
                               }
                             });
                           },
                           child: Text(
                             selected.length == wrongs.length ? '取消全选' : '全选',
-                            style: const TextStyle(color: kBlue, fontWeight: FontWeight.w800),
+                            style: const TextStyle(
+                              color: kBlue,
+                              fontWeight: FontWeight.w800,
+                            ),
                           ),
                         ),
                       ],
@@ -9580,32 +10614,45 @@ class _MePageState extends State<MePage> {
                               child: Row(
                                 children: [
                                   Icon(
-                                    checked ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded,
+                                    checked
+                                        ? Icons.check_circle_rounded
+                                        : Icons.radio_button_unchecked_rounded,
                                     color: checked ? kBlue : kMuted,
                                     size: 22,
                                   ),
                                   const SizedBox(width: 12),
                                   Expanded(
                                     child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
                                       children: [
                                         Text(
                                           w.materialName,
                                           maxLines: 1,
                                           overflow: TextOverflow.ellipsis,
-                                          style: const TextStyle(fontWeight: FontWeight.w800, color: kInk),
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.w800,
+                                            color: kInk,
+                                          ),
                                         ),
                                         const SizedBox(height: 2),
                                         Text(
                                           w.question.question,
                                           maxLines: 2,
                                           overflow: TextOverflow.ellipsis,
-                                          style: const TextStyle(color: kInk, fontSize: 12, height: 1.4),
+                                          style: const TextStyle(
+                                            color: kInk,
+                                            fontSize: 12,
+                                            height: 1.4,
+                                          ),
                                         ),
                                         const SizedBox(height: 2),
                                         Text(
                                           '${_dateText(w.createdAt)} · 你的答案：${w.userAnswer.isEmpty ? "（空）" : w.userAnswer}',
-                                          style: const TextStyle(color: kMuted, fontSize: 11),
+                                          style: const TextStyle(
+                                            color: kMuted,
+                                            fontSize: 11,
+                                          ),
                                         ),
                                       ],
                                     ),
@@ -9634,8 +10681,14 @@ class _MePageState extends State<MePage> {
                                 ? null
                                 : () => Navigator.pop(ctx, true),
                             icon: const Icon(Icons.delete_outline, size: 18),
-                            label: Text(selected.isEmpty ? '未选择' : '删除选中 (${selected.length})'),
-                            style: FilledButton.styleFrom(backgroundColor: kRed),
+                            label: Text(
+                              selected.isEmpty
+                                  ? '未选择'
+                                  : '删除选中 (${selected.length})',
+                            ),
+                            style: FilledButton.styleFrom(
+                              backgroundColor: kRed,
+                            ),
                           ),
                         ),
                       ],
@@ -9686,7 +10739,10 @@ class _MePageState extends State<MePage> {
         Row(
           children: [
             Expanded(
-              child: _PageTitle(title: '我的', subtitle: '学习数据、API 配置和项目信息都在这里。'),
+              child: _PageTitle(
+                title: context.l10n.mePageTitle,
+                subtitle: context.l10n.mePageSubtitle,
+              ),
             ),
             IconButton(
               tooltip: _searchMode ? '关闭检索' : '检索历史/错题',
@@ -9764,7 +10820,11 @@ class _MePageState extends State<MePage> {
               padding: const EdgeInsets.only(top: 8),
               child: Text(
                 '命中 ${filteredRecords.length} 条历史记录',
-                style: const TextStyle(color: kMuted, fontSize: 12, fontWeight: FontWeight.w700),
+                style: const TextStyle(
+                  color: kMuted,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
             ),
           const SizedBox(height: 16),
@@ -9775,7 +10835,12 @@ class _MePageState extends State<MePage> {
         const SizedBox(height: 16),
         _WeeklyTrendCard(values: weeklyValues, total: weeklyTotal),
         const SizedBox(height: 16),
-        _ConfigEntryCard(configReady: widget.configReady, onTap: widget.onOpenConfig),
+        _ConfigEntryCard(
+          configReady: widget.configReady,
+          onTap: widget.onOpenConfig,
+        ),
+        const SizedBox(height: 16),
+        const SettingsCenterCard(),
         const SizedBox(height: 16),
         _FeedbackEntryCard(onTap: widget.onOpenFeedback),
         const SizedBox(height: 16),
@@ -9879,12 +10944,13 @@ class _StatCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: colors.surface,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: kLine),
+        border: Border.all(color: colors.outlineVariant),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -9909,7 +10975,10 @@ class _StatCard extends StatelessWidget {
           ),
           Text(
             label,
-            style: const TextStyle(color: kMuted, fontWeight: FontWeight.w800),
+            style: TextStyle(
+              color: colors.onSurfaceVariant,
+              fontWeight: FontWeight.w800,
+            ),
           ),
         ],
       ),
@@ -9927,13 +10996,14 @@ class _WeeklyTrendCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final maxValue = values.isEmpty ? 1 : max(1, values.reduce(max));
     final now = DateTime.now();
+    final colors = Theme.of(context).colorScheme;
     const weekNames = ['一', '二', '三', '四', '五', '六', '日'];
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: colors.surface,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: kLine),
+        border: Border.all(color: Theme.of(context).dividerColor),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -10057,7 +11127,9 @@ class _PracticeRecordTile extends StatelessWidget {
         ? kBlue
         : (record.accuracy >= 60 ? kGreen : kRed);
     return Dismissible(
-      key: ValueKey('record_${record.createdAt.toIso8601String()}_${record.materialName}'),
+      key: ValueKey(
+        'record_${record.createdAt.toIso8601String()}_${record.materialName}',
+      ),
       direction: DismissDirection.endToStart,
       background: Container(
         alignment: Alignment.centerRight,
@@ -10234,10 +11306,7 @@ class _PracticeHistoryDetailPageState extends State<PracticeHistoryDetailPage>
             child: AnimatedBuilder(
               animation: _curve,
               builder: (context, _) {
-                return _TypeHistogram(
-                  stats: stats,
-                  progress: _curve.value,
-                );
+                return _TypeHistogram(stats: stats, progress: _curve.value);
               },
             ),
           ),
@@ -10331,13 +11400,13 @@ class _DetailHeader extends StatelessWidget {
           Row(
             children: [
               _MiniStat(label: '总题数', value: '${record.total}', color: kInk),
-              _MiniStat(
-                  label: '正确', value: '${record.correct}', color: kGreen),
+              _MiniStat(label: '正确', value: '${record.correct}', color: kGreen),
               _MiniStat(label: '错误', value: '${record.wrong}', color: kRed),
               _MiniStat(
-                  label: '正确率',
-                  value: '${record.accuracy}%',
-                  color: accent),
+                label: '正确率',
+                value: '${record.accuracy}%',
+                color: accent,
+              ),
             ],
           ),
           const SizedBox(height: 10),
@@ -10437,10 +11506,7 @@ class _ChartCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 4),
-          Text(
-            subtitle,
-            style: const TextStyle(fontSize: 12, color: kMuted),
-          ),
+          Text(subtitle, style: const TextStyle(fontSize: 12, color: kMuted)),
           const SizedBox(height: 14),
           child,
         ],
@@ -10548,13 +11614,7 @@ class _PiePainter extends CustomPainter {
     final correctPaint = Paint()
       ..color = kGreen
       ..style = PaintingStyle.fill;
-    canvas.drawArc(
-      rect,
-      -pi / 2,
-      correctRatio * 2 * pi,
-      true,
-      correctPaint,
-    );
+    canvas.drawArc(rect, -pi / 2, correctRatio * 2 * pi, true, correctPaint);
     // 中心白圆
     final innerPaint = Paint()..color = Colors.white;
     canvas.drawCircle(center, radius * 0.62, innerPaint);
@@ -10641,7 +11701,13 @@ class _TypeHistogram extends StatelessWidget {
       'true_false': '判断',
       'subjective': '主观',
     };
-    final order = ['choice', 'multi_choice', 'fill', 'true_false', 'subjective'];
+    final order = [
+      'choice',
+      'multi_choice',
+      'fill',
+      'true_false',
+      'subjective',
+    ];
     final present = order.where((t) => stats.any((s) => s.type == t)).toList();
     if (present.isEmpty) {
       return const _EmptyChart('暂无题型数据');
@@ -10653,7 +11719,10 @@ class _TypeHistogram extends StatelessWidget {
       final wrong = list.length - correct;
       return (label: typeLabels[t] ?? t, correct: correct, wrong: wrong);
     }).toList();
-    final maxVal = rows.fold<int>(1, (a, r) => a > (r.correct + r.wrong) ? a : (r.correct + r.wrong));
+    final maxVal = rows.fold<int>(
+      1,
+      (a, r) => a > (r.correct + r.wrong) ? a : (r.correct + r.wrong),
+    );
     return Column(
       children: rows.map((r) {
         final total = r.correct + r.wrong;
@@ -10707,17 +11776,17 @@ class _KnowledgeHistogram extends StatelessWidget {
       return const _EmptyChart('本次练习没有错题，继续保持！');
     }
     // 只展示出现过错题的知识点；错误次数相同时按正确次数升序稳定排序。
-    final entries = wrongMap.keys.map((kp) {
-      final wrong = wrongMap[kp] ?? 0;
-      final correct = correctMap[kp] ?? 0;
-      return MapEntry(kp, (wrong, correct));
-    }).toList()
-      ..sort((a, b) {
-        final wrongCompare = b.value.$1.compareTo(a.value.$1);
-        return wrongCompare != 0
-            ? wrongCompare
-            : a.value.$2.compareTo(b.value.$2);
-      });
+    final entries =
+        wrongMap.keys.map((kp) {
+          final wrong = wrongMap[kp] ?? 0;
+          final correct = correctMap[kp] ?? 0;
+          return MapEntry(kp, (wrong, correct));
+        }).toList()..sort((a, b) {
+          final wrongCompare = b.value.$1.compareTo(a.value.$1);
+          return wrongCompare != 0
+              ? wrongCompare
+              : a.value.$2.compareTo(b.value.$2);
+        });
     final top = entries.take(5).toList();
     final maxVal = top.fold<int>(1, (a, e) => a > e.value.$1 ? a : e.value.$1);
     return Column(
@@ -10764,7 +11833,10 @@ class _BarRow extends StatelessWidget {
       builder: (context, constraints) {
         final barMaxWidth = constraints.maxWidth;
         final correctPx = (correctWidth * barMaxWidth).clamp(0.0, barMaxWidth);
-        final wrongPx = (wrongWidth * barMaxWidth).clamp(0.0, barMaxWidth - correctPx);
+        final wrongPx = (wrongWidth * barMaxWidth).clamp(
+          0.0,
+          barMaxWidth - correctPx,
+        );
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -10848,10 +11920,7 @@ class _EmptyChart extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 18),
       alignment: Alignment.center,
-      child: Text(
-        text,
-        style: const TextStyle(fontSize: 13, color: kMuted),
-      ),
+      child: Text(text, style: const TextStyle(fontSize: 13, color: kMuted)),
     );
   }
 }
@@ -10864,15 +11933,16 @@ class _ConfigEntryCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(24),
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: colors.surface,
           borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: kLine),
+          border: Border.all(color: Theme.of(context).dividerColor),
         ),
         child: Row(
           children: [
@@ -10927,14 +11997,15 @@ class _FeedbackEntryCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     return _BouncyTap(
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: colors.surface,
           borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: kLine),
+          border: Border.all(color: Theme.of(context).dividerColor),
         ),
         child: Row(
           children: [
@@ -10984,7 +12055,6 @@ class _FeedbackEntryCard extends StatelessWidget {
 /// 用于：我的-历史记录（5）、试卷-历史试卷（5）、错题-资料分组（3）
 class _CollapsibleSection extends StatefulWidget {
   const _CollapsibleSection({
-    super.key,
     required this.itemCount,
     required this.visibleCount,
     required this.label,
@@ -11065,12 +12135,13 @@ class _AboutAppCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
+        color: colors.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: kLine),
+        border: Border.all(color: Theme.of(context).dividerColor),
       ),
       child: const Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -11106,12 +12177,13 @@ class _XpPanel extends StatelessWidget {
     final progress = profile.levelProgress / 100;
     final title = _levelTitle(profile.level);
     final remainToNext = 100 - profile.levelProgress;
+    final colors = Theme.of(context).colorScheme;
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: colors.surface,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: kLine),
+        border: Border.all(color: Theme.of(context).dividerColor),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -11449,9 +12521,7 @@ class _WrongCardDrawDialogState extends State<WrongCardDrawDialog>
                       transform: Matrix4.identity()
                         ..setEntry(3, 2, 0.0018)
                         ..rotateY(
-                          reveal <= 0.5
-                              ? reveal * pi
-                              : (reveal - 1) * pi,
+                          reveal <= 0.5 ? reveal * pi : (reveal - 1) * pi,
                         ),
                       child: _DrawCard(
                         // 始终保留卡面结构，由 3D 翻转负责遮挡和揭示。
@@ -11835,8 +12905,10 @@ class XpResultDialog extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('连续第 ${settlement.streak} 天，获得 ${settlement.finalXp} XP。',
-              style: const TextStyle(height: 1.5)),
+          Text(
+            '连续第 ${settlement.streak} 天，获得 ${settlement.finalXp} XP。',
+            style: const TextStyle(height: 1.5),
+          ),
           const SizedBox(height: 14),
           _XpLine(label: '基础经验', value: '${settlement.baseXp} XP'),
           _XpLine(label: '倍率', value: '×${settlement.multiplier}'),
@@ -11898,7 +12970,8 @@ class PracticeCompleteOverlay extends StatefulWidget {
   final bool isWrongCardChallenge;
 
   @override
-  State<PracticeCompleteOverlay> createState() => _PracticeCompleteOverlayState();
+  State<PracticeCompleteOverlay> createState() =>
+      _PracticeCompleteOverlayState();
 }
 
 class _PracticeCompleteOverlayState extends State<PracticeCompleteOverlay>
@@ -11929,9 +13002,10 @@ class _PracticeCompleteOverlayState extends State<PracticeCompleteOverlay>
     _fade = CurvedAnimation(parent: _fadeCtrl, curve: Curves.easeOut);
     _scale = CurvedAnimation(parent: _scaleCtrl, curve: Curves.elasticOut);
     final finalXp = widget.settlement.finalXp;
-    _xpCount = IntTween(begin: 0, end: finalXp).animate(
-      CurvedAnimation(parent: _xpCtrl, curve: Curves.easeOutCubic),
-    );
+    _xpCount = IntTween(
+      begin: 0,
+      end: finalXp,
+    ).animate(CurvedAnimation(parent: _xpCtrl, curve: Curves.easeOutCubic));
     _barFill = CurvedAnimation(parent: _xpCtrl, curve: Curves.easeOutCubic);
 
     // 启动动画序列
@@ -11981,9 +13055,7 @@ class _PracticeCompleteOverlayState extends State<PracticeCompleteOverlay>
   @override
   Widget build(BuildContext context) {
     final s = widget.settlement;
-    final accuracy = widget.total == 0
-        ? 0.0
-        : widget.correct / widget.total;
+    final accuracy = widget.total == 0 ? 0.0 : widget.correct / widget.total;
     final accent = accuracy >= 0.7
         ? kGreen
         : (accuracy >= 0.5 ? const Color(0xFFF97316) : kRed);
@@ -12035,10 +13107,7 @@ class _PracticeCompleteOverlayState extends State<PracticeCompleteOverlay>
           mainAxisSize: MainAxisSize.min,
           children: [
             // 顶部 emoji + 标题
-            Text(
-              _emoji(),
-              style: const TextStyle(fontSize: 56),
-            ),
+            Text(_emoji(), style: const TextStyle(fontSize: 56)),
             const SizedBox(height: 8),
             Text(
               widget.isWrongCardChallenge ? '错题抽卡完成' : '练习完成',
@@ -12052,11 +13121,7 @@ class _PracticeCompleteOverlayState extends State<PracticeCompleteOverlay>
             Text(
               _cheerText(),
               textAlign: TextAlign.center,
-              style: const TextStyle(
-                fontSize: 13,
-                color: kMuted,
-                height: 1.4,
-              ),
+              style: const TextStyle(fontSize: 13, color: kMuted, height: 1.4),
             ),
             const SizedBox(height: 18),
             // 正确率圆环
@@ -12106,7 +13171,9 @@ class _PracticeCompleteOverlayState extends State<PracticeCompleteOverlay>
             if (s.multiplier > 1) ...[
               Container(
                 padding: const EdgeInsets.symmetric(
-                    horizontal: 12, vertical: 6),
+                  horizontal: 12,
+                  vertical: 6,
+                ),
                 decoration: BoxDecoration(
                   color: const Color(0xFFF97316).withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(12),
@@ -12124,7 +13191,9 @@ class _PracticeCompleteOverlayState extends State<PracticeCompleteOverlay>
             ] else if (s.boostActivated) ...[
               Container(
                 padding: const EdgeInsets.symmetric(
-                    horizontal: 12, vertical: 6),
+                  horizontal: 12,
+                  vertical: 6,
+                ),
                 decoration: BoxDecoration(
                   color: const Color(0xFFF97316).withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(12),
@@ -12390,7 +13459,10 @@ class _ConfigPageState extends State<ConfigPage> {
     return ListView(
       padding: const EdgeInsets.all(18),
       children: [
-        _PageTitle(title: 'API 配置', subtitle: '安卓单体版直接从手机请求大模型，不需要外部后端。'),
+        _PageTitle(
+          title: context.l10n.apiPageTitle,
+          subtitle: context.l10n.apiPageSubtitle,
+        ),
         const SizedBox(height: 16),
         const Text(
           '选择服务商',
@@ -12633,8 +13705,11 @@ class _ApiGuideCardState extends State<_ApiGuideCard> {
                       children: [
                         Row(
                           children: [
-                            Icon(Icons.info_rounded,
-                                color: Color(0xFFD97706), size: 18),
+                            Icon(
+                              Icons.info_rounded,
+                              color: Color(0xFFD97706),
+                              size: 18,
+                            ),
                             SizedBox(width: 6),
                             Text(
                               '其他服务商入口',
@@ -12706,10 +13781,7 @@ class _ApiGuideCardState extends State<_ApiGuideCard> {
                   ),
                 ),
                 const SizedBox(height: 3),
-                Text(
-                  body,
-                  style: const TextStyle(color: kMuted, height: 1.55),
-                ),
+                Text(body, style: const TextStyle(color: kMuted, height: 1.55)),
               ],
             ),
           ),
@@ -12730,7 +13802,8 @@ Map<String, double> parsePdfChartData(dynamic rawData) {
     final value = rawValue is num
         ? rawValue.toDouble()
         : double.tryParse(rawValue.toString().replaceAll('%', '').trim());
-    if (label.isEmpty || label.length > 16 || value == null || value < 0) return;
+    if (label.isEmpty || label.length > 16 || value == null || value < 0)
+      return;
     result[label] = value;
   }
 
@@ -12897,10 +13970,7 @@ String formatMathForPdf(String source) {
       .replaceAll('�', '')
       .replaceAll(RegExp(r';\s*;'), ';')
       .replaceAll(RegExp(r',\s*,'), ',')
-      .replaceAllMapped(
-        RegExp(r'\s+([,;\]])'),
-        (match) => match.group(1) ?? '',
-      )
+      .replaceAllMapped(RegExp(r'\s+([,;\]])'), (match) => match.group(1) ?? '')
       .replaceAll(RegExp(r'\s+'), ' ')
       .trim();
   return text;
@@ -12945,18 +14015,27 @@ class PaperPdfService {
     const marginBottom = 50.0;
 
     // CJK 字体（华文宋体）
-    final titleFont =
-        PdfCjkStandardFont(PdfCjkFontFamily.sinoTypeSongLight, 22);
-    final subTitleFont =
-        PdfCjkStandardFont(PdfCjkFontFamily.sinoTypeSongLight, 12);
-    final sectionFont =
-        PdfCjkStandardFont(PdfCjkFontFamily.sinoTypeSongLight, 14);
-    final bodyFont =
-        PdfCjkStandardFont(PdfCjkFontFamily.sinoTypeSongLight, 11);
-    final smallFont =
-        PdfCjkStandardFont(PdfCjkFontFamily.sinoTypeSongLight, 10);
-    final bindingFont =
-        PdfCjkStandardFont(PdfCjkFontFamily.sinoTypeSongLight, 10);
+    final titleFont = PdfCjkStandardFont(
+      PdfCjkFontFamily.sinoTypeSongLight,
+      22,
+    );
+    final subTitleFont = PdfCjkStandardFont(
+      PdfCjkFontFamily.sinoTypeSongLight,
+      12,
+    );
+    final sectionFont = PdfCjkStandardFont(
+      PdfCjkFontFamily.sinoTypeSongLight,
+      14,
+    );
+    final bodyFont = PdfCjkStandardFont(PdfCjkFontFamily.sinoTypeSongLight, 11);
+    final smallFont = PdfCjkStandardFont(
+      PdfCjkFontFamily.sinoTypeSongLight,
+      10,
+    );
+    final bindingFont = PdfCjkStandardFont(
+      PdfCjkFontFamily.sinoTypeSongLight,
+      10,
+    );
 
     // 先创建第一页
     PdfPage page = doc.pages.add();
@@ -12993,7 +14072,11 @@ class PaperPdfService {
       titleFont,
       brush: PdfBrushes.black,
       bounds: Rect.fromLTWH(
-          marginLeft, y, pageWidth - marginLeft - marginRight, 30),
+        marginLeft,
+        y,
+        pageWidth - marginLeft - marginRight,
+        30,
+      ),
       format: PdfStringFormat(alignment: PdfTextAlignment.center),
     );
     y += 32;
@@ -13003,20 +14086,27 @@ class PaperPdfService {
       subTitleFont,
       brush: PdfBrushes.black,
       bounds: Rect.fromLTWH(
-          marginLeft, y, pageWidth - marginLeft - marginRight, 18),
+        marginLeft,
+        y,
+        pageWidth - marginLeft - marginRight,
+        18,
+      ),
       format: PdfStringFormat(alignment: PdfTextAlignment.center),
     );
     y += 18;
     // 满分/时间
     final totalScore = paper.totalScore;
-    final metaLine =
-        '（考试时间：${paper.pageCount * 20}分钟  满分：$totalScore 分）';
+    final metaLine = '（考试时间：${paper.pageCount * 20}分钟  满分：$totalScore 分）';
     g.drawString(
       metaLine,
       subTitleFont,
       brush: PdfBrushes.black,
       bounds: Rect.fromLTWH(
-          marginLeft, y, pageWidth - marginLeft - marginRight, 18),
+        marginLeft,
+        y,
+        pageWidth - marginLeft - marginRight,
+        18,
+      ),
       format: PdfStringFormat(alignment: PdfTextAlignment.center),
     );
     y += 24;
@@ -13026,14 +14116,19 @@ class PaperPdfService {
       bodyFont,
       brush: PdfBrushes.black,
       bounds: Rect.fromLTWH(
-          marginLeft, y, pageWidth - marginLeft - marginRight, 18),
+        marginLeft,
+        y,
+        pageWidth - marginLeft - marginRight,
+        18,
+      ),
     );
     y += 22;
     // 分割线
     g.drawLine(
-        PdfPen(PdfColor(0, 0, 0), width: 1),
-        Offset(marginLeft, y),
-        Offset(pageWidth - marginRight, y));
+      PdfPen(PdfColor(0, 0, 0), width: 1),
+      Offset(marginLeft, y),
+      Offset(pageWidth - marginRight, y),
+    );
     y += 12;
 
     // 注意提示
@@ -13043,7 +14138,11 @@ class PaperPdfService {
         smallFont,
         brush: PdfBrushes.black,
         bounds: Rect.fromLTWH(
-            marginLeft, y, pageWidth - marginLeft - marginRight, 16),
+          marginLeft,
+          y,
+          pageWidth - marginLeft - marginRight,
+          16,
+        ),
       );
       y += 22;
     }
@@ -13090,8 +14189,7 @@ class PaperPdfService {
           sectionScore += paper.scoreConfig.subjectiveScore;
         }
       }
-      final sectionTitle =
-          '$sectionName（共 ${list.length} 题，$sectionScore 分）';
+      final sectionTitle = '$sectionName（共 ${list.length} 题，$sectionScore 分）';
       g.drawString(
         sectionTitle,
         sectionFont,
@@ -13148,8 +14246,7 @@ class PaperPdfService {
               '   $opt',
               bodyFont,
               brush: PdfBrushes.black,
-              bounds: Rect.fromLTWH(
-                  marginLeft + 14, y, contentWidth - 14, 16),
+              bounds: Rect.fromLTWH(marginLeft + 14, y, contentWidth - 14, 16),
             );
             y += 16;
           }
@@ -13167,11 +14264,18 @@ class PaperPdfService {
             // v2.7.6: chart 类型直接在 PDF 中绘制图表
             if (rcType == 'chart') {
               var chartHeight = _drawChartInPdf(
-                g, doc,
-                marginLeft + 14, y,
-                contentWidth - 14, 180,
+                g,
+                doc,
+                marginLeft + 14,
+                y,
+                contentWidth - 14,
+                180,
                 rcData,
-                binding, marginTop, marginBottom, pageHeight, pageWidth,
+                binding,
+                marginTop,
+                marginBottom,
+                pageHeight,
+                pageWidth,
               );
               // 若返回 -1 且是因为空间不够，换页后重试一次
               if (chartHeight < 0 && y > marginTop + 100) {
@@ -13185,11 +14289,18 @@ class PaperPdfService {
                 );
                 y = marginTop;
                 chartHeight = _drawChartInPdf(
-                  g, doc,
-                  marginLeft + 14, y,
-                  contentWidth - 14, 180,
+                  g,
+                  doc,
+                  marginLeft + 14,
+                  y,
+                  contentWidth - 14,
+                  180,
                   rcData,
-                  binding, marginTop, marginBottom, pageHeight, pageWidth,
+                  binding,
+                  marginTop,
+                  marginBottom,
+                  pageHeight,
+                  pageWidth,
                 );
               }
               // 若仍失败（数据解析不出），降级为文字描述
@@ -13219,7 +14330,11 @@ class PaperPdfService {
                 smallFont,
                 brush: PdfBrushes.gray,
                 bounds: Rect.fromLTWH(
-                    marginLeft + 14, y, contentWidth - 14, 14),
+                  marginLeft + 14,
+                  y,
+                  contentWidth - 14,
+                  14,
+                ),
               );
               y += 14;
             }
@@ -13337,16 +14452,19 @@ class PaperPdfService {
     double pageHeight,
     double pageWidth,
   ) {
-    final rawChartType = (rcData['chart_type'] ?? 'bar').toString().toLowerCase();
-    final chartType = rawChartType.contains('折') || rawChartType.contains('line')
+    final rawChartType = (rcData['chart_type'] ?? 'bar')
+        .toString()
+        .toLowerCase();
+    final chartType =
+        rawChartType.contains('折') || rawChartType.contains('line')
         ? 'line'
         : rawChartType.contains('饼') ||
-                rawChartType.contains('扇') ||
-                rawChartType.contains('pie')
-            ? 'pie'
-            : rawChartType.contains('直方') || rawChartType.contains('histogram')
-                ? 'histogram'
-                : 'bar';
+              rawChartType.contains('扇') ||
+              rawChartType.contains('pie')
+        ? 'pie'
+        : rawChartType.contains('直方') || rawChartType.contains('histogram')
+        ? 'histogram'
+        : 'bar';
     final title = (rcData['title'] ?? '').toString();
 
     final dataMap = parsePdfChartData(rcData['data'] ?? rcData);
@@ -13359,19 +14477,23 @@ class PaperPdfService {
 
     // 配色方案（PdfColor 接受 0-255 整数）
     final colors = <PdfColor>[
-      PdfColor(0, 115, 217),   // 蓝
-      PdfColor(242, 115, 38),  // 橙
-      PdfColor(51, 178, 77),    // 绿
-      PdfColor(217, 51, 51),   // 红
-      PdfColor(128, 77, 217),  // 紫
-      PdfColor(242, 191, 26),  // 黄
+      PdfColor(0, 115, 217), // 蓝
+      PdfColor(242, 115, 38), // 橙
+      PdfColor(51, 178, 77), // 绿
+      PdfColor(217, 51, 51), // 红
+      PdfColor(128, 77, 217), // 紫
+      PdfColor(242, 191, 26), // 黄
       PdfColor(38, 166, 217), // 青
-      PdfColor(178, 77, 128),  // 粉
+      PdfColor(178, 77, 128), // 粉
     ];
-    final chartTitleFont =
-        PdfCjkStandardFont(PdfCjkFontFamily.sinoTypeSongLight, 11);
-    final chartLabelFont =
-        PdfCjkStandardFont(PdfCjkFontFamily.sinoTypeSongLight, 8);
+    final chartTitleFont = PdfCjkStandardFont(
+      PdfCjkFontFamily.sinoTypeSongLight,
+      11,
+    );
+    final chartLabelFont = PdfCjkStandardFont(
+      PdfCjkFontFamily.sinoTypeSongLight,
+      8,
+    );
 
     // 内边距：留出标题和坐标轴空间
     final chartX = x + 35;
@@ -13390,7 +14512,9 @@ class PaperPdfService {
     }
 
     final entries = dataMap.entries.toList();
-    final maxValue = entries.map((e) => e.value).reduce((a, b) => a > b ? a : b);
+    final maxValue = entries
+        .map((e) => e.value)
+        .reduce((a, b) => a > b ? a : b);
     final safeMax = maxValue == 0 ? 1.0 : maxValue;
 
     if (chartType == 'pie') {
@@ -13438,10 +14562,16 @@ class PaperPdfService {
     } else if (chartType == 'line') {
       // 折线图
       // 坐标轴
-      g.drawLine(PdfPen(PdfColor(51, 51, 51), width: 0.5),
-          Offset(chartX, chartY), Offset(chartX, chartY + chartH));
-      g.drawLine(PdfPen(PdfColor(51, 51, 51), width: 0.5),
-          Offset(chartX, chartY + chartH), Offset(chartX + chartW, chartY + chartH));
+      g.drawLine(
+        PdfPen(PdfColor(51, 51, 51), width: 0.5),
+        Offset(chartX, chartY),
+        Offset(chartX, chartY + chartH),
+      );
+      g.drawLine(
+        PdfPen(PdfColor(51, 51, 51), width: 0.5),
+        Offset(chartX, chartY + chartH),
+        Offset(chartX + chartW, chartY + chartH),
+      );
       // 数据点
       final stepX = chartW / (entries.length - 1).clamp(1, entries.length - 1);
       var prevX = chartX;
@@ -13486,10 +14616,16 @@ class PaperPdfService {
     } else {
       // 柱状图 / 直方图（统一处理）
       // 坐标轴
-      g.drawLine(PdfPen(PdfColor(51, 51, 51), width: 0.5),
-          Offset(chartX, chartY), Offset(chartX, chartY + chartH));
-      g.drawLine(PdfPen(PdfColor(51, 51, 51), width: 0.5),
-          Offset(chartX, chartY + chartH), Offset(chartX + chartW, chartY + chartH));
+      g.drawLine(
+        PdfPen(PdfColor(51, 51, 51), width: 0.5),
+        Offset(chartX, chartY),
+        Offset(chartX, chartY + chartH),
+      );
+      g.drawLine(
+        PdfPen(PdfColor(51, 51, 51), width: 0.5),
+        Offset(chartX, chartY + chartH),
+        Offset(chartX + chartW, chartY + chartH),
+      );
       // 柱子
       final barWidth = (chartW / entries.length) * 0.6;
       final barGap = (chartW / entries.length) * 0.4;
@@ -13582,12 +14718,16 @@ class PaperPdfService {
     return result.isEmpty ? [''] : result;
   }
 
-  static void _drawPageNumber(PdfGraphics g, PdfPage currentPage,
-      double pageWidth, double pageHeight, PdfPageCollection pages) {
+  static void _drawPageNumber(
+    PdfGraphics g,
+    PdfPage currentPage,
+    double pageWidth,
+    double pageHeight,
+    PdfPageCollection pages,
+  ) {
     final total = pages.count;
     final current = pages.indexOf(currentPage) + 1;
-    final font =
-        PdfCjkStandardFont(PdfCjkFontFamily.sinoTypeSongLight, 10);
+    final font = PdfCjkStandardFont(PdfCjkFontFamily.sinoTypeSongLight, 10);
     g.drawString(
       '第 $current 页 / 共 $total 页',
       font,
@@ -13613,6 +14753,7 @@ class AiService {
     required String audience,
     bool enableRichContent = false,
     bool enableListening = false,
+    String outputLanguage = '跟随资料主要语言',
   }) async {
     final typeText = types.map(_typeLabel).join('、');
     final richTarget = richContentTargetCount(count);
@@ -13634,8 +14775,8 @@ class AiService {
 
 注意：上例中 \$\$ 是 LaTeX 公式分隔符，不要解析为变量。'''
         : enableListening
-            ? '6. 本次为纯文字题目模式，**不要返回 math/physics/chemistry/chart/svg 等 rich_content**；但**英语听力题的 listening 块例外**，必须按第 8 条要求返回 listening rich_content。'
-            : '6. 本次为纯文字题目模式，不要返回 rich_content 字段或留空数组 []，避免拖长输出导致 JSON 截断。';
+        ? '6. 本次为纯文字题目模式，**不要返回 math/physics/chemistry/chart/svg 等 rich_content**；但**英语听力题的 listening 块例外**，必须按第 8 条要求返回 listening rich_content。'
+        : '6. 本次为纯文字题目模式，不要返回 rich_content 字段或留空数组 []，避免拖长输出导致 JSON 截断。';
     final chartNote = enableRichContent
         ? '\n8. **图表题配额（强制）**：总共 $count 道题中，必须恰好有 $richTarget 道题包含 type:"chart" 的 rich_content（约 25%，必须保持在 20%-30%）。chart.data 必须是与题干一致的真实数据，格式为“标签:数值,标签:数值”，至少 2 组；其余题目不得返回 chart。'
         : '\n8. 本次不开启图表题，不要返回 chart 类型。';
@@ -13646,6 +14787,7 @@ class AiService {
         ? '''
 请基于下面学习资料生成 $count 道题，目标群体：$audience。
 题型范围：$typeText。
+输出语言：$outputLanguage。除非资料需要保留原文，否则题干、选项和解析使用该语言。
 
 严格只返回 JSON，不要 Markdown，不要解释。JSON 格式如下：
 [
@@ -13676,6 +14818,7 @@ $materialText
         : '''
 请基于下面学习资料生成 $count 道题，目标群体：$audience。
 题型范围：$typeText。
+输出语言：$outputLanguage。除非资料需要保留原文，否则题干、选项和解析使用该语言。
 
 严格只返回 JSON，不要 Markdown，不要解释。JSON 格式如下：
 [
@@ -13702,14 +14845,10 @@ $listeningNote
 学习资料：
 $materialText
 ''';
-    final content = await _chat(
-      config,
-      [
-        {'role': 'system', 'content': '你是严谨的中文学习题库出题助手，只输出可解析 JSON。'},
-        {'role': 'user', 'content': prompt},
-      ],
-      maxTokens: (count * 500).clamp(4500, 12000),
-    );
+    final content = await _chat(config, [
+      {'role': 'system', 'content': '你是严谨的中文学习题库出题助手，只输出可解析 JSON。'},
+      {'role': 'user', 'content': prompt},
+    ], maxTokens: (count * 500).clamp(4500, 12000));
     final jsonText = _extractJson(content);
     final decoded = jsonDecode(jsonText);
     final list = decoded is List
@@ -13760,8 +14899,8 @@ $materialText
     final difficultyDesc = level <= 2
         ? '简单（基础概念、定义识别、直接套用公式）'
         : level <= 4
-            ? '中等（应用题、综合判断、需多步推理）'
-            : '困难（综合大题、跨知识点整合、需深度分析）';
+        ? '中等（应用题、综合判断、需多步推理）'
+        : '困难（综合大题、跨知识点整合、需深度分析）';
     // Boss 关：4 道基础 + 1 道综合大题
     final typeSpec = isBoss
         ? '前 4 道为选择题（choice），第 5 道为综合主观题（subjective，需 100-200 字论述）'
@@ -13771,7 +14910,8 @@ $materialText
         ? chapterInfo[chapter - 1].title
         : '第${chapter}章';
 
-    final prompt = '''请基于下面学习资料生成闯关 RPG 题目。
+    final prompt =
+        '''请基于下面学习资料生成闯关 RPG 题目。
 学科：$subject
 章节：$chTitle
 关卡：第 $level 关（Boss 关 = $isBoss）
@@ -13804,14 +14944,13 @@ $materialText
 学习资料：
 $materialText
 ''';
-    final content = await _chat(
-      config,
-      [
-        {'role': 'system', 'content': '你是严谨的中文学习题库出题助手，专长是按难度梯度生成闯关题目，只输出可解析 JSON。'},
-        {'role': 'user', 'content': prompt},
-      ],
-      maxTokens: isBoss ? 8000 : 5000,
-    );
+    final content = await _chat(config, [
+      {
+        'role': 'system',
+        'content': '你是严谨的中文学习题库出题助手，专长是按难度梯度生成闯关题目，只输出可解析 JSON。',
+      },
+      {'role': 'user', 'content': prompt},
+    ], maxTokens: isBoss ? 8000 : 5000);
     final jsonText = _extractJson(content);
     final decoded = jsonDecode(jsonText);
     final list = decoded is List
@@ -13827,7 +14966,7 @@ $materialText
   }
 
   /// v2.9.0: 生成 Mini-Game 闯关题目
-  /// 根据学科和关卡自动选择 mini-game 类型组合，每关固定 5 个 mini-game
+  /// 根据关卡规则选择 Mini-Game 类型组合；热身关 3 题，其余关卡 5 题。
   static Future<List<MiniGame>> generateMiniGames({
     required ApiConfig config,
     required String material,
@@ -13843,15 +14982,15 @@ $materialText
     final difficultyDesc = level <= 2
         ? '简单（基础概念、定义识别）'
         : level <= 4
-            ? '中等（应用题、综合判断）'
-            : '困难（跨知识点整合、深度分析）';
+        ? '中等（应用题、综合判断）'
+        : '困难（跨知识点整合、深度分析）';
     final chapterInfo = _rpgChaptersForSubject(subject);
     final chTitle = chapterInfo.length >= chapter
         ? chapterInfo[chapter - 1].title
         : '第${chapter}章';
 
-    // 每个关卡固定 5 个互动题，第 5 关为难度明显提升的 Boss 关。
-    const gameCount = 5;
+    final rule = ChallengeRules.forLevel(level);
+    final gameCount = rule.questionCount;
     final selectedTypes = rpgMiniGameTypesFor(
       subject: subject,
       chapter: chapter,
@@ -13859,7 +14998,8 @@ $materialText
       count: gameCount,
     );
 
-    final prompt = '''请基于下面学习资料生成闯关 RPG 的 Mini-Game 题目。
+    final prompt =
+        '''请基于下面学习资料生成闯关 RPG 的 Mini-Game 题目。
 学科：$subject
 章节：$chTitle
 关卡：第 $level 关（Boss 关 = $isBoss）
@@ -13867,19 +15007,29 @@ $materialText
 目标群体：$audience
 
 本次需要生成 $gameCount 个 Mini-Game，类型分别为：${selectedTypes.map((t) {
-      switch (t) {
-        case 'matching': return 'matching(配对匹配)';
-        case 'listening': return 'listening(听力选择)';
-        case 'flashcard': return 'flashcard(闪卡记忆)';
-        case 'reorder': return 'reorder(顺序排列)';
-        case 'tapfast': return 'tapfast(限时快选)';
-        case 'spell': return 'spell(单词拼写)';
-        case 'fillblank': return 'fillblank(填空拼图)';
-        case 'truefalse': return 'truefalse(真假快判)';
-        case 'linkup': return 'linkup(连连看)';
-        default: return t;
-      }
-    }).join('、')}
+          switch (t) {
+            case 'matching':
+              return 'matching(配对匹配)';
+            case 'listening':
+              return 'listening(听力选择)';
+            case 'flashcard':
+              return 'flashcard(闪卡记忆)';
+            case 'reorder':
+              return 'reorder(顺序排列)';
+            case 'tapfast':
+              return 'tapfast(限时快选)';
+            case 'spell':
+              return 'spell(单词拼写)';
+            case 'fillblank':
+              return 'fillblank(填空拼图)';
+            case 'truefalse':
+              return 'truefalse(真假快判)';
+            case 'linkup':
+              return 'linkup(连连看)';
+            default:
+              return t;
+          }
+        }).join('、')}
 
 严格只返回 JSON 数组，不要 Markdown，不要解释。每种类型的格式：
 
@@ -13930,25 +15080,26 @@ $materialText
 学习资料：
 $materialText
 ''';
-    final content = await _chat(
-      config,
-      [
-        {'role': 'system', 'content': '你是游戏化学习设计专家，擅长把知识点改造成有趣的 Mini-Game。只输出可解析 JSON 数组。'},
-        {'role': 'user', 'content': prompt},
-      ],
-      maxTokens: isBoss ? 8000 : 6000,
-    );
+    final content = await _chat(config, [
+      {
+        'role': 'system',
+        'content': '你是游戏化学习设计专家，擅长把知识点改造成有趣的 Mini-Game。只输出可解析 JSON 数组。',
+      },
+      {'role': 'user', 'content': prompt},
+    ], maxTokens: isBoss ? 8000 : 6000);
     final jsonText = _extractJson(content);
     final decoded = jsonDecode(jsonText);
-    final list = decoded is List
-        ? decoded
-        : decoded['games'] as List? ?? [];
+    final list = decoded is List ? decoded : decoded['games'] as List? ?? [];
     final games = list
-        .map((item) => MiniGame.fromJson(Map<String, dynamic>.from(item as Map)))
-        .where((g) =>
-            g.prompt.trim().isNotEmpty &&
-            g.type != MiniGameType.listening &&
-            selectedTypes.contains(g.type.name))
+        .map(
+          (item) => MiniGame.fromJson(Map<String, dynamic>.from(item as Map)),
+        )
+        .where(
+          (g) =>
+              g.prompt.trim().isNotEmpty &&
+              g.type != MiniGameType.listening &&
+              selectedTypes.contains(g.type.name),
+        )
         .toList();
     // 兜底：模型偶尔少返回题目时，用资料片段补齐，保证每关完整 5 题。
     if (games.length < gameCount) {
@@ -13970,7 +15121,12 @@ $materialText
   }
 
   /// v2.9.0: 兜底 mini-game 生成（AI 失败时）
-  static List<MiniGame> _generateFallbackMiniGames(String material, String subject, int level, int count) {
+  static List<MiniGame> _generateFallbackMiniGames(
+    String material,
+    String subject,
+    int level,
+    int count,
+  ) {
     final sentences = material
         .split(RegExp(r'[。.!！\n]'))
         .map((s) => s.trim())
@@ -13983,37 +15139,43 @@ $materialText
     if (sentences.length >= 4) {
       final lefts = sentences.sublist(0, 4).toList();
       final rights = lefts.reversed.toList();
-      games.add(MiniGame(
-        type: MiniGameType.matching,
-        prompt: '将左侧与右侧配对',
-        options: lefts,
-        answer: rights.join('^A'),
-        knowledgePoint: '资料要点',
-      ));
+      games.add(
+        MiniGame(
+          type: MiniGameType.matching,
+          prompt: '将左侧与右侧配对',
+          options: lefts,
+          answer: rights.join('^A'),
+          knowledgePoint: '资料要点',
+        ),
+      );
       idx = 4;
     }
     // 一个 tapfast
     if (sentences.length >= idx + 4) {
       final opts = sentences.sublist(idx, idx + 4).toList();
-      games.add(MiniGame(
-        type: MiniGameType.tapfast,
-        prompt: '快速判断以下陈述是否正确',
-        options: opts,
-        answer: '对,对,对,对',
-        knowledgePoint: '资料要点',
-      ));
+      games.add(
+        MiniGame(
+          type: MiniGameType.tapfast,
+          prompt: '快速判断以下陈述是否正确',
+          options: opts,
+          answer: '对,对,对,对',
+          knowledgePoint: '资料要点',
+        ),
+      );
     }
     // 极短资料也至少生成一个可玩的判断题，后续再补齐到 5 题。
     if (games.isEmpty) {
       final snippet = material.replaceAll(RegExp(r'\s+'), ' ').trim();
       if (snippet.isNotEmpty) {
-        games.add(MiniGame(
-          type: MiniGameType.truefalse,
-          prompt: snippet.length > 80 ? snippet.substring(0, 80) : snippet,
-          options: const [],
-          answer: '对',
-          knowledgePoint: subject == '通用' ? '资料要点' : subject,
-        ));
+        games.add(
+          MiniGame(
+            type: MiniGameType.truefalse,
+            prompt: snippet.length > 80 ? snippet.substring(0, 80) : snippet,
+            options: const [],
+            answer: '对',
+            knowledgePoint: subject == '通用' ? '资料要点' : subject,
+          ),
+        );
       }
     }
     // 补齐到 count
@@ -14086,9 +15248,13 @@ $materialText
   ) {
     if (questions.isEmpty) return;
     final targetCount = richContentTargetCount(questions.length);
-    final existingListening = questions.where((q) => q.richContent.any(
-          (rc) => (rc['type'] ?? '').toString() == 'listening',
-        )).length;
+    final existingListening = questions
+        .where(
+          (q) => q.richContent.any(
+            (rc) => (rc['type'] ?? '').toString() == 'listening',
+          ),
+        )
+        .length;
     if (existingListening >= targetCount) return;
     // 计算英文（拉丁字母）比例
     final latinCount = RegExp(r'[A-Za-z]').allMatches(material).length;
@@ -14096,8 +15262,9 @@ $materialText
     if (totalChars == 0 || latinCount / totalChars < 0.05) return;
     // v2.7.5: 放宽正则——15-300字符，至少4个连续单词的英文片段
     // 注意：用双引号 raw string，字符类里去掉 " 避免冲突
-    final englishMatches =
-        RegExp(r"[A-Za-z][A-Za-z\s,.!?\-';:()]{14,300}").allMatches(material);
+    final englishMatches = RegExp(
+      r"[A-Za-z][A-Za-z\s,.!?\-';:()]{14,300}",
+    ).allMatches(material);
     var englishSegments = englishMatches
         .map((m) => m.group(0)!.trim().replaceAll(RegExp(r'\s+'), ' '))
         .where((s) => s.split(RegExp(r'\s+')).length >= 4) // v2.7.5: 至少 4 个单词
@@ -14105,8 +15272,9 @@ $materialText
     // v2.7.5: 若资料里英文片段不够，从题目题干中再提取一次
     if (englishSegments.length < targetCount) {
       for (final q in questions) {
-        final qMatches =
-            RegExp(r"[A-Za-z][A-Za-z\s,.!?\-';:()]{14,300}").allMatches(q.question);
+        final qMatches = RegExp(
+          r"[A-Za-z][A-Za-z\s,.!?\-';:()]{14,300}",
+        ).allMatches(q.question);
         for (final m in qMatches) {
           final seg = m.group(0)!.trim().replaceAll(RegExp(r'\s+'), ' ');
           if (seg.split(RegExp(r'\s+')).length >= 4 &&
@@ -14137,10 +15305,7 @@ $materialText
         ...q.richContent,
         {
           'type': 'listening',
-          'data': {
-            'audio_text': audioText,
-            'voice': 'en-US',
-          },
+          'data': {'audio_text': audioText, 'voice': 'en-US'},
         },
       ];
       questions[i] = AiQuestion(
@@ -14152,7 +15317,9 @@ $materialText
         richContent: newRich,
       );
       applied++;
-      debugPrint('[RichContent] 听力题兜底：第 ${i + 1} 题追加 listening 块（${audioText.split(RegExp(r'\s+')).length} 词）');
+      debugPrint(
+        '[RichContent] 听力题兜底：第 ${i + 1} 题追加 listening 块（${audioText.split(RegExp(r'\s+')).length} 词）',
+      );
     }
   }
 
@@ -14173,15 +15340,18 @@ $materialText
     String knowledgePointSpec = '',
     int listeningCount = 0,
   }) async {
-    final materialText =
-        material.length > 8000 ? material.substring(0, 8000) : material;
+    final materialText = material.length > 8000
+        ? material.substring(0, 8000)
+        : material;
 
     // 选择题型分布：优先使用显式模板；否则按默认规则
-    final tpl = template ?? PaperTemplate.defaultFor(
-      subject: subject,
-      gradeLevel: gradeLevel,
-      pageCount: pageCount,
-    );
+    final tpl =
+        template ??
+        PaperTemplate.defaultFor(
+          subject: subject,
+          gradeLevel: gradeLevel,
+          pageCount: pageCount,
+        );
 
     final cs = scoreConfig.choiceScore;
     final fs = scoreConfig.fillScore;
@@ -14215,9 +15385,7 @@ $materialText
         : richTarget;
 
     // 根据开关动态构建 rich_content 字段说明
-    final richFieldBlock = allowRichContent
-        ? '''  "rich_content": []'''
-        : '';
+    final richFieldBlock = allowRichContent ? '''  "rich_content": []''' : '';
     final richDocBlock = allowRichContent
         ? '''
 【rich_content 字段说明（启用）】
@@ -14272,7 +15440,8 @@ $materialText
         ? '\n14. **各题型知识点要求**：\n${knowledgePointSpec.trim()}\n请严格按照上述知识点分配出题，每个题型的题目必须落在指定知识点范围内。'
         : '';
 
-    final prompt = '''
+    final prompt =
+        '''
 请基于下面学习资料，生成一份完整的$subject 试卷$totalLine。
 适用对象：$gradeLevel。
 试卷页数：约 $pageCount 面（共约 $totalQ 题）。
@@ -14328,25 +15497,19 @@ $materialText
     // 题/页比降到约 5（避免大模型输出超长导致 JSON 截断）
     // v2.6.3：上限从 8000 提到 12000，给 rich_content 输出留足空间
     final estTokens = (totalQ * 300).clamp(4500, 12000);
-    final content = await _chat(
-      config,
-      [
-        {
-          'role': 'system',
-          'content':
-              '你是严谨的中文试卷出题专家，熟悉国内小学/初中/高中/成年人各类考试（期末、期中、中考、高考、周测、小测、考研、考编等）的试卷格式。只输出可解析的 JSON 数组，不输出任何其他内容。',
-        },
-        {'role': 'user', 'content': prompt},
-      ],
-      maxTokens: estTokens,
-    );
+    final content = await _chat(config, [
+      {
+        'role': 'system',
+        'content':
+            '你是严谨的中文试卷出题专家，熟悉国内小学/初中/高中/成年人各类考试（期末、期中、中考、高考、周测、小测、考研、考编等）的试卷格式。只输出可解析的 JSON 数组，不输出任何其他内容。',
+      },
+      {'role': 'user', 'content': prompt},
+    ], maxTokens: estTokens);
     final jsonText = _extractJson(content);
     List<dynamic> list;
     try {
       final decoded = jsonDecode(jsonText);
-      list = decoded is List
-          ? decoded
-          : decoded['questions'] as List? ?? [];
+      list = decoded is List ? decoded : decoded['questions'] as List? ?? [];
     } catch (_) {
       // 容错：尝试修复被截断的 JSON
       list = _repairJsonArray(jsonText);
@@ -14377,20 +15540,25 @@ $materialText
     final actualListeningTarget = actualTotal == 0
         ? 0
         : (listeningCount > 0
-            ? listeningCount.clamp(actualMinTarget, actualMaxTarget)
-            : richContentTargetCount(actualTotal));
+              ? listeningCount.clamp(actualMinTarget, actualMaxTarget)
+              : richContentTargetCount(actualTotal));
     if (enableListening &&
         paperQuestions.isNotEmpty &&
         subject.contains('英语')) {
       final target = actualListeningTarget;
-      final existingListening = paperQuestions.where((p) =>
-          p.question.richContent
-              .any((rc) => (rc['type'] ?? '') == 'listening')).length;
+      final existingListening = paperQuestions
+          .where(
+            (p) => p.question.richContent.any(
+              (rc) => (rc['type'] ?? '') == 'listening',
+            ),
+          )
+          .length;
       if (existingListening < target) {
         // v2.7.5: 放宽正则——15-300字符，至少4个连续单词的英文片段
         // 注意：用双引号 raw string，字符类里去掉 " 避免冲突
-        final englishMatches =
-            RegExp(r"[A-Za-z][A-Za-z\s,.!?\-';:()]{14,300}").allMatches(materialText);
+        final englishMatches = RegExp(
+          r"[A-Za-z][A-Za-z\s,.!?\-';:()]{14,300}",
+        ).allMatches(materialText);
         var englishSegments = englishMatches
             .map((m) => m.group(0)!.trim().replaceAll(RegExp(r'\s+'), ' '))
             .where((s) => s.split(RegExp(r'\s+')).length >= 4)
@@ -14398,8 +15566,9 @@ $materialText
         // v2.7.5: 若资料里英文片段不够，从题目题干中再提取一次
         if (englishSegments.length < target) {
           for (final p in paperQuestions) {
-            final qMatches =
-                RegExp(r"[A-Za-z][A-Za-z\s,.!?\-';:()]{14,300}").allMatches(p.question.question);
+            final qMatches = RegExp(
+              r"[A-Za-z][A-Za-z\s,.!?\-';:()]{14,300}",
+            ).allMatches(p.question.question);
             for (final m in qMatches) {
               final seg = m.group(0)!.trim().replaceAll(RegExp(r'\s+'), ' ');
               if (seg.split(RegExp(r'\s+')).length >= 4 &&
@@ -14410,12 +15579,18 @@ $materialText
           }
         }
         if (englishSegments.isNotEmpty) {
-          final need = (target - existingListening).clamp(0, paperQuestions.length);
+          final need = (target - existingListening).clamp(
+            0,
+            paperQuestions.length,
+          );
           var segIdx = 0;
           var applied = 0;
           for (var i = 0; i < paperQuestions.length && applied < need; i++) {
             final p = paperQuestions[i];
-            if (p.question.richContent.any((rc) => (rc['type'] ?? '') == 'listening')) continue;
+            if (p.question.richContent.any(
+              (rc) => (rc['type'] ?? '') == 'listening',
+            ))
+              continue;
             final audioText = englishSegments[segIdx % englishSegments.length];
             segIdx++;
             final newRich = <Map<String, dynamic>>[
@@ -14440,7 +15615,9 @@ $materialText
               knowledgePoint: p.knowledgePoint,
             );
             applied++;
-            debugPrint('[RichContent] 试卷听力题兜底：第 ${i + 1} 题追加 listening 块（${audioText.split(RegExp(r'\s+')).length} 词）');
+            debugPrint(
+              '[RichContent] 试卷听力题兜底：第 ${i + 1} 题追加 listening 块（${audioText.split(RegExp(r'\s+')).length} 词）',
+            );
           }
         }
       }
@@ -14553,22 +15730,26 @@ class _SectionHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
         Text(
           title,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 21,
             fontWeight: FontWeight.w900,
-            color: kInk,
+            color: colors.onSurface,
           ),
         ),
         const SizedBox(height: 2),
         Text(
           subtitle,
-          style: const TextStyle(color: kMuted, fontWeight: FontWeight.w700),
+          style: TextStyle(
+            color: colors.onSurfaceVariant,
+            fontWeight: FontWeight.w700,
+          ),
         ),
       ],
     );
@@ -14588,6 +15769,7 @@ class _FlowStepHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -14617,8 +15799,8 @@ class _FlowStepHeader extends StatelessWidget {
             children: [
               Text(
                 title,
-                style: const TextStyle(
-                  color: kInk,
+                style: TextStyle(
+                  color: colors.onSurface,
                   fontSize: 18,
                   fontWeight: FontWeight.w900,
                 ),
@@ -14626,8 +15808,8 @@ class _FlowStepHeader extends StatelessWidget {
               const SizedBox(height: 3),
               Text(
                 subtitle,
-                style: const TextStyle(
-                  color: kMuted,
+                style: TextStyle(
+                  color: colors.onSurfaceVariant,
                   height: 1.35,
                   fontWeight: FontWeight.w700,
                 ),
@@ -14653,13 +15835,14 @@ class _MiniMetric extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     return Expanded(
       child: Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: const Color(0xFFF8FAFC),
+          color: colors.surfaceContainerHighest,
           borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: kLine),
+          border: Border.all(color: Theme.of(context).dividerColor),
         ),
         child: Row(
           children: [
@@ -14681,16 +15864,16 @@ class _MiniMetric extends StatelessWidget {
                     value,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontWeight: FontWeight.w900,
-                      color: kInk,
+                      color: colors.onSurface,
                     ),
                   ),
                   const SizedBox(height: 2),
                   Text(
                     label,
-                    style: const TextStyle(
-                      color: kMuted,
+                    style: TextStyle(
+                      color: colors.onSurfaceVariant,
                       fontSize: 12,
                       fontWeight: FontWeight.w700,
                     ),
@@ -14712,16 +15895,17 @@ class _TinyBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: const Color(0xFFEFF6FF),
+        color: colors.primaryContainer,
         borderRadius: BorderRadius.circular(999),
       ),
       child: Text(
         label,
-        style: const TextStyle(
-          color: kBlue,
+        style: TextStyle(
+          color: colors.onPrimaryContainer,
           fontSize: 11,
           fontWeight: FontWeight.w900,
         ),
@@ -14738,19 +15922,23 @@ class _PageTitle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           title,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 28,
             fontWeight: FontWeight.w900,
-            color: kInk,
+            color: colors.onSurface,
           ),
         ),
         const SizedBox(height: 6),
-        Text(subtitle, style: const TextStyle(color: kMuted, height: 1.5)),
+        Text(
+          subtitle,
+          style: TextStyle(color: colors.onSurfaceVariant, height: 1.5),
+        ),
       ],
     );
   }
@@ -14771,17 +15959,18 @@ class _EmptyCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(26),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: colors.surface,
         borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: kLine),
+        border: Border.all(color: Theme.of(context).dividerColor),
       ),
       child: Column(
         children: [
-          Icon(icon, color: kMuted, size: 42),
+          Icon(icon, color: colors.onSurfaceVariant, size: 42),
           const SizedBox(height: 12),
           Text(
             title,
@@ -14791,7 +15980,7 @@ class _EmptyCard extends StatelessWidget {
           Text(
             subtitle,
             textAlign: TextAlign.center,
-            style: const TextStyle(color: kMuted, height: 1.5),
+            style: TextStyle(color: colors.onSurfaceVariant, height: 1.5),
           ),
           if (action != null) ...[const SizedBox(height: 16), action!],
         ],
@@ -14955,9 +16144,10 @@ class _BouncyTapState extends State<_BouncyTap>
       duration: const Duration(milliseconds: 90),
       reverseDuration: const Duration(milliseconds: 150),
     );
-    _scale = Tween<double>(begin: 1.0, end: 0.96).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeOut),
-    );
+    _scale = Tween<double>(
+      begin: 1.0,
+      end: 0.96,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOut));
   }
 
   @override
@@ -14980,29 +16170,30 @@ class _BouncyTapState extends State<_BouncyTap>
 
   void _tap() {
     if (!widget.enabled) return;
-    HapticFeedback.selectionClick();
+    final settings = AppSettingsScope.of(context);
+    if (settings.hapticsEnabled) HapticFeedback.selectionClick();
     widget.onTap();
   }
 
   @override
   Widget build(BuildContext context) {
+    final reduceMotion = AppSettingsScope.of(context).reduceMotion;
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTapDown: _tapDown,
-      onTapUp: _tapUp,
-      onTapCancel: _tapCancel,
+      onTapDown: reduceMotion ? null : _tapDown,
+      onTapUp: reduceMotion ? null : _tapUp,
+      onTapCancel: reduceMotion ? null : _tapCancel,
       onTap: _tap,
-      child: ScaleTransition(scale: _scale, child: widget.child),
+      child: reduceMotion
+          ? widget.child
+          : ScaleTransition(scale: _scale, child: widget.child),
     );
   }
 }
 
 /// 错落淡入上移：首次构建时从下方 6% 处淡入。
 class _StaggeredAppear extends StatefulWidget {
-  const _StaggeredAppear({
-    required this.child,
-    this.delay = Duration.zero,
-  });
+  const _StaggeredAppear({required this.child, this.delay = Duration.zero});
 
   final Widget child;
   final Duration delay;
@@ -15047,6 +16238,7 @@ class _StaggeredAppearState extends State<_StaggeredAppear>
 
   @override
   Widget build(BuildContext context) {
+    if (AppSettingsScope.of(context).reduceMotion) return widget.child;
     return FadeTransition(
       opacity: _opacity,
       child: SlideTransition(position: _offset, child: widget.child),
@@ -15056,10 +16248,7 @@ class _StaggeredAppearState extends State<_StaggeredAppear>
 
 /// 数字滚动小动画：值变化时旧值向上滑出、新值从下方滑入。
 class _AnimatedValue extends StatelessWidget {
-  const _AnimatedValue({
-    required this.value,
-    required this.style,
-  });
+  const _AnimatedValue({required this.value, required this.style});
 
   final String value;
   final TextStyle style;
@@ -15078,17 +16267,21 @@ class _AnimatedValue extends StatelessWidget {
           child: SlideTransition(position: offset, child: child),
         );
       },
-      child: Text(
-        value,
-        key: ValueKey(value),
-        style: style,
-      ),
+      child: Text(value, key: ValueKey(value), style: style),
     );
   }
 }
 
 /// 等级头衔：把生硬的 Lv.N 变成有意义的称呼。
-String _levelTitle(int level) {
+String _levelTitle(int level, [Locale? locale]) {
+  if (locale?.languageCode == 'en') {
+    if (level >= 30) return 'Knowledge master';
+    if (level >= 20) return 'Senior scholar';
+    if (level >= 15) return 'Learning pro';
+    if (level >= 10) return 'Steady climber';
+    if (level >= 5) return 'Rising learner';
+    return 'Fresh start';
+  }
   if (level >= 30) return '题海宗师';
   if (level >= 20) return '资深学霸';
   if (level >= 15) return '勤学达人';
@@ -15153,15 +16346,13 @@ class _LevelUpOverlayState extends State<LevelUpOverlay>
         curve: const Interval(0.3, 0.55, curve: Curves.easeOut),
       ),
     );
-    _textOffset = Tween<Offset>(
-      begin: const Offset(0, 0.3),
-      end: Offset.zero,
-    ).animate(
-      CurvedAnimation(
-        parent: _ctrl,
-        curve: const Interval(0.3, 0.75, curve: Curves.easeOut),
-      ),
-    );
+    _textOffset = Tween<Offset>(begin: const Offset(0, 0.3), end: Offset.zero)
+        .animate(
+          CurvedAnimation(
+            parent: _ctrl,
+            curve: const Interval(0.3, 0.75, curve: Curves.easeOut),
+          ),
+        );
     _ringRotation = Tween(begin: 0.0, end: pi * 2).animate(_ctrl);
     _ctrl.forward();
     Future<void>.delayed(const Duration(milliseconds: 1750), () {
@@ -15226,8 +16417,9 @@ class _LevelUpOverlayState extends State<LevelUpOverlay>
                           ),
                           boxShadow: [
                             BoxShadow(
-                              color:
-                                  const Color(0xFFFBBF24).withValues(alpha: 0.6),
+                              color: const Color(
+                                0xFFFBBF24,
+                              ).withValues(alpha: 0.6),
                               blurRadius: 40,
                               spreadRadius: 8,
                             ),
@@ -15279,12 +16471,12 @@ class _LevelUpOverlayState extends State<LevelUpOverlay>
                           ),
                           const SizedBox(height: 14),
                           Text(
-                        '点击任意处继续',
-                        style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.5),
-                          fontSize: 12,
-                        ),
-                      ),
+                            '点击任意处继续',
+                            style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.5),
+                              fontSize: 12,
+                            ),
+                          ),
                         ],
                       ),
                     ),
@@ -15403,7 +16595,7 @@ class _QuestionsPainter extends CustomPainter {
       // x 加上左右摆动
       final sway =
           sin(progress * p.swaySpeed * 2 * pi + p.startOffset * 10) *
-              p.swayAmplitude;
+          p.swayAmplitude;
       final x = p.x * size.width + sway;
 
       // 在屏幕上方/下方淡入淡出
@@ -15425,10 +16617,8 @@ class _QuestionsPainter extends CustomPainter {
           fontWeight: FontWeight.w900,
         ),
       );
-      final tp = TextPainter(
-        text: span,
-        textDirection: TextDirection.ltr,
-      )..layout();
+      final tp = TextPainter(text: span, textDirection: TextDirection.ltr)
+        ..layout();
       canvas.save();
       canvas.translate(x, y);
       canvas.rotate(p.rotation);
@@ -15475,19 +16665,22 @@ class _SplashLoadingViewState extends State<_SplashLoadingView>
       vsync: this,
       duration: const Duration(milliseconds: 700),
     );
-    _logoScale = Tween<double>(begin: 0.4, end: 1.0).animate(
-      CurvedAnimation(parent: _logoCtrl, curve: Curves.elasticOut),
-    );
-    _logoFade = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(parent: _logoCtrl, curve: Curves.easeIn),
-    );
+    _logoScale = Tween<double>(
+      begin: 0.4,
+      end: 1.0,
+    ).animate(CurvedAnimation(parent: _logoCtrl, curve: Curves.elasticOut));
+    _logoFade = Tween<double>(
+      begin: 0.0,
+      end: 1.0,
+    ).animate(CurvedAnimation(parent: _logoCtrl, curve: Curves.easeIn));
     _titleSlide = Tween<Offset>(
       begin: const Offset(0, 0.6),
       end: Offset.zero,
     ).animate(CurvedAnimation(parent: _textCtrl, curve: Curves.easeOutCubic));
-    _titleFade = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(parent: _textCtrl, curve: Curves.easeIn),
-    );
+    _titleFade = Tween<double>(
+      begin: 0.0,
+      end: 1.0,
+    ).animate(CurvedAnimation(parent: _textCtrl, curve: Curves.easeIn));
     _logoCtrl.forward().then((_) {
       if (mounted) _textCtrl.forward();
     });
@@ -15534,9 +16727,7 @@ class _SplashLoadingViewState extends State<_SplashLoadingView>
           ),
         ),
         // 浮动问题粒子
-        const Positioned.fill(
-          child: _FloatingQuestionsBackground(),
-        ),
+        const Positioned.fill(child: _FloatingQuestionsBackground()),
         // 主体内容
         Center(
           child: Column(
@@ -15554,7 +16745,9 @@ class _SplashLoadingViewState extends State<_SplashLoadingView>
                       borderRadius: BorderRadius.circular(28),
                       boxShadow: [
                         BoxShadow(
-                          color: const Color(0xFF3B82F6).withValues(alpha: 0.32),
+                          color: const Color(
+                            0xFF3B82F6,
+                          ).withValues(alpha: 0.32),
                           blurRadius: 28,
                           spreadRadius: 4,
                           offset: const Offset(0, 8),
@@ -15605,9 +16798,7 @@ class _SplashLoadingViewState extends State<_SplashLoadingView>
                       foreground: Paint()
                         ..shader = const LinearGradient(
                           colors: [Color(0xFF3B82F6), Color(0xFF10B981)],
-                        ).createShader(
-                          Rect.fromLTWH(0, 0, 220, 40),
-                        ),
+                        ).createShader(Rect.fromLTWH(0, 0, 220, 40)),
                     ),
                   ),
                 ),
@@ -15652,7 +16843,11 @@ class _SplashLoadingViewState extends State<_SplashLoadingView>
                 child: const Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.auto_awesome, size: 14, color: Color(0xFF3B82F6)),
+                    Icon(
+                      Icons.auto_awesome,
+                      size: 14,
+                      color: Color(0xFF3B82F6),
+                    ),
                     SizedBox(width: 6),
                     Text(
                       '正在加载中…',
@@ -15843,10 +17038,8 @@ class _JudgePainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _JudgePainter old) =>
-      old.progress != progress;
+  bool shouldRepaint(covariant _JudgePainter old) => old.progress != progress;
 }
-
 
 // ============================================================
 // v2.8.0: RPG Widgets (appended from artifacts/_rpg_widgets.dart)
@@ -15875,8 +17068,7 @@ class RpgMapPage extends StatefulWidget {
   State<RpgMapPage> createState() => _RpgMapPageState();
 }
 
-class _RpgMapPageState extends State<RpgMapPage>
-    with TickerProviderStateMixin {
+class _RpgMapPageState extends State<RpgMapPage> with TickerProviderStateMixin {
   late final AnimationController _particleCtrl;
   late final AnimationController _flowCtrl;
   late final List<_Particle> _particles;
@@ -15894,13 +17086,21 @@ class _RpgMapPageState extends State<RpgMapPage>
     )..repeat();
     // 生成 12 个粒子
     final rng = Random();
-    _particles = List.generate(12, (_) => _Particle(
-      x: rng.nextDouble(),
-      y: rng.nextDouble(),
-      size: 3 + rng.nextDouble() * 4,
-      color: [const Color(0xFF60A5FA), const Color(0xFFA855F7), const Color(0xFF34D399), const Color(0xFFFBBF24)][rng.nextInt(4)],
-      speed: 0.3 + rng.nextDouble() * 0.7,
-    ));
+    _particles = List.generate(
+      12,
+      (_) => _Particle(
+        x: rng.nextDouble(),
+        y: rng.nextDouble(),
+        size: 3 + rng.nextDouble() * 4,
+        color: [
+          const Color(0xFF60A5FA),
+          const Color(0xFFA855F7),
+          const Color(0xFF34D399),
+          const Color(0xFFFBBF24),
+        ][rng.nextInt(4)],
+        speed: 0.3 + rng.nextDouble() * 0.7,
+      ),
+    );
   }
 
   @override
@@ -15943,23 +17143,27 @@ class _RpgMapPageState extends State<RpgMapPage>
                     backgroundColor: Colors.transparent,
                     elevation: 0,
                     pinned: true,
-                    title: const Text('闯关挑战', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800)),
+                    title: const Text(
+                      '闯关挑战',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
                     leading: IconButton(
-                      icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
+                      icon: const Icon(
+                        Icons.arrow_back_rounded,
+                        color: Colors.white,
+                      ),
                       onPressed: () => Navigator.of(context).maybePop(),
                     ),
                   ),
-                  SliverToBoxAdapter(
-                    child: _buildHeader(),
-                  ),
+                  SliverToBoxAdapter(child: _buildHeader()),
                   SliverList(
-                    delegate: SliverChildBuilderDelegate(
-                      (context, chIdx) {
-                        final chapter = _chapters[chIdx];
-                        return _buildChapterSection(chapter, chIdx);
-                      },
-                      childCount: _chapters.length,
-                    ),
+                    delegate: SliverChildBuilderDelegate((context, chIdx) {
+                      final chapter = _chapters[chIdx];
+                      return _buildChapterSection(chapter, chIdx);
+                    }, childCount: _chapters.length),
                   ),
                   const SliverToBoxAdapter(child: SizedBox(height: 100)),
                 ],
@@ -15987,7 +17191,10 @@ class _RpgMapPageState extends State<RpgMapPage>
           Row(
             children: [
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 4,
+                ),
                 decoration: BoxDecoration(
                   color: const Color(0xFF7C3AED).withValues(alpha: 0.2),
                   borderRadius: BorderRadius.circular(999),
@@ -15995,7 +17202,11 @@ class _RpgMapPageState extends State<RpgMapPage>
                 ),
                 child: Text(
                   widget.subject,
-                  style: const TextStyle(color: Color(0xFFC084FC), fontSize: 11, fontWeight: FontWeight.w700),
+                  style: const TextStyle(
+                    color: Color(0xFFC084FC),
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
               ),
               const SizedBox(width: 8),
@@ -16012,12 +17223,19 @@ class _RpgMapPageState extends State<RpgMapPage>
           const SizedBox(height: 10),
           const Text(
             '章节地图',
-            style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w900),
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 22,
+              fontWeight: FontWeight.w900,
+            ),
           ),
           const SizedBox(height: 4),
           Text(
             '通关解锁下一章 · Boss 关掉落徽章',
-            style: TextStyle(color: Colors.white.withValues(alpha: 0.6), fontSize: 12),
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.6),
+              fontSize: 12,
+            ),
           ),
           const SizedBox(height: 12),
           Wrap(
@@ -16027,7 +17245,10 @@ class _RpgMapPageState extends State<RpgMapPage>
               _RpgMissionChip(icon: Icons.map_rounded, label: '3 章冒险'),
               _RpgMissionChip(icon: Icons.flag_rounded, label: '每章 5 关'),
               _RpgMissionChip(icon: Icons.extension_rounded, label: '每关 5 题'),
-              _RpgMissionChip(icon: Icons.local_fire_department_rounded, label: '终关 Boss'),
+              _RpgMissionChip(
+                icon: Icons.local_fire_department_rounded,
+                label: '终关 Boss',
+              ),
             ],
           ),
         ],
@@ -16038,9 +17259,10 @@ class _RpgMapPageState extends State<RpgMapPage>
   Widget _buildChapterSection(RpgChapter chapter, int chIdx) {
     final isCurrentChapter = chIdx + 1 == widget.progress.currentChapter;
     final isLocked = chIdx + 1 > widget.progress.currentChapter;
-    final clearedLevels = List.generate(5, (index) => index + 1)
-        .where((level) => widget.progress.isCleared('${chIdx + 1}-$level'))
-        .length;
+    final clearedLevels = List.generate(
+      5,
+      (index) => index + 1,
+    ).where((level) => widget.progress.isCleared('${chIdx + 1}-$level')).length;
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       padding: const EdgeInsets.all(20),
@@ -16048,7 +17270,9 @@ class _RpgMapPageState extends State<RpgMapPage>
         color: const Color(0xFF172033),
         borderRadius: BorderRadius.circular(18),
         border: Border.all(
-          color: isCurrentChapter ? chapter.color.withValues(alpha: 0.5) : const Color(0xFF334155),
+          color: isCurrentChapter
+              ? chapter.color.withValues(alpha: 0.5)
+              : const Color(0xFF334155),
           width: isCurrentChapter ? 2 : 1,
         ),
         boxShadow: isCurrentChapter
@@ -16070,7 +17294,12 @@ class _RpgMapPageState extends State<RpgMapPage>
                 width: 44,
                 height: 44,
                 decoration: BoxDecoration(
-                  gradient: LinearGradient(colors: [chapter.color, chapter.color.withValues(alpha: 0.7)]),
+                  gradient: LinearGradient(
+                    colors: [
+                      chapter.color,
+                      chapter.color.withValues(alpha: 0.7),
+                    ],
+                  ),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Icon(chapter.icon, color: Colors.white, size: 24),
@@ -16082,23 +17311,43 @@ class _RpgMapPageState extends State<RpgMapPage>
                   children: [
                     Text(
                       chapter.title,
-                      style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w800),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                      ),
                     ),
                     const SizedBox(height: 2),
                     Row(
                       children: [
                         Flexible(
-                          child: Text(chapter.subtitle, style: const TextStyle(color: Colors.white54, fontSize: 11), overflow: TextOverflow.ellipsis),
+                          child: Text(
+                            chapter.subtitle,
+                            style: const TextStyle(
+                              color: Colors.white54,
+                              fontSize: 11,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
                         const SizedBox(width: 8),
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 1,
+                          ),
                           decoration: BoxDecoration(
                             color: chapter.difficulty == '简单'
-                                ? const Color(0xFF10B981).withValues(alpha: 0.15)
+                                ? const Color(
+                                    0xFF10B981,
+                                  ).withValues(alpha: 0.15)
                                 : chapter.difficulty == '中等'
-                                    ? const Color(0xFFF59E0B).withValues(alpha: 0.15)
-                                    : const Color(0xFFEF4444).withValues(alpha: 0.15),
+                                ? const Color(
+                                    0xFFF59E0B,
+                                  ).withValues(alpha: 0.15)
+                                : const Color(
+                                    0xFFEF4444,
+                                  ).withValues(alpha: 0.15),
                             borderRadius: BorderRadius.circular(4),
                           ),
                           child: Text(
@@ -16107,8 +17356,8 @@ class _RpgMapPageState extends State<RpgMapPage>
                               color: chapter.difficulty == '简单'
                                   ? const Color(0xFF34D399)
                                   : chapter.difficulty == '中等'
-                                      ? const Color(0xFFFBBF24)
-                                      : const Color(0xFFF87171),
+                                  ? const Color(0xFFFBBF24)
+                                  : const Color(0xFFF87171),
                               fontSize: 10,
                               fontWeight: FontWeight.w700,
                             ),
@@ -16124,7 +17373,9 @@ class _RpgMapPageState extends State<RpgMapPage>
                 decoration: BoxDecoration(
                   color: chapter.color.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(999),
-                  border: Border.all(color: chapter.color.withValues(alpha: 0.3)),
+                  border: Border.all(
+                    color: chapter.color.withValues(alpha: 0.3),
+                  ),
                 ),
                 child: Text(
                   '$clearedLevels/5',
@@ -16136,7 +17387,12 @@ class _RpgMapPageState extends State<RpgMapPage>
                 ),
               ),
               const SizedBox(width: 6),
-              if (isLocked) const Icon(Icons.lock_rounded, color: Color(0xFF64748B), size: 22),
+              if (isLocked)
+                const Icon(
+                  Icons.lock_rounded,
+                  color: Color(0xFF64748B),
+                  size: 22,
+                ),
             ],
           ),
           const SizedBox(height: 16),
@@ -16155,7 +17411,10 @@ class _RpgMapPageState extends State<RpgMapPage>
                       animation: _flowCtrl,
                       builder: (context, _) {
                         return CustomPaint(
-                          painter: _FlowLinePainter(_flowCtrl.value, chapter.color),
+                          painter: _FlowLinePainter(
+                            _flowCtrl.value,
+                            chapter.color,
+                          ),
                           size: const Size(60, 4),
                         );
                       },
@@ -16175,8 +17434,12 @@ class _RpgMapPageState extends State<RpgMapPage>
                       color: chapter.color,
                       isUnlocked: widget.progress.isUnlocked(chIdx + 1, level),
                       stars: widget.progress.stars['${chIdx + 1}-$level'] ?? 0,
-                      isCurrent: isCurrentChapter && level == widget.progress.currentLevel,
-                      onTap: (widget.progress.isUnlocked(chIdx + 1, level) && !isLocked)
+                      isCurrent:
+                          isCurrentChapter &&
+                          level == widget.progress.currentLevel,
+                      onTap:
+                          (widget.progress.isUnlocked(chIdx + 1, level) &&
+                              !isLocked)
                           ? () => widget.onStartLevel(chIdx + 1, level)
                           : null,
                     );
@@ -16197,7 +17460,13 @@ class _RpgMapPageState extends State<RpgMapPage>
         color: const Color(0xFF020617),
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: const Color(0xFF1E293B)),
-        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.4), blurRadius: 16, offset: const Offset(0, 4))],
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.4),
+            blurRadius: 16,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
       child: Row(
         children: [
@@ -16205,13 +17474,19 @@ class _RpgMapPageState extends State<RpgMapPage>
             width: 40,
             height: 40,
             decoration: BoxDecoration(
-              gradient: const LinearGradient(colors: [Color(0xFF3B82F6), Color(0xFF1D4ED8)]),
+              gradient: const LinearGradient(
+                colors: [Color(0xFF3B82F6), Color(0xFF1D4ED8)],
+              ),
               borderRadius: BorderRadius.circular(11),
             ),
             child: Center(
               child: Text(
                 'Lv${widget.progress.totalRpgXp ~/ 100 + 1}',
-                style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w800),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
+                ),
               ),
             ),
           ),
@@ -16222,11 +17497,21 @@ class _RpgMapPageState extends State<RpgMapPage>
               children: [
                 Row(
                   children: [
-                    const Text('闯关者', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w800)),
+                    const Text(
+                      '闯关者',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
                     const SizedBox(width: 6),
                     Text(
                       '${widget.progress.unlockedBadges.length}/${_kRpgBadges.length} 徽章',
-                      style: const TextStyle(color: Colors.white54, fontSize: 10),
+                      style: const TextStyle(
+                        color: Colors.white54,
+                        fontSize: 10,
+                      ),
                     ),
                   ],
                 ),
@@ -16237,7 +17522,9 @@ class _RpgMapPageState extends State<RpgMapPage>
                   child: LinearProgressIndicator(
                     value: (widget.progress.totalRpgXp % 100) / 100,
                     backgroundColor: const Color(0xFF1E293B),
-                    valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF3B82F6)),
+                    valueColor: const AlwaysStoppedAnimation<Color>(
+                      Color(0xFF3B82F6),
+                    ),
                     minHeight: 5,
                   ),
                 ),
@@ -16303,7 +17590,13 @@ class _RpgMissionChip extends StatelessWidget {
 }
 
 class _Particle {
-  const _Particle({required this.x, required this.y, required this.size, required this.color, required this.speed});
+  const _Particle({
+    required this.x,
+    required this.y,
+    required this.size,
+    required this.color,
+    required this.speed,
+  });
   final double x;
   final double y;
   final double size;
@@ -16324,7 +17617,11 @@ class _ParticlePainter extends CustomPainter {
       final paint = Paint()
         ..color = p.color.withValues(alpha: opacity)
         ..style = PaintingStyle.fill;
-      canvas.drawCircle(Offset(p.x * size.width, dy * size.height), p.size, paint);
+      canvas.drawCircle(
+        Offset(p.x * size.width, dy * size.height),
+        p.size,
+        paint,
+      );
     }
   }
 
@@ -16348,13 +17645,18 @@ class _FlowLinePainter extends CustomPainter {
     final dashSpace = 4.0;
     var dx = -((progress * (dashWidth + dashSpace)) % (dashWidth + dashSpace));
     while (dx < size.width) {
-      canvas.drawLine(Offset(dx, size.height / 2), Offset(dx + dashWidth, size.height / 2), paint);
+      canvas.drawLine(
+        Offset(dx, size.height / 2),
+        Offset(dx + dashWidth, size.height / 2),
+        paint,
+      );
       dx += dashWidth + dashSpace;
     }
   }
 
   @override
-  bool shouldRepaint(covariant _FlowLinePainter old) => old.progress != progress;
+  bool shouldRepaint(covariant _FlowLinePainter old) =>
+      old.progress != progress;
 }
 
 /// 关卡节点
@@ -16381,18 +17683,23 @@ class _LevelNode extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final rule = ChallengeRules.forLevel(level);
     return _BouncyTap(
       onTap: onTap ?? () {},
       enabled: onTap != null,
       child: SizedBox(
-        width: 50,
+        width: 72,
         child: Column(
           children: [
             // 节点圆/菱形
             _buildShape(),
             const SizedBox(height: 3),
             Text(
-              isBoss ? 'BOSS' : '第$level关',
+              isBoss
+                  ? 'BOSS · ${rule.title(Localizations.localeOf(context))}'
+                  : rule.title(Localizations.localeOf(context)),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
               style: TextStyle(
                 color: isUnlocked ? Colors.white70 : const Color(0xFF64748B),
                 fontSize: 9,
@@ -16409,7 +17716,9 @@ class _LevelNode extends StatelessWidget {
                   child: Icon(
                     Icons.star_rounded,
                     size: 10,
-                    color: i < stars ? const Color(0xFFFBBF24) : const Color(0xFF334155),
+                    color: i < stars
+                        ? const Color(0xFFFBBF24)
+                        : const Color(0xFF334155),
                   ),
                 );
               }),
@@ -16431,7 +17740,11 @@ class _LevelNode extends StatelessWidget {
           borderRadius: isBoss ? null : BorderRadius.circular(20),
           shape: isBoss ? BoxShape.rectangle : BoxShape.circle,
         ),
-        child: const Icon(Icons.lock_rounded, color: Color(0xFF64748B), size: 18),
+        child: const Icon(
+          Icons.lock_rounded,
+          color: Color(0xFF64748B),
+          size: 18,
+        ),
       );
     }
     // 解锁状态
@@ -16453,7 +17766,12 @@ class _LevelNode extends StatelessWidget {
 }
 
 class _NormalNode extends StatefulWidget {
-  const _NormalNode({required this.color, required this.level, required this.isCurrent, required this.isCleared});
+  const _NormalNode({
+    required this.color,
+    required this.level,
+    required this.isCurrent,
+    required this.isCleared,
+  });
   final Color color;
   final int level;
   final bool isCurrent;
@@ -16490,85 +17808,118 @@ class _NormalNodeState extends State<_NormalNode>
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      width: 40,
-      height: 40,
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          // 当前节点：脉冲扩散圈
-          if (widget.isCurrent)
-            AnimatedBuilder(
-              animation: _pulseCtrl,
-              builder: (context, child) {
-                final t = _pulseCtrl.value;
-                return Transform.scale(
-                  scale: 1 + t * 0.8,
-                  child: Opacity(
-                    opacity: (1 - t) * 0.6,
+    final reduceMotion = AppSettingsScope.of(context).reduceMotion;
+    return TickerMode(
+      enabled: !reduceMotion,
+      child: SizedBox(
+        width: 40,
+        height: 40,
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            // 当前节点：脉冲扩散圈
+            if (widget.isCurrent)
+              AnimatedBuilder(
+                animation: _pulseCtrl,
+                builder: (context, child) {
+                  final t = _pulseCtrl.value;
+                  return Transform.scale(
+                    scale: 1 + t * 0.8,
+                    child: Opacity(
+                      opacity: (1 - t) * 0.6,
+                      child: Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: Colors.transparent,
+                          border: Border.all(
+                            color: const Color(0xFFFBBF24),
+                            width: 2,
+                          ),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            // 已通关：金色旋转光环
+            if (widget.isCleared && !widget.isCurrent)
+              AnimatedBuilder(
+                animation: _glowCtrl,
+                builder: (context, child) {
+                  return Transform.rotate(
+                    angle: _glowCtrl.value * 6.28,
                     child: Container(
-                      width: 40,
-                      height: 40,
+                      width: 50,
+                      height: 50,
                       decoration: BoxDecoration(
-                        color: Colors.transparent,
-                        border: Border.all(color: const Color(0xFFFBBF24), width: 2),
-                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                          color: const Color(0xFFFBBF24).withValues(alpha: 0.4),
+                          width: 2,
+                        ),
+                        borderRadius: BorderRadius.circular(25),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            // 主体节点
+            AnimatedBuilder(
+              animation: _glowCtrl,
+              builder: (context, child) {
+                final glowOpacity = widget.isCleared
+                    ? 0.6 + 0.4 * _glowCtrl.value
+                    : 0.0;
+                return Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [
+                        widget.color,
+                        widget.color.withValues(alpha: 0.7),
+                      ],
+                    ),
+                    borderRadius: BorderRadius.circular(20),
+                    boxShadow: widget.isCleared
+                        ? [
+                            BoxShadow(
+                              color: widget.color.withValues(
+                                alpha: glowOpacity,
+                              ),
+                              blurRadius: 16,
+                              spreadRadius: 2,
+                            ),
+                          ]
+                        : null,
+                  ),
+                  child: Center(
+                    child: Text(
+                      '${widget.level}',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w900,
                       ),
                     ),
                   ),
                 );
               },
             ),
-          // 已通关：金色旋转光环
-          if (widget.isCleared && !widget.isCurrent)
-            AnimatedBuilder(
-              animation: _glowCtrl,
-              builder: (context, child) {
-                return Transform.rotate(
-                  angle: _glowCtrl.value * 6.28,
-                  child: Container(
-                    width: 50,
-                    height: 50,
-                    decoration: BoxDecoration(
-                      border: Border.all(color: const Color(0xFFFBBF24).withValues(alpha: 0.4), width: 2),
-                      borderRadius: BorderRadius.circular(25),
-                    ),
-                  ),
-                );
-              },
-            ),
-          // 主体节点
-          AnimatedBuilder(
-            animation: _glowCtrl,
-            builder: (context, child) {
-              final glowOpacity = widget.isCleared ? 0.6 + 0.4 * _glowCtrl.value : 0.0;
-              return Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(colors: [widget.color, widget.color.withValues(alpha: 0.7)]),
-                  borderRadius: BorderRadius.circular(20),
-                  boxShadow: widget.isCleared
-                      ? [BoxShadow(color: widget.color.withValues(alpha: glowOpacity), blurRadius: 16, spreadRadius: 2)]
-                      : null,
-                ),
-                child: Center(
-                  child: Text(
-                    '${widget.level}',
-                    style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w900),
-                  ),
-                ),
-              );
-            },
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
 }
 
 class _BossNode extends StatefulWidget {
-  const _BossNode({required this.color, required this.isCurrent, required this.isCleared});
+  const _BossNode({
+    required this.color,
+    required this.isCurrent,
+    required this.isCleared,
+  });
   final Color color;
   final bool isCurrent;
   final bool isCleared;
@@ -16598,43 +17949,56 @@ class _BossNodeState extends State<_BossNode>
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _ctrl,
-      builder: (context, child) {
-        final scale = 1 + 0.12 * _ctrl.value;
-        return Transform.scale(
-          scale: scale,
-          child: Container(
-            width: 44,
-            height: 44,
-            transform: Matrix4.identity()..rotateZ(3.14159 / 4),
-            transformAlignment: Alignment.center,
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [
-                  widget.isCleared ? const Color(0xFFEF4444) : const Color(0xFF7F1D1D),
-                  widget.isCleared ? const Color(0xFFDC2626) : const Color(0xFF991B1B),
+    final reduceMotion = AppSettingsScope.of(context).reduceMotion;
+    return TickerMode(
+      enabled: !reduceMotion,
+      child: AnimatedBuilder(
+        animation: _ctrl,
+        builder: (context, child) {
+          final scale = reduceMotion ? 1.0 : 1 + 0.12 * _ctrl.value;
+          return Transform.scale(
+            scale: scale,
+            child: Container(
+              width: 44,
+              height: 44,
+              transform: Matrix4.identity()..rotateZ(3.14159 / 4),
+              transformAlignment: Alignment.center,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    widget.isCleared
+                        ? const Color(0xFFEF4444)
+                        : const Color(0xFF7F1D1D),
+                    widget.isCleared
+                        ? const Color(0xFFDC2626)
+                        : const Color(0xFF991B1B),
+                  ],
+                ),
+                border: Border.all(
+                  color: widget.isCleared
+                      ? const Color(0xFFFBBF24)
+                      : const Color(0xFFEF4444),
+                  width: 2,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color:
+                        (widget.isCleared
+                                ? const Color(0xFFEF4444)
+                                : const Color(0xFF7F1D1D))
+                            .withValues(alpha: 0.5 + 0.4 * _ctrl.value),
+                    blurRadius: 18,
+                    spreadRadius: 2,
+                  ),
                 ],
               ),
-              border: Border.all(
-                color: widget.isCleared ? const Color(0xFFFBBF24) : const Color(0xFFEF4444),
-                width: 2,
+              child: Center(
+                child: Icon(Icons.flag_rounded, color: Colors.white, size: 20),
               ),
-              boxShadow: [
-                BoxShadow(
-                  color: (widget.isCleared ? const Color(0xFFEF4444) : const Color(0xFF7F1D1D))
-                      .withValues(alpha: 0.5 + 0.4 * _ctrl.value),
-                  blurRadius: 18,
-                  spreadRadius: 2,
-                ),
-              ],
             ),
-            child: Center(
-              child: Icon(Icons.flag_rounded, color: Colors.white, size: 20),
-            ),
-          ),
-        );
-      },
+          );
+        },
+      ),
     );
   }
 }
@@ -16658,9 +18022,19 @@ class RpgLevelIntroDialog extends StatelessWidget {
   Widget build(BuildContext context) {
     final chapters = _rpgChaptersForSubject(subject);
     final ch = chapters.length >= chapter ? chapters[chapter - 1] : null;
-    final isBoss = level == 5;
-    final diff = level <= 2 ? '简单' : level <= 4 ? '中等' : '困难';
-    final diffColor = diff == '简单' ? const Color(0xFF34D399) : diff == '中等' ? const Color(0xFFFBBF24) : const Color(0xFFF87171);
+    final rule = ChallengeRules.forLevel(level);
+    final locale = Localizations.localeOf(context);
+    final isBoss = rule.isBoss;
+    final diff = level <= 2
+        ? '简单'
+        : level <= 4
+        ? '中等'
+        : '困难';
+    final diffColor = diff == '简单'
+        ? const Color(0xFF34D399)
+        : diff == '中等'
+        ? const Color(0xFFFBBF24)
+        : const Color(0xFFF87171);
     final levelKey = '$chapter-$level';
     final oldStars = progress.stars[levelKey] ?? 0;
 
@@ -16674,7 +18048,10 @@ class RpgLevelIntroDialog extends StatelessWidget {
               end: Alignment.bottomCenter,
               colors: isBoss
                   ? [const Color(0xFF7F1D1D), const Color(0xFF0F172A)]
-                  : [ch?.color ?? const Color(0xFF1D4ED8), const Color(0xFF0F172A)],
+                  : [
+                      ch?.color ?? const Color(0xFF1D4ED8),
+                      const Color(0xFF0F172A),
+                    ],
             ),
           ),
           child: Column(
@@ -16693,7 +18070,10 @@ class RpgLevelIntroDialog extends StatelessWidget {
                     children: [
                       // 关卡编号
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 6,
+                        ),
                         decoration: BoxDecoration(
                           color: Colors.white.withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(999),
@@ -16701,7 +18081,9 @@ class RpgLevelIntroDialog extends StatelessWidget {
                         child: Text(
                           isBoss ? 'BOSS 关' : '关卡 $chapter-$level',
                           style: TextStyle(
-                            color: isBoss ? const Color(0xFFFBBF24) : Colors.white,
+                            color: isBoss
+                                ? const Color(0xFFFBBF24)
+                                : Colors.white,
                             fontSize: 13,
                             fontWeight: FontWeight.w800,
                             letterSpacing: 1,
@@ -16716,33 +18098,54 @@ class RpgLevelIntroDialog extends StatelessWidget {
                         decoration: BoxDecoration(
                           gradient: LinearGradient(
                             colors: isBoss
-                                ? [const Color(0xFFEF4444), const Color(0xFFB91C1C)]
-                                : [ch?.color ?? const Color(0xFF3B82F6), (ch?.color ?? const Color(0xFF1D4ED8)).withValues(alpha: 0.7)],
+                                ? [
+                                    const Color(0xFFEF4444),
+                                    const Color(0xFFB91C1C),
+                                  ]
+                                : [
+                                    ch?.color ?? const Color(0xFF3B82F6),
+                                    (ch?.color ?? const Color(0xFF1D4ED8))
+                                        .withValues(alpha: 0.7),
+                                  ],
                           ),
                           borderRadius: BorderRadius.circular(isBoss ? 24 : 28),
                           boxShadow: [
                             BoxShadow(
-                              color: (isBoss ? const Color(0xFFEF4444) : ch?.color ?? const Color(0xFF3B82F6)).withValues(alpha: 0.5),
+                              color:
+                                  (isBoss
+                                          ? const Color(0xFFEF4444)
+                                          : ch?.color ??
+                                                const Color(0xFF3B82F6))
+                                      .withValues(alpha: 0.5),
                               blurRadius: 30,
                               spreadRadius: 4,
                             ),
                           ],
                         ),
                         child: Icon(
-                          isBoss ? Icons.flag_rounded : Icons.play_arrow_rounded,
+                          isBoss
+                              ? Icons.flag_rounded
+                              : Icons.play_arrow_rounded,
                           color: Colors.white,
                           size: 48,
                         ),
                       ),
                       const SizedBox(height: 20),
                       Text(
-                        isBoss ? '综合大题挑战' : (ch?.title ?? '第$chapter章'),
-                        style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w900),
+                        rule.title(locale),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 22,
+                          fontWeight: FontWeight.w900,
+                        ),
                       ),
                       const SizedBox(height: 6),
                       Text(
-                        isBoss ? '4 个进阶挑战 + 1 个综合 Boss' : '5 个互动挑战',
-                        style: TextStyle(color: Colors.white.withValues(alpha: 0.7), fontSize: 13),
+                        rule.description(locale),
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.7),
+                          fontSize: 13,
+                        ),
                       ),
                       const SizedBox(height: 28),
                       // 信息卡片
@@ -16752,17 +18155,39 @@ class RpgLevelIntroDialog extends StatelessWidget {
                         decoration: BoxDecoration(
                           color: Colors.white.withValues(alpha: 0.05),
                           borderRadius: BorderRadius.circular(14),
-                          border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+                          border: Border.all(
+                            color: Colors.white.withValues(alpha: 0.1),
+                          ),
                         ),
                         child: Column(
                           children: [
                             _infoRow('难度', diff, diffColor),
                             const SizedBox(height: 8),
-                            _infoRow('玩法', '5 种互动题随机组合', Colors.white70),
+                            _infoRow(
+                              context.l10n.knowledgeShield,
+                              '${rule.shield} 格',
+                              const Color(0xFF60A5FA),
+                            ),
                             const SizedBox(height: 8),
-                            _infoRow('奖励', isBoss ? '100 RPG XP' : '30-50 RPG XP', const Color(0xFF34D399)),
+                            _infoRow(
+                              '题目',
+                              '${rule.questionCount} 个互动挑战',
+                              Colors.white70,
+                            ),
                             const SizedBox(height: 8),
-                            _infoRow('历史', oldStars > 0 ? '$oldStars 星' : '未通关', oldStars > 0 ? const Color(0xFFFBBF24) : Colors.white54),
+                            _infoRow(
+                              '奖励',
+                              isBoss ? '100 RPG XP' : '30-50 RPG XP',
+                              const Color(0xFF34D399),
+                            ),
+                            const SizedBox(height: 8),
+                            _infoRow(
+                              '历史',
+                              oldStars > 0 ? '$oldStars 星' : '未通关',
+                              oldStars > 0
+                                  ? const Color(0xFFFBBF24)
+                                  : Colors.white54,
+                            ),
                           ],
                         ),
                       ),
@@ -16772,14 +18197,27 @@ class RpgLevelIntroDialog extends StatelessWidget {
                         margin: const EdgeInsets.symmetric(horizontal: 40),
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
-                          color: const Color(0xFFFBBF24).withValues(alpha: 0.08),
+                          color: const Color(
+                            0xFFFBBF24,
+                          ).withValues(alpha: 0.08),
                           borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: const Color(0xFFFBBF24).withValues(alpha: 0.3)),
+                          border: Border.all(
+                            color: const Color(
+                              0xFFFBBF24,
+                            ).withValues(alpha: 0.3),
+                          ),
                         ),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text('三星条件', style: TextStyle(color: Color(0xFFFBBF24), fontSize: 11, fontWeight: FontWeight.w800)),
+                            const Text(
+                              '三星条件',
+                              style: TextStyle(
+                                color: Color(0xFFFBBF24),
+                                fontSize: 11,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
                             const SizedBox(height: 6),
                             _starCond('全部答对'),
                             _starCond('用时 ≤ 2 分钟'),
@@ -16798,9 +18236,13 @@ class RpgLevelIntroDialog extends StatelessWidget {
                             icon: const Icon(Icons.bolt_rounded),
                             label: Text(isBoss ? '挑战 Boss' : '开始挑战'),
                             style: FilledButton.styleFrom(
-                              backgroundColor: isBoss ? const Color(0xFFEF4444) : (ch?.color ?? const Color(0xFF3B82F6)),
+                              backgroundColor: isBoss
+                                  ? const Color(0xFFEF4444)
+                                  : (ch?.color ?? const Color(0xFF3B82F6)),
                               padding: const EdgeInsets.symmetric(vertical: 14),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
                             ),
                           ),
                         ),
@@ -16820,8 +18262,18 @@ class RpgLevelIntroDialog extends StatelessWidget {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text(label, style: const TextStyle(color: Colors.white54, fontSize: 12)),
-        Text(value, style: TextStyle(color: valueColor, fontSize: 12, fontWeight: FontWeight.w700)),
+        Text(
+          label,
+          style: const TextStyle(color: Colors.white54, fontSize: 12),
+        ),
+        Text(
+          value,
+          style: TextStyle(
+            color: valueColor,
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
       ],
     );
   }
@@ -16831,9 +18283,16 @@ class RpgLevelIntroDialog extends StatelessWidget {
       padding: const EdgeInsets.only(top: 4),
       child: Row(
         children: [
-          Icon(Icons.star_rounded, size: 12, color: const Color(0xFFFBBF24).withValues(alpha: 0.7)),
+          Icon(
+            Icons.star_rounded,
+            size: 12,
+            color: const Color(0xFFFBBF24).withValues(alpha: 0.7),
+          ),
           const SizedBox(width: 6),
-          Text(text, style: const TextStyle(color: Colors.white70, fontSize: 11)),
+          Text(
+            text,
+            style: const TextStyle(color: Colors.white70, fontSize: 11),
+          ),
         ],
       ),
     );
@@ -16852,7 +18311,8 @@ class RpgLevelCompleteOverlay extends StatefulWidget {
   final ValueChanged<RpgCompletionAction>? onAction;
 
   @override
-  State<RpgLevelCompleteOverlay> createState() => _RpgLevelCompleteOverlayState();
+  State<RpgLevelCompleteOverlay> createState() =>
+      _RpgLevelCompleteOverlayState();
 }
 
 class _RpgLevelCompleteOverlayState extends State<RpgLevelCompleteOverlay>
@@ -16881,13 +18341,26 @@ class _RpgLevelCompleteOverlayState extends State<RpgLevelCompleteOverlay>
   @override
   void initState() {
     super.initState();
-    _starCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 1800));
-    _xpCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 1200));
-    _badgeCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 2000));
-    _introCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 1800));
-    _xpAnim = IntTween(begin: 0, end: widget.result.earnedXp).animate(
-      CurvedAnimation(parent: _xpCtrl, curve: Curves.easeOut),
+    _starCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1800),
     );
+    _xpCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1200),
+    );
+    _badgeCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 2000),
+    );
+    _introCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1800),
+    );
+    _xpAnim = IntTween(
+      begin: 0,
+      end: widget.result.earnedXp,
+    ).animate(CurvedAnimation(parent: _xpCtrl, curve: Curves.easeOut));
     // v2.9.1: 确定动画类型
     final r = widget.result;
     if (r.allCleared) {
@@ -16899,9 +18372,13 @@ class _RpgLevelCompleteOverlayState extends State<RpgLevelCompleteOverlay>
     }
     _introCtrl.forward();
     _starCtrl.forward();
-    Future.delayed(const Duration(milliseconds: 600), () { if (mounted) _xpCtrl.forward(); });
+    Future.delayed(const Duration(milliseconds: 600), () {
+      if (mounted) _xpCtrl.forward();
+    });
     if (widget.result.newBadges.isNotEmpty) {
-      Future.delayed(const Duration(milliseconds: 1500), () { if (mounted) _badgeCtrl.forward(); });
+      Future.delayed(const Duration(milliseconds: 1500), () {
+        if (mounted) _badgeCtrl.forward();
+      });
     }
   }
 
@@ -16965,7 +18442,10 @@ class _RpgLevelCompleteOverlayState extends State<RpgLevelCompleteOverlay>
                     shape: BoxShape.circle,
                     color: Colors.amber.withValues(alpha: 0.4),
                     boxShadow: [
-                      BoxShadow(color: Colors.amber.withValues(alpha: glow * 0.8), blurRadius: 30),
+                      BoxShadow(
+                        color: Colors.amber.withValues(alpha: glow * 0.8),
+                        blurRadius: 30,
+                      ),
                     ],
                   ),
                 ),
@@ -16985,8 +18465,14 @@ class _RpgLevelCompleteOverlayState extends State<RpgLevelCompleteOverlay>
                     height: 45,
                     decoration: BoxDecoration(
                       color: const Color(0xFF92400E),
-                      borderRadius: const BorderRadius.only(bottomLeft: Radius.circular(8), bottomRight: Radius.circular(8)),
-                      border: Border.all(color: const Color(0xFFB45309), width: 2),
+                      borderRadius: const BorderRadius.only(
+                        bottomLeft: Radius.circular(8),
+                        bottomRight: Radius.circular(8),
+                      ),
+                      border: Border.all(
+                        color: const Color(0xFFB45309),
+                        width: 2,
+                      ),
                     ),
                   ),
                   // 箱盖
@@ -17001,7 +18487,10 @@ class _RpgLevelCompleteOverlayState extends State<RpgLevelCompleteOverlay>
                         decoration: BoxDecoration(
                           color: const Color(0xFFB45309),
                           borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: const Color(0xFFD97706), width: 2),
+                          border: Border.all(
+                            color: const Color(0xFFD97706),
+                            width: 2,
+                          ),
                         ),
                       ),
                     ),
@@ -17011,7 +18500,10 @@ class _RpgLevelCompleteOverlayState extends State<RpgLevelCompleteOverlay>
                     ...List.generate(6, (i) {
                       final angle = (i / 6) * pi * 2;
                       return Transform.translate(
-                        offset: Offset(cos(angle) * glow * 50, sin(angle) * glow * 50 - 10),
+                        offset: Offset(
+                          cos(angle) * glow * 50,
+                          sin(angle) * glow * 50 - 10,
+                        ),
                         child: Opacity(
                           opacity: glow,
                           child: Container(
@@ -17048,7 +18540,13 @@ class _RpgLevelCompleteOverlayState extends State<RpgLevelCompleteOverlay>
             if (localT <= 0) return const SizedBox.shrink();
             final expand = Curves.easeOut.transform(localT);
             final fade = 1.0 - localT;
-            final colors = [Colors.amber, Colors.red, Colors.purple, Colors.green, Colors.blue];
+            final colors = [
+              Colors.amber,
+              Colors.red,
+              Colors.purple,
+              Colors.green,
+              Colors.blue,
+            ];
             final cx = (i % 3 - 1) * 50.0;
             final cy = (i ~/ 3 - 0.5) * 40.0;
             return Transform.translate(
@@ -17068,7 +18566,9 @@ class _RpgLevelCompleteOverlayState extends State<RpgLevelCompleteOverlay>
                           decoration: BoxDecoration(
                             color: colors[i],
                             shape: BoxShape.circle,
-                            boxShadow: [BoxShadow(color: colors[i], blurRadius: 6)],
+                            boxShadow: [
+                              BoxShadow(color: colors[i], blurRadius: 6),
+                            ],
                           ),
                         ),
                       );
@@ -17120,7 +18620,11 @@ class _RpgLevelCompleteOverlayState extends State<RpgLevelCompleteOverlay>
                     gradient: LinearGradient(
                       begin: Alignment.topCenter,
                       end: Alignment.bottomCenter,
-                      colors: [Colors.amber.withValues(alpha: 0), Colors.amber, Colors.amber.withValues(alpha: 0)],
+                      colors: [
+                        Colors.amber.withValues(alpha: 0),
+                        Colors.amber,
+                        Colors.amber.withValues(alpha: 0),
+                      ],
                     ),
                   ),
                 ),
@@ -17136,8 +18640,16 @@ class _RpgLevelCompleteOverlayState extends State<RpgLevelCompleteOverlay>
                 height: 90,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  border: Border.all(color: Colors.amber.withValues(alpha: 0.5), width: 3),
-                  boxShadow: [BoxShadow(color: Colors.amber.withValues(alpha: grow * 0.5), blurRadius: 25)],
+                  border: Border.all(
+                    color: Colors.amber.withValues(alpha: 0.5),
+                    width: 3,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.amber.withValues(alpha: grow * 0.5),
+                      blurRadius: 25,
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -17145,7 +18657,11 @@ class _RpgLevelCompleteOverlayState extends State<RpgLevelCompleteOverlay>
           // 角色（用图标代替）
           Transform.scale(
             scale: grow,
-            child: const Icon(Icons.person_rounded, size: 56, color: Colors.amber),
+            child: const Icon(
+              Icons.person_rounded,
+              size: 56,
+              color: Colors.amber,
+            ),
           ),
           // 等级标记
           if (beam > 0.3)
@@ -17156,14 +18672,21 @@ class _RpgLevelCompleteOverlayState extends State<RpgLevelCompleteOverlay>
                 child: Transform.scale(
                   scale: 1 + ((beam - 0.3) / 0.7) * 0.3,
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 2,
+                    ),
                     decoration: BoxDecoration(
                       color: Colors.amber,
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: const Text(
                       'LV UP!',
-                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.w900, color: Colors.white),
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w900,
+                        color: Colors.white,
+                      ),
                     ),
                   ),
                 ),
@@ -17184,154 +18707,308 @@ class _RpgLevelCompleteOverlayState extends State<RpgLevelCompleteOverlay>
           decoration: BoxDecoration(
             gradient: RadialGradient(
               center: Alignment.center,
-              colors: [const Color(0xFF1E3A8A).withValues(alpha: 0.4), Colors.transparent],
-            ),
-          ),
-          child: Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // v2.9.1: 混合通关动画（宝箱/烟花/角色升级）
-                _buildIntroAnimation(),
-                const SizedBox(height: 12),
-                // 标题
-                Text(
-                  r.stars > 0 ? '通关！' : '挑战失败',
-                  style: TextStyle(
-                    color: r.stars > 0 ? Colors.white : const Color(0xFFEF4444),
-                    fontSize: 28,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  '${r.chapter}-${r.level} ${r.stars > 0 ? '已通关' : '再接再厉'}',
-                  style: const TextStyle(color: Colors.white54, fontSize: 13),
-                ),
-                const SizedBox(height: 28),
-                // 三星
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: List.generate(3, (i) {
-                    return Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 10),
-                      child: AnimatedStar(
-                        controller: _starCtrl,
-                        delay: i * 0.3,
-                        earned: i < r.stars,
-                      ),
-                    );
-                  }),
-                ),
-                const SizedBox(height: 32),
-                // XP 计数
-                AnimatedBuilder(
-                  animation: _xpCtrl,
-                  builder: (context, _) {
-                    return Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const Icon(Icons.flash_on_rounded, color: Color(0xFF34D399), size: 22),
-                        const SizedBox(width: 6),
-                        Text(
-                          '+${_xpAnim.value} XP',
-                          style: const TextStyle(
-                            color: Color(0xFF34D399),
-                            fontSize: 24,
-                            fontWeight: FontWeight.w900,
-                          ),
-                        ),
-                      ],
-                    );
-                  },
-                ),
-                const SizedBox(height: 28),
-                // 新徽章解锁
-                if (r.newBadges.isNotEmpty)
-                  AnimatedBuilder(
-                    animation: _badgeCtrl,
-                    builder: (context, _) {
-                      return Transform.scale(
-                        scale: _badgeCtrl.value,
-                        child: Opacity(
-                          opacity: _badgeCtrl.value,
-                          child: Column(
-                            children: r.newBadges.map((b) {
-                              return Container(
-                                margin: const EdgeInsets.only(bottom: 10),
-                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                                decoration: BoxDecoration(
-                                  gradient: LinearGradient(
-                                    colors: [b.color.withValues(alpha: 0.3), b.color.withValues(alpha: 0.1)],
-                                  ),
-                                  borderRadius: BorderRadius.circular(14),
-                                  border: Border.all(color: b.color.withValues(alpha: 0.5)),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Text(b.emoji, style: const TextStyle(fontSize: 32)),
-                                    const SizedBox(width: 12),
-                                    Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Text(b.name, style: TextStyle(color: b.color, fontSize: 14, fontWeight: FontWeight.w800)),
-                                        Text(b.desc, style: const TextStyle(color: Colors.white70, fontSize: 10)),
-                                      ],
-                                    ),
-                                  ],
-                                ),
-                              );
-                            }).toList(),
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                const SizedBox(height: 32),
-                // 按钮
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 40),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton(
-                          onPressed: _actionTaken
-                              ? null
-                              : () => _finish(RpgCompletionAction.backToMap),
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: Colors.white70,
-                            side: const BorderSide(color: Colors.white24),
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                          ),
-                          child: const Text('返回地图'),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: FilledButton(
-                          onPressed: _actionTaken
-                              ? null
-                              : () => _finish(RpgCompletionAction.next),
-                          style: FilledButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                          ),
-                          child: Text(
-                            r.stars == 0
-                                ? '重新挑战'
-                                : (r.chapterCleared ? '下一章' : '下一关'),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+              colors: [
+                const Color(0xFF1E3A8A).withValues(alpha: 0.4),
+                Colors.transparent,
               ],
             ),
           ),
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(vertical: 24),
+            child: Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // v2.9.1: 混合通关动画（宝箱/烟花/角色升级）
+                  _buildIntroAnimation(),
+                  const SizedBox(height: 12),
+                  // 标题
+                  Text(
+                    r.stars > 0
+                        ? context.l10n.challengePassed
+                        : context.l10n.roundNotPassed,
+                    style: TextStyle(
+                      color: r.stars > 0
+                          ? Colors.white
+                          : const Color(0xFFEF4444),
+                      fontSize: 28,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    '${r.chapter}-${r.level} ${r.stars > 0 ? '已通关' : '再接再厉'}',
+                    style: const TextStyle(color: Colors.white54, fontSize: 13),
+                  ),
+                  const SizedBox(height: 28),
+                  // 三星
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: List.generate(3, (i) {
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 10),
+                        child: AnimatedStar(
+                          controller: _starCtrl,
+                          delay: i * 0.3,
+                          earned: i < r.stars,
+                        ),
+                      );
+                    }),
+                  ),
+                  const SizedBox(height: 32),
+                  // XP 计数
+                  AnimatedBuilder(
+                    animation: _xpCtrl,
+                    builder: (context, _) {
+                      return Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(
+                            Icons.flash_on_rounded,
+                            color: Color(0xFF34D399),
+                            size: 22,
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            '+${_xpAnim.value} XP',
+                            style: const TextStyle(
+                              color: Color(0xFF34D399),
+                              fontSize: 24,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                  Wrap(
+                    alignment: WrapAlignment.center,
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      _ResultMetricChip(
+                        icon: Icons.speed_rounded,
+                        label: '${r.accuracy}%',
+                      ),
+                      _ResultMetricChip(
+                        icon: Icons.bolt_rounded,
+                        label: '${context.l10n.maxCombo} ${r.maxCombo}',
+                      ),
+                      _ResultMetricChip(
+                        icon: Icons.shield_rounded,
+                        label:
+                            '${context.l10n.remainingShield} ${r.remainingShield}',
+                      ),
+                    ],
+                  ),
+                  if (r.weakKnowledgePoints.isNotEmpty) ...[
+                    const SizedBox(height: 14),
+                    Container(
+                      margin: const EdgeInsets.symmetric(horizontal: 40),
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFEF4444).withValues(alpha: 0.10),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(
+                          color: const Color(
+                            0xFFEF4444,
+                          ).withValues(alpha: 0.25),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(
+                            Icons.insights_rounded,
+                            color: Color(0xFFFCA5A5),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              '${context.l10n.weakKnowledge}：${r.weakKnowledgePoints.join('、')}',
+                              style: const TextStyle(
+                                color: Colors.white70,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 22),
+                  // 新徽章解锁
+                  if (r.newBadges.isNotEmpty)
+                    AnimatedBuilder(
+                      animation: _badgeCtrl,
+                      builder: (context, _) {
+                        return Transform.scale(
+                          scale: _badgeCtrl.value,
+                          child: Opacity(
+                            opacity: _badgeCtrl.value,
+                            child: Column(
+                              children: r.newBadges.map((b) {
+                                return Container(
+                                  margin: const EdgeInsets.only(bottom: 10),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 16,
+                                    vertical: 10,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    gradient: LinearGradient(
+                                      colors: [
+                                        b.color.withValues(alpha: 0.3),
+                                        b.color.withValues(alpha: 0.1),
+                                      ],
+                                    ),
+                                    borderRadius: BorderRadius.circular(14),
+                                    border: Border.all(
+                                      color: b.color.withValues(alpha: 0.5),
+                                    ),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text(
+                                        b.emoji,
+                                        style: const TextStyle(fontSize: 32),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            b.name,
+                                            style: TextStyle(
+                                              color: b.color,
+                                              fontSize: 14,
+                                              fontWeight: FontWeight.w800,
+                                            ),
+                                          ),
+                                          Text(
+                                            b.desc,
+                                            style: const TextStyle(
+                                              color: Colors.white70,
+                                              fontSize: 10,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              }).toList(),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  const SizedBox(height: 32),
+                  // 按钮
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 40),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: _actionTaken
+                                ? null
+                                : () => _finish(RpgCompletionAction.backToMap),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: Colors.white70,
+                              side: const BorderSide(color: Colors.white24),
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                            child: Text(context.l10n.backToMap),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: FilledButton(
+                            onPressed: _actionTaken
+                                ? null
+                                : () => _finish(RpgCompletionAction.next),
+                            style: FilledButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                            child: Text(
+                              r.stars == 0
+                                  ? context.l10n.retry
+                                  : (r.chapterCleared
+                                        ? '下一章'
+                                        : context.l10n.nextLevel),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (r.weakKnowledgePoints.isNotEmpty) ...[
+                    const SizedBox(height: 10),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 40),
+                      child: SizedBox(
+                        width: double.infinity,
+                        child: TextButton.icon(
+                          onPressed: _actionTaken
+                              ? null
+                              : () => _finish(RpgCompletionAction.reviewWrongs),
+                          icon: const Icon(Icons.refresh_rounded),
+                          label: Text(context.l10n.reviewWrongs),
+                          style: TextButton.styleFrom(
+                            foregroundColor: const Color(0xFF93C5FD),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
         ),
+      ),
+    );
+  }
+}
+
+class _ResultMetricChip extends StatelessWidget {
+  const _ResultMetricChip({required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: const Color(0xFF93C5FD), size: 16),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: const TextStyle(
+              color: Colors.white70,
+              fontSize: 11,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -17387,7 +19064,6 @@ class AnimatedStar extends StatelessWidget {
   }
 }
 
-
 // ===== v2.9.0: RPG 游戏化加载页 =====
 
 class RpgLoadingView extends StatefulWidget {
@@ -17442,12 +19118,23 @@ class _RpgLoadingViewState extends State<RpgLoadingView>
   Widget build(BuildContext context) {
     final IconData subjectIcon;
     switch (widget.subject) {
-      case '数学': subjectIcon = Icons.calculate_rounded; break;
-      case '语文': subjectIcon = Icons.menu_book_rounded; break;
-      case '英语': subjectIcon = Icons.translate_rounded; break;
-      case '物理': subjectIcon = Icons.bolt_rounded; break;
-      case '化学': subjectIcon = Icons.science_rounded; break;
-      default: subjectIcon = Icons.school_rounded;
+      case '数学':
+        subjectIcon = Icons.calculate_rounded;
+        break;
+      case '语文':
+        subjectIcon = Icons.menu_book_rounded;
+        break;
+      case '英语':
+        subjectIcon = Icons.translate_rounded;
+        break;
+      case '物理':
+        subjectIcon = Icons.bolt_rounded;
+        break;
+      case '化学':
+        subjectIcon = Icons.science_rounded;
+        break;
+      default:
+        subjectIcon = Icons.school_rounded;
     }
     return Scaffold(
       body: Container(
@@ -17475,7 +19162,9 @@ class _RpgLoadingViewState extends State<RpgLoadingView>
                         color: Colors.white.withValues(alpha: 0.1),
                         boxShadow: [
                           BoxShadow(
-                            color: const Color(0xFF60A5FA).withValues(alpha: 0.4 + _pulseCtrl.value * 0.3),
+                            color: const Color(
+                              0xFF60A5FA,
+                            ).withValues(alpha: 0.4 + _pulseCtrl.value * 0.3),
                             blurRadius: 30 + _pulseCtrl.value * 20,
                             spreadRadius: 5,
                           ),
@@ -17484,7 +19173,11 @@ class _RpgLoadingViewState extends State<RpgLoadingView>
                       child: Center(
                         child: RotationTransition(
                           turns: _rotateCtrl,
-                          child: Icon(subjectIcon, size: 60, color: Colors.white),
+                          child: Icon(
+                            subjectIcon,
+                            size: 60,
+                            color: Colors.white,
+                          ),
                         ),
                       ),
                     );
@@ -17531,15 +19224,161 @@ class _RpgLoadingViewState extends State<RpgLoadingView>
   }
 }
 
+class _ChallengeComboStrip extends StatelessWidget {
+  const _ChallengeComboStrip({
+    required this.combo,
+    required this.maxCombo,
+    required this.remainingSeconds,
+  });
+
+  final int combo;
+  final int maxCombo;
+  final int? remainingSeconds;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 6),
+      child: Row(
+        children: [
+          Expanded(
+            child: _ChallengeStatusChip(
+              icon: Icons.bolt_rounded,
+              label: combo >= 5
+                  ? '知识爆发 ×$combo'
+                  : (combo >= 2 ? '连击 ×$combo' : '最高连击 $maxCombo'),
+              color: combo >= 2 ? const Color(0xFF7C3AED) : kMuted,
+            ),
+          ),
+          if (remainingSeconds != null) ...[
+            const SizedBox(width: 8),
+            _ChallengeStatusChip(
+              icon: Icons.timer_outlined,
+              label:
+                  '${remainingSeconds! ~/ 60}:${(remainingSeconds! % 60).toString().padLeft(2, '0')}',
+              color: remainingSeconds! <= 20 ? kRed : kBlue,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _ChallengeStatusChip extends StatelessWidget {
+  const _ChallengeStatusChip({
+    required this.icon,
+    required this.label,
+    required this.color,
+  });
+
+  final IconData icon;
+  final String label;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 240),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: color.withValues(alpha: 0.24)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(icon, color: color, size: 17),
+          const SizedBox(width: 6),
+          Flexible(
+            child: Text(
+              label,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: color,
+                fontWeight: FontWeight.w800,
+                fontSize: 12,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _BossEnergyBar extends StatelessWidget {
+  const _BossEnergyBar({required this.remaining, required this.total});
+
+  final int remaining;
+  final int total;
+
+  @override
+  Widget build(BuildContext context) {
+    final value = total == 0 ? 0.0 : remaining / total;
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF7F1D1D).withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: const Color(0xFFEF4444).withValues(alpha: 0.24),
+        ),
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.hub_rounded, color: kRed, size: 18),
+              const SizedBox(width: 8),
+              const Expanded(
+                child: Text(
+                  'Boss · 知识核心',
+                  style: TextStyle(fontWeight: FontWeight.w900),
+                ),
+              ),
+              Text(
+                '$remaining/$total',
+                style: const TextStyle(
+                  color: kRed,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(999),
+            child: TweenAnimationBuilder<double>(
+              tween: Tween(end: value),
+              duration: const Duration(milliseconds: 420),
+              builder: (_, animatedValue, __) => LinearProgressIndicator(
+                value: animatedValue,
+                minHeight: 9,
+                backgroundColor: const Color(0xFFFEE2E2),
+                valueColor: const AlwaysStoppedAnimation(kRed),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 // ===== v2.9.0: MiniGamePage 容器 =====
 
-typedef MiniGameCallback = void Function({
-  required bool correct,
-  WrongItem? wrong,
-  String? questionText,
-  String? userAnswer,
-  String? correctAnswer,
-});
+typedef MiniGameCallback =
+    void Function({
+      required bool correct,
+      WrongItem? wrong,
+      String? questionText,
+      String? userAnswer,
+      String? correctAnswer,
+    });
 
 class MiniGamePage extends StatefulWidget {
   const MiniGamePage({
@@ -17562,9 +19401,16 @@ class _MiniGamePageState extends State<MiniGamePage>
   int _currentGameIndex = 0;
   int _lives = 0;
   int _correct = 0;
+  int _combo = 0;
+  int _maxCombo = 0;
+  int _bossEnergy = 0;
+  int? _remainingSeconds;
+  bool _showComboBurst = false;
+  final Set<String> _weakKnowledgePoints = {};
   final List<WrongItem> _wrongs = [];
   late final DateTime _startTime;
   late final AnimationController _progressCtrl;
+  Timer? _countdownTimer;
   bool _levelFinished = false;
 
   int get _total => widget.session.games.length;
@@ -17573,15 +19419,26 @@ class _MiniGamePageState extends State<MiniGamePage>
   void initState() {
     super.initState();
     _lives = widget.session.lives;
+    _bossEnergy = widget.session.rule.isBoss ? widget.session.games.length : 0;
+    _remainingSeconds = widget.session.rule.timeLimit?.inSeconds;
     _startTime = widget.session.startTime;
     _progressCtrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 600),
     );
+    if (_remainingSeconds != null) {
+      _countdownTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+        if (!mounted || _levelFinished) return;
+        final next = (_remainingSeconds ?? 1) - 1;
+        setState(() => _remainingSeconds = next);
+        if (next <= 0) _finishLevel();
+      });
+    }
   }
 
   @override
   void dispose() {
+    _countdownTimer?.cancel();
     _progressCtrl.dispose();
     super.dispose();
   }
@@ -17594,18 +19451,39 @@ class _MiniGamePageState extends State<MiniGamePage>
     String? correctAnswer,
   }) {
     if (!mounted || _levelFinished) return;
+    final currentGame = widget.session.games[_currentGameIndex];
     setState(() {
       if (correct) {
         _correct++;
+        _combo++;
+        _maxCombo = max(_maxCombo, _combo);
+        if (widget.session.rule.isBoss && _bossEnergy > 0) {
+          _bossEnergy--;
+        }
+        _showComboBurst = _combo >= 2;
         HapticFeedback.lightImpact();
         SoundService.instance.play(SoundType.correct);
+        if (_combo >= 2) SoundService.instance.play(SoundType.combo);
       } else {
+        _combo = 0;
+        _showComboBurst = false;
         _lives--;
         HapticFeedback.heavyImpact();
         SoundService.instance.play(SoundType.wrong);
         if (wrong != null) _wrongs.add(wrong);
+        final knowledgePoint = currentGame.knowledgePoint?.trim() ?? '';
+        if (knowledgePoint.isNotEmpty) {
+          _weakKnowledgePoints.add(knowledgePoint);
+        }
       }
     });
+    if (correct && _combo >= 2) {
+      Future<void>.delayed(const Duration(milliseconds: 720), () {
+        if (mounted && !_levelFinished) {
+          setState(() => _showComboBurst = false);
+        }
+      });
+    }
     // 生命值耗尽或完成所有 mini-game
     if (_lives <= 0 || _currentGameIndex >= _total - 1) {
       _finishLevel();
@@ -17621,101 +19499,177 @@ class _MiniGamePageState extends State<MiniGamePage>
   void _finishLevel() {
     if (_levelFinished) return;
     _levelFinished = true;
+    _countdownTimer?.cancel();
     final duration = DateTime.now().difference(_startTime);
-    widget.onComplete(MiniGameLevelResult(
-      total: _total,
-      correct: _correct,
-      duration: duration,
-      wrongs: _wrongs,
-    ));
+    widget.onComplete(
+      MiniGameLevelResult(
+        total: _total,
+        correct: _correct,
+        duration: duration,
+        wrongs: _wrongs,
+        maxCombo: _maxCombo,
+        remainingShield: _lives,
+        weakKnowledgePoints: _weakKnowledgePoints.take(3).toList(),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final game = widget.session.games[_currentGameIndex];
     return Scaffold(
-      body: SafeArea(
-        child: Column(
-          children: [
-            _buildTopBar(),
-            // 进度条
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: Row(
-                children: [
-                  Text(
-                    '${_currentGameIndex + 1}/$_total',
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: kMuted,
-                      fontWeight: FontWeight.w600,
-                    ),
+      body: Stack(
+        children: [
+          SafeArea(
+            child: Column(
+              children: [
+                _buildTopBar(),
+                // 进度条
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 8,
                   ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(8),
-                      child: LinearProgressIndicator(
-                        value: (_currentGameIndex + 1) / _total,
-                        minHeight: 8,
-                        backgroundColor: kLine,
-                        valueColor: AlwaysStoppedAnimation<Color>(
-                          widget.session.isBoss ? kRed : kBlue,
+                  child: Row(
+                    children: [
+                      Text(
+                        '${_currentGameIndex + 1}/$_total',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: kMuted,
+                          fontWeight: FontWeight.w600,
                         ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: LinearProgressIndicator(
+                            value: (_currentGameIndex + 1) / _total,
+                            minHeight: 8,
+                            backgroundColor: kLine,
+                            valueColor: AlwaysStoppedAnimation<Color>(
+                              widget.session.isBoss ? kRed : kBlue,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Row(
+                        children: List.generate(widget.session.lives, (i) {
+                          return Padding(
+                            padding: const EdgeInsets.only(left: 2),
+                            child: Icon(
+                              i < _lives
+                                  ? Icons.shield_rounded
+                                  : Icons.shield_outlined,
+                              size: 18,
+                              color: i < _lives ? kBlue : kLine,
+                            ),
+                          );
+                        }),
+                      ),
+                    ],
+                  ),
+                ),
+                // Mini-game 类型标签
+                Container(
+                  margin: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 4,
+                  ),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: kBg,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        game.type.emoji,
+                        style: const TextStyle(fontSize: 18),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        game.type.label,
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: kInk,
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        game.type.desc,
+                        style: const TextStyle(fontSize: 11, color: kMuted),
+                      ),
+                    ],
+                  ),
+                ),
+                if (widget.session.rule.isBoss)
+                  _BossEnergyBar(remaining: _bossEnergy, total: _total)
+                else if (widget.session.rule.usesCombo || _combo > 0)
+                  _ChallengeComboStrip(
+                    combo: _combo,
+                    maxCombo: _maxCombo,
+                    remainingSeconds: _remainingSeconds,
+                  )
+                else if (_remainingSeconds != null)
+                  _ChallengeComboStrip(
+                    combo: 0,
+                    maxCombo: _maxCombo,
+                    remainingSeconds: _remainingSeconds,
+                  ),
+                // 当前 mini-game
+                Expanded(child: _buildGame(game)),
+              ],
+            ),
+          ),
+          IgnorePointer(
+            child: AnimatedOpacity(
+              opacity: _showComboBurst ? 1 : 0,
+              duration: const Duration(milliseconds: 180),
+              child: Center(
+                child: AnimatedScale(
+                  scale: _showComboBurst ? 1 : 0.72,
+                  duration: const Duration(milliseconds: 260),
+                  curve: Curves.elasticOut,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 22,
+                      vertical: 12,
+                    ),
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [Color(0xFF2563EB), Color(0xFF7C3AED)],
+                      ),
+                      borderRadius: BorderRadius.circular(999),
+                      boxShadow: const [
+                        BoxShadow(
+                          color: Color(0x662563EB),
+                          blurRadius: 30,
+                          spreadRadius: 4,
+                        ),
+                      ],
+                    ),
+                    child: Text(
+                      _combo >= 5 ? '知识爆发 ×$_combo' : '连击 ×$_combo',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 22,
+                        fontWeight: FontWeight.w900,
                       ),
                     ),
                   ),
-                  const SizedBox(width: 8),
-                  Row(
-                    children: List.generate(widget.session.lives, (i) {
-                      return Padding(
-                        padding: const EdgeInsets.only(left: 2),
-                        child: Icon(
-                          i < _lives ? Icons.favorite : Icons.favorite_border,
-                          size: 16,
-                          color: i < _lives ? kRed : kLine,
-                        ),
-                      );
-                    }),
-                  ),
-                ],
+                ),
               ),
             ),
-            // Mini-game 类型标签
-            Container(
-              margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(
-                color: kBg,
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(game.type.emoji, style: const TextStyle(fontSize: 18)),
-                  const SizedBox(width: 8),
-                  Text(
-                    game.type.label,
-                    style: const TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
-                      color: kInk,
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    game.type.desc,
-                    style: const TextStyle(fontSize: 11, color: kMuted),
-                  ),
-                ],
-              ),
-            ),
-            // 当前 mini-game
-            Expanded(
-              child: _buildGame(game),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -17771,50 +19725,23 @@ class _MiniGamePageState extends State<MiniGamePage>
   Widget _buildGame(MiniGame game) {
     switch (game.type) {
       case MiniGameType.matching:
-        return MatchingGameWidget(
-          game: game,
-          onComplete: _onGameComplete,
-        );
+        return MatchingGameWidget(game: game, onComplete: _onGameComplete);
       case MiniGameType.listening:
-        return ListeningGameWidget(
-          game: game,
-          onComplete: _onGameComplete,
-        );
+        return ListeningGameWidget(game: game, onComplete: _onGameComplete);
       case MiniGameType.flashcard:
-        return FlashcardGameWidget(
-          game: game,
-          onComplete: _onGameComplete,
-        );
+        return FlashcardGameWidget(game: game, onComplete: _onGameComplete);
       case MiniGameType.reorder:
-        return ReorderGameWidget(
-          game: game,
-          onComplete: _onGameComplete,
-        );
+        return ReorderGameWidget(game: game, onComplete: _onGameComplete);
       case MiniGameType.tapfast:
-        return TapFastGameWidget(
-          game: game,
-          onComplete: _onGameComplete,
-        );
+        return TapFastGameWidget(game: game, onComplete: _onGameComplete);
       case MiniGameType.spell:
-        return SpellGameWidget(
-          game: game,
-          onComplete: _onGameComplete,
-        );
+        return SpellGameWidget(game: game, onComplete: _onGameComplete);
       case MiniGameType.fillblank:
-        return FillBlankGameWidget(
-          game: game,
-          onComplete: _onGameComplete,
-        );
+        return FillBlankGameWidget(game: game, onComplete: _onGameComplete);
       case MiniGameType.truefalse:
-        return TrueFalseGameWidget(
-          game: game,
-          onComplete: _onGameComplete,
-        );
+        return TrueFalseGameWidget(game: game, onComplete: _onGameComplete);
       case MiniGameType.linkup:
-        return LinkUpGameWidget(
-          game: game,
-          onComplete: _onGameComplete,
-        );
+        return LinkUpGameWidget(game: game, onComplete: _onGameComplete);
     }
   }
 }
@@ -17843,10 +19770,7 @@ class MiniGameResultCard extends StatelessWidget {
               ? const Color(0xFFD1FAE5).withValues(alpha: 0.9)
               : const Color(0xFFFEE2E2).withValues(alpha: 0.9),
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: correct ? kGreen : kRed,
-            width: 1.5,
-          ),
+          border: Border.all(color: correct ? kGreen : kRed, width: 1.5),
         ),
         child: Row(
           children: [
@@ -17862,7 +19786,9 @@ class MiniGameResultCard extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w700,
-                  color: correct ? const Color(0xFF065F46) : const Color(0xFF991B1B),
+                  color: correct
+                      ? const Color(0xFF065F46)
+                      : const Color(0xFF991B1B),
                 ),
               ),
             ),
@@ -17888,7 +19814,8 @@ class MatchingGameWidget extends StatefulWidget {
     String? questionText,
     String? userAnswer,
     String? correctAnswer,
-  }) onComplete;
+  })
+  onComplete;
 
   @override
   State<MatchingGameWidget> createState() => _MatchingGameWidgetState();
@@ -18025,8 +19952,8 @@ class _MatchingGameWidgetState extends State<MatchingGameWidget>
                         color: matched
                             ? kGreen.withValues(alpha: 0.15)
                             : selected
-                                ? kBlue.withValues(alpha: 0.15)
-                                : Colors.white,
+                            ? kBlue.withValues(alpha: 0.15)
+                            : Colors.white,
                         borderRadius: BorderRadius.circular(12),
                         child: InkWell(
                           onTap: matched ? null : () => _onTapLeft(i),
@@ -18034,14 +19961,16 @@ class _MatchingGameWidgetState extends State<MatchingGameWidget>
                           child: AnimatedContainer(
                             duration: const Duration(milliseconds: 200),
                             padding: const EdgeInsets.symmetric(
-                                horizontal: 12, vertical: 14),
+                              horizontal: 12,
+                              vertical: 14,
+                            ),
                             decoration: BoxDecoration(
                               border: Border.all(
                                 color: matched
                                     ? kGreen
                                     : selected
-                                        ? kBlue
-                                        : kLine,
+                                    ? kBlue
+                                    : kLine,
                                 width: matched || selected ? 2 : 1,
                               ),
                               borderRadius: BorderRadius.circular(12),
@@ -18056,13 +19985,16 @@ class _MatchingGameWidgetState extends State<MatchingGameWidget>
                                     color: matched
                                         ? kGreen
                                         : selected
-                                            ? kBlue
-                                            : kLine,
+                                        ? kBlue
+                                        : kLine,
                                   ),
                                   child: Center(
                                     child: matched
-                                        ? const Icon(Icons.check_rounded,
-                                            size: 18, color: Colors.white)
+                                        ? const Icon(
+                                            Icons.check_rounded,
+                                            size: 18,
+                                            color: Colors.white,
+                                          )
                                         : Text(
                                             String.fromCharCode(65 + i),
                                             style: TextStyle(
@@ -18110,9 +20042,9 @@ class _MatchingGameWidgetState extends State<MatchingGameWidget>
                         color: matched
                             ? kGreen.withValues(alpha: 0.15)
                             : flash && _flashCorrect == false
-                                ? kRed.withValues(alpha: 0.15)
+                            ? kRed.withValues(alpha: 0.15)
                             : flash && _flashCorrect == true
-                                ? kGreen.withValues(alpha: 0.2)
+                            ? kGreen.withValues(alpha: 0.2)
                             : Colors.white,
                         borderRadius: BorderRadius.circular(12),
                         child: InkWell(
@@ -18123,14 +20055,16 @@ class _MatchingGameWidgetState extends State<MatchingGameWidget>
                           child: AnimatedContainer(
                             duration: const Duration(milliseconds: 200),
                             padding: const EdgeInsets.symmetric(
-                                horizontal: 12, vertical: 14),
+                              horizontal: 12,
+                              vertical: 14,
+                            ),
                             decoration: BoxDecoration(
                               border: Border.all(
                                 color: matched
                                     ? kGreen
                                     : flash && _flashCorrect == false
-                                        ? kRed
-                                : kLine,
+                                    ? kRed
+                                    : kLine,
                                 width: matched || flash ? 2 : 1,
                               ),
                               borderRadius: BorderRadius.circular(12),
@@ -18142,9 +20076,7 @@ class _MatchingGameWidgetState extends State<MatchingGameWidget>
                                   height: 28,
                                   decoration: BoxDecoration(
                                     shape: BoxShape.circle,
-                                    color: matched
-                                        ? kGreen
-                                        : kLine,
+                                    color: matched ? kGreen : kLine,
                                   ),
                                   child: Center(
                                     child: Text(
@@ -18207,7 +20139,8 @@ class ListeningGameWidget extends StatefulWidget {
     String? questionText,
     String? userAnswer,
     String? correctAnswer,
-  }) onComplete;
+  })
+  onComplete;
 
   @override
   State<ListeningGameWidget> createState() => _ListeningGameWidgetState();
@@ -18223,10 +20156,11 @@ class _ListeningGameWidgetState extends State<ListeningGameWidget> {
   Future<void> _playAudio() async {
     if (_playing) return;
     // v2.9.2: audioText 为空时用 prompt 兜底，确保有音频可播
-    final ttsText = (widget.game.audioText?.isNotEmpty == true
-            ? widget.game.audioText!
-            : widget.game.prompt)
-        .trim();
+    final ttsText =
+        (widget.game.audioText?.isNotEmpty == true
+                ? widget.game.audioText!
+                : widget.game.prompt)
+            .trim();
     if (ttsText.isEmpty) {
       setState(() => _audioError = '听力文本为空，无法播放');
       return;
@@ -18241,7 +20175,9 @@ class _ListeningGameWidgetState extends State<ListeningGameWidget> {
     var success = false;
     try {
       final isEnglish = RegExp(r'^[A-Za-z\s]').hasMatch(ttsText);
-      final ttsVoiceName = isEnglish ? 'en-US-AriaNeural' : 'zh-CN-XiaoxiaoNeural';
+      final ttsVoiceName = isEnglish
+          ? 'en-US-AriaNeural'
+          : 'zh-CN-XiaoxiaoNeural';
       final ttsLocale = isEnglish ? 'en-US' : 'zh-CN';
       tts = FlutterEdgeTts(
         voice: ttsVoiceName,
@@ -18250,7 +20186,8 @@ class _ListeningGameWidgetState extends State<ListeningGameWidget> {
         enableSentenceBoundary: true,
       );
       final dir = await getTemporaryDirectory();
-      final path = '${dir.path}/rpg_listening_${DateTime.now().millisecondsSinceEpoch}.mp3';
+      final path =
+          '${dir.path}/rpg_listening_${DateTime.now().millisecondsSinceEpoch}.mp3';
       await tts.synthesizeToFile(
         ttsText,
         audioFilePath: path,
@@ -18359,7 +20296,9 @@ class _ListeningGameWidgetState extends State<ListeningGameWidget> {
                   gradient: LinearGradient(
                     colors: [
                       _played ? kGreen : kBlue,
-                      _played ? const Color(0xFF34D399) : const Color(0xFF60A5FA),
+                      _played
+                          ? const Color(0xFF34D399)
+                          : const Color(0xFF60A5FA),
                     ],
                   ),
                   boxShadow: [
@@ -18377,12 +20316,16 @@ class _ListeningGameWidgetState extends State<ListeningGameWidget> {
                           height: 36,
                           child: CircularProgressIndicator(
                             strokeWidth: 3,
-                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                            valueColor: AlwaysStoppedAnimation<Color>(
+                              Colors.white,
+                            ),
                           ),
                         ),
                       )
                     : Icon(
-                        _played ? Icons.replay_rounded : Icons.volume_up_rounded,
+                        _played
+                            ? Icons.replay_rounded
+                            : Icons.volume_up_rounded,
                         size: 48,
                         color: Colors.white,
                       ),
@@ -18395,12 +20338,9 @@ class _ListeningGameWidgetState extends State<ListeningGameWidget> {
               _playing
                   ? '正在播放...'
                   : _played
-                      ? '点击重播'
-                      : '点击播放音频',
-              style: TextStyle(
-                fontSize: 13,
-                color: kMuted,
-              ),
+                  ? '点击重播'
+                  : '点击播放音频',
+              style: TextStyle(fontSize: 13, color: kMuted),
             ),
           ),
           if (_audioError != null) ...[
@@ -18434,24 +20374,29 @@ class _ListeningGameWidgetState extends State<ListeningGameWidget> {
                 color: showCorrect
                     ? kGreen.withValues(alpha: 0.1)
                     : showWrong
-                        ? kRed.withValues(alpha: 0.1)
-                        : Colors.white,
+                    ? kRed.withValues(alpha: 0.1)
+                    : Colors.white,
                 borderRadius: BorderRadius.circular(12),
                 child: InkWell(
-                  onTap: _answered == true ? null : () {
-                    setState(() => _selected = opt);
-                    _submit(opt);
-                  },
+                  onTap: _answered == true
+                      ? null
+                      : () {
+                          setState(() => _selected = opt);
+                          _submit(opt);
+                        },
                   borderRadius: BorderRadius.circular(12),
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 14,
+                    ),
                     decoration: BoxDecoration(
                       border: Border.all(
                         color: showCorrect
                             ? kGreen
                             : showWrong
-                                ? kRed
-                                : kLine,
+                            ? kRed
+                            : kLine,
                         width: showCorrect || showWrong ? 2 : 1,
                       ),
                       borderRadius: BorderRadius.circular(12),
@@ -18461,16 +20406,21 @@ class _ListeningGameWidgetState extends State<ListeningGameWidget> {
                         Expanded(
                           child: Text(
                             opt,
-                            style: TextStyle(
-                              fontSize: 14,
-                              color: kInk,
-                            ),
+                            style: TextStyle(fontSize: 14, color: kInk),
                           ),
                         ),
                         if (showCorrect)
-                          const Icon(Icons.check_circle_rounded, color: kGreen, size: 20)
+                          const Icon(
+                            Icons.check_circle_rounded,
+                            color: kGreen,
+                            size: 20,
+                          )
                         else if (showWrong)
-                          const Icon(Icons.cancel_rounded, color: kRed, size: 20),
+                          const Icon(
+                            Icons.cancel_rounded,
+                            color: kRed,
+                            size: 20,
+                          ),
                       ],
                     ),
                   ),
@@ -18499,7 +20449,8 @@ class FlashcardGameWidget extends StatefulWidget {
     String? questionText,
     String? userAnswer,
     String? correctAnswer,
-  }) onComplete;
+  })
+  onComplete;
 
   @override
   State<FlashcardGameWidget> createState() => _FlashcardGameWidgetState();
@@ -18555,7 +20506,8 @@ class _FlashcardGameWidgetState extends State<FlashcardGameWidget>
         materialName: 'RPG 闯关',
         question: AiQuestion(
           type: 'choice',
-          question: '${widget.game.prompt}\n闪卡内容：${widget.game.options.isNotEmpty ? widget.game.options.first : ''}',
+          question:
+              '${widget.game.prompt}\n闪卡内容：${widget.game.options.isNotEmpty ? widget.game.options.first : ''}',
           options: const [],
           answer: widget.game.answer,
           explanation: widget.game.explanation ?? '',
@@ -18609,7 +20561,8 @@ class _FlashcardGameWidgetState extends State<FlashcardGameWidget>
                   final angle = _showCard ? 0.0 : pi;
                   return Transform(
                     alignment: Alignment.center,
-                    transform: Matrix4.identity()..setEntry(3, 2, 0.002)
+                    transform: Matrix4.identity()
+                      ..setEntry(3, 2, 0.002)
                       ..rotateY(angle * _flipCtrl.value),
                     child: child,
                   );
@@ -18636,7 +20589,9 @@ class _FlashcardGameWidgetState extends State<FlashcardGameWidget>
                   child: Column(
                     children: [
                       Icon(
-                        _showCard ? Icons.style_rounded : Icons.lightbulb_rounded,
+                        _showCard
+                            ? Icons.style_rounded
+                            : Icons.lightbulb_rounded,
                         size: 40,
                         color: Colors.white,
                       ),
@@ -18644,10 +20599,7 @@ class _FlashcardGameWidgetState extends State<FlashcardGameWidget>
                       if (_showCard) ...[
                         const Text(
                           '闪卡内容',
-                          style: TextStyle(
-                            color: Colors.white70,
-                            fontSize: 12,
-                          ),
+                          style: TextStyle(color: Colors.white70, fontSize: 12),
                         ),
                         const SizedBox(height: 8),
                         Text(
@@ -18667,13 +20619,14 @@ class _FlashcardGameWidgetState extends State<FlashcardGameWidget>
                       ] else ...[
                         const Text(
                           '答题时间',
-                          style: TextStyle(
-                            color: Colors.white70,
-                            fontSize: 12,
-                          ),
+                          style: TextStyle(color: Colors.white70, fontSize: 12),
                         ),
                         const SizedBox(height: 8),
-                        const Icon(Icons.touch_app_rounded, size: 32, color: Colors.white),
+                        const Icon(
+                          Icons.touch_app_rounded,
+                          size: 32,
+                          color: Colors.white,
+                        ),
                         const SizedBox(height: 8),
                         const Text(
                           '点击下方选项作答',
@@ -18689,7 +20642,9 @@ class _FlashcardGameWidgetState extends State<FlashcardGameWidget>
           const SizedBox(height: 20),
           // 问题（不含选项行）
           Text(
-            promptLines.where((l) => !RegExp(r'^[A-D][.、)]').hasMatch(l.trim())).join('\n'),
+            promptLines
+                .where((l) => !RegExp(r'^[A-D][.、)]').hasMatch(l.trim()))
+                .join('\n'),
             style: const TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.w600,
@@ -18713,24 +20668,29 @@ class _FlashcardGameWidgetState extends State<FlashcardGameWidget>
                 color: showCorrect
                     ? kGreen.withValues(alpha: 0.1)
                     : showWrong
-                        ? kRed.withValues(alpha: 0.1)
-                        : Colors.white,
+                    ? kRed.withValues(alpha: 0.1)
+                    : Colors.white,
                 borderRadius: BorderRadius.circular(12),
                 child: InkWell(
-                  onTap: _answered ? null : () {
-                    setState(() => _selected = opt);
-                    _submit(opt);
-                  },
+                  onTap: _answered
+                      ? null
+                      : () {
+                          setState(() => _selected = opt);
+                          _submit(opt);
+                        },
                   borderRadius: BorderRadius.circular(12),
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 14,
+                    ),
                     decoration: BoxDecoration(
                       border: Border.all(
                         color: showCorrect
                             ? kGreen
                             : showWrong
-                                ? kRed
-                                : kLine,
+                            ? kRed
+                            : kLine,
                         width: showCorrect || showWrong ? 2 : 1,
                       ),
                       borderRadius: BorderRadius.circular(12),
@@ -18744,9 +20704,17 @@ class _FlashcardGameWidgetState extends State<FlashcardGameWidget>
                           ),
                         ),
                         if (showCorrect)
-                          const Icon(Icons.check_circle_rounded, color: kGreen, size: 20)
+                          const Icon(
+                            Icons.check_circle_rounded,
+                            color: kGreen,
+                            size: 20,
+                          )
                         else if (showWrong)
-                          const Icon(Icons.cancel_rounded, color: kRed, size: 20),
+                          const Icon(
+                            Icons.cancel_rounded,
+                            color: kRed,
+                            size: 20,
+                          ),
                       ],
                     ),
                   ),
@@ -18775,7 +20743,8 @@ class ReorderGameWidget extends StatefulWidget {
     String? questionText,
     String? userAnswer,
     String? correctAnswer,
-  }) onComplete;
+  })
+  onComplete;
 
   @override
   State<ReorderGameWidget> createState() => _ReorderGameWidgetState();
@@ -18882,15 +20851,16 @@ class _ReorderGameWidgetState extends State<ReorderGameWidget> {
             return Padding(
               padding: const EdgeInsets.only(bottom: 10),
               child: Material(
-                color: isSelected
-                    ? kBlue.withValues(alpha: 0.1)
-                    : Colors.white,
+                color: isSelected ? kBlue.withValues(alpha: 0.1) : Colors.white,
                 borderRadius: BorderRadius.circular(12),
                 child: InkWell(
                   onTap: _answered ? null : () => _onTapItem(i),
                   borderRadius: BorderRadius.circular(12),
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 14,
+                    ),
                     decoration: BoxDecoration(
                       border: Border.all(
                         color: isSelected ? kBlue : kLine,
@@ -18918,13 +20888,13 @@ class _ReorderGameWidgetState extends State<ReorderGameWidget> {
                                     ),
                                   )
                                 : Text(
-                                  '${i + 1}',
-                                  style: const TextStyle(
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w700,
-                                    color: kMuted,
+                                    '${i + 1}',
+                                    style: const TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w700,
+                                      color: kMuted,
+                                    ),
                                   ),
-                                ),
                           ),
                         ),
                         const SizedBox(width: 12),
@@ -18974,7 +20944,8 @@ class TapFastGameWidget extends StatefulWidget {
     String? questionText,
     String? userAnswer,
     String? correctAnswer,
-  }) onComplete;
+  })
+  onComplete;
 
   @override
   State<TapFastGameWidget> createState() => _TapFastGameWidgetState();
@@ -19003,15 +20974,14 @@ class _TapFastGameWidgetState extends State<TapFastGameWidget>
         .split(',')
         .map((s) => s.trim() == '对' || s.trim() == 'true' || s.trim() == '1')
         .toList();
-    _timerCtrl = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 15),
-    )..addListener(() {
-        final remaining = (15 * (1 - _timerCtrl.value)).ceil();
-        if (remaining != _remainingSeconds && mounted) {
-          setState(() => _remainingSeconds = remaining);
-        }
-      });
+    _timerCtrl =
+        AnimationController(vsync: this, duration: const Duration(seconds: 15))
+          ..addListener(() {
+            final remaining = (15 * (1 - _timerCtrl.value)).ceil();
+            if (remaining != _remainingSeconds && mounted) {
+              setState(() => _remainingSeconds = remaining);
+            }
+          });
     _flashCtrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 300),
@@ -19077,7 +21047,8 @@ class _TapFastGameWidgetState extends State<TapFastGameWidget>
         materialName: 'RPG 闯关',
         question: AiQuestion(
           type: 'choice',
-          question: '${widget.game.prompt}\n${_statements.asMap().entries.map((e) => '${e.key + 1}. ${e.value}').join('\n')}',
+          question:
+              '${widget.game.prompt}\n${_statements.asMap().entries.map((e) => '${e.key + 1}. ${e.value}').join('\n')}',
           options: const [],
           answer: _correctFlags.map((b) => b ? '对' : '错').join(','),
           explanation: widget.game.explanation ?? '',
@@ -19163,15 +21134,15 @@ class _TapFastGameWidgetState extends State<TapFastGameWidget>
                           color: _lastCorrect == true
                               ? kGreen.withValues(alpha: 0.1)
                               : _lastCorrect == false
-                                  ? kRed.withValues(alpha: 0.1)
-                                  : kBg,
+                              ? kRed.withValues(alpha: 0.1)
+                              : kBg,
                           borderRadius: BorderRadius.circular(16),
                           border: Border.all(
                             color: _lastCorrect == true
                                 ? kGreen
                                 : _lastCorrect == false
-                                    ? kRed
-                                    : kLine,
+                                ? kRed
+                                : kLine,
                           ),
                         ),
                         child: Text(
@@ -19197,10 +21168,16 @@ class _TapFastGameWidgetState extends State<TapFastGameWidget>
                               onTap: () => _onAnswer(true),
                               borderRadius: BorderRadius.circular(16),
                               child: Container(
-                                padding: const EdgeInsets.symmetric(vertical: 20),
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 20,
+                                ),
                                 child: const Column(
                                   children: [
-                                    Icon(Icons.check_rounded, size: 36, color: Colors.white),
+                                    Icon(
+                                      Icons.check_rounded,
+                                      size: 36,
+                                      color: Colors.white,
+                                    ),
                                     SizedBox(height: 4),
                                     Text(
                                       '对',
@@ -19225,10 +21202,16 @@ class _TapFastGameWidgetState extends State<TapFastGameWidget>
                               onTap: () => _onAnswer(false),
                               borderRadius: BorderRadius.circular(16),
                               child: Container(
-                                padding: const EdgeInsets.symmetric(vertical: 20),
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 20,
+                                ),
                                 child: const Column(
                                   children: [
-                                    Icon(Icons.close_rounded, size: 36, color: Colors.white),
+                                    Icon(
+                                      Icons.close_rounded,
+                                      size: 36,
+                                      color: Colors.white,
+                                    ),
                                     SizedBox(height: 4),
                                     Text(
                                       '错',
@@ -19256,7 +21239,11 @@ class _TapFastGameWidgetState extends State<TapFastGameWidget>
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(Icons.hourglass_empty_rounded, size: 60, color: kMuted),
+                    const Icon(
+                      Icons.hourglass_empty_rounded,
+                      size: 60,
+                      color: kMuted,
+                    ),
                     const SizedBox(height: 16),
                     Text(
                       '完成！正确 $_correctCount / 错误 $_wrongCount',
@@ -19279,7 +21266,11 @@ class _TapFastGameWidgetState extends State<TapFastGameWidget>
 // ===== v2.9.1: 6. 单词拼写 SpellGameWidget =====
 
 class SpellGameWidget extends StatefulWidget {
-  const SpellGameWidget({super.key, required this.game, required this.onComplete});
+  const SpellGameWidget({
+    super.key,
+    required this.game,
+    required this.onComplete,
+  });
   final MiniGame game;
   final void Function({
     required bool correct,
@@ -19287,7 +21278,8 @@ class SpellGameWidget extends StatefulWidget {
     String? questionText,
     String? userAnswer,
     String? correctAnswer,
-  }) onComplete;
+  })
+  onComplete;
 
   @override
   State<SpellGameWidget> createState() => _SpellGameWidgetState();
@@ -19396,12 +21388,20 @@ class _SpellGameWidgetState extends State<SpellGameWidget>
             ),
             child: Row(
               children: [
-                const Icon(Icons.lightbulb_rounded, size: 20, color: Color(0xFF6366F1)),
+                const Icon(
+                  Icons.lightbulb_rounded,
+                  size: 20,
+                  color: Color(0xFF6366F1),
+                ),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
                     widget.game.prompt,
-                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: kInk),
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: kInk,
+                    ),
                   ),
                 ),
               ],
@@ -19419,7 +21419,9 @@ class _SpellGameWidgetState extends State<SpellGameWidget>
             animation: _shakeCtrl,
             builder: (_, child) {
               final dx = _shakeCtrl.value > 0
-                  ? (sin(_shakeCtrl.value * pi * 8) * 8 * (1 - _shakeCtrl.value))
+                  ? (sin(_shakeCtrl.value * pi * 8) *
+                        8 *
+                        (1 - _shakeCtrl.value))
                   : 0.0;
               return Transform.translate(offset: Offset(dx, 0), child: child);
             },
@@ -19481,13 +21483,15 @@ class _SpellGameWidgetState extends State<SpellGameWidget>
                         color: used ? kLine : const Color(0xFFD1D5DB),
                         width: 1.5,
                       ),
-                      boxShadow: used ? null : [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.06),
-                          blurRadius: 4,
-                          offset: const Offset(0, 2),
-                        ),
-                      ],
+                      boxShadow: used
+                          ? null
+                          : [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.06),
+                                blurRadius: 4,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
                     ),
                     alignment: Alignment.center,
                     child: Text(
@@ -19521,7 +21525,11 @@ class _SpellGameWidgetState extends State<SpellGameWidget>
 // ===== v2.9.1: 7. 填空拼图 FillBlankGameWidget =====
 
 class FillBlankGameWidget extends StatefulWidget {
-  const FillBlankGameWidget({super.key, required this.game, required this.onComplete});
+  const FillBlankGameWidget({
+    super.key,
+    required this.game,
+    required this.onComplete,
+  });
   final MiniGame game;
   final void Function({
     required bool correct,
@@ -19529,7 +21537,8 @@ class FillBlankGameWidget extends StatefulWidget {
     String? questionText,
     String? userAnswer,
     String? correctAnswer,
-  }) onComplete;
+  })
+  onComplete;
 
   @override
   State<FillBlankGameWidget> createState() => _FillBlankGameWidgetState();
@@ -19577,8 +21586,12 @@ class _FillBlankGameWidgetState extends State<FillBlankGameWidget> {
     if (_filled.length == 1) {
       correct = allFilled && _filled[0]!.trim() == correctAnswer;
     } else {
-      correct = allFilled &&
-          List.generate(_filled.length, (i) => _filled[i]!.trim() == (i < answers.length ? answers[i] : '')).every((b) => b);
+      correct =
+          allFilled &&
+          List.generate(
+            _filled.length,
+            (i) => _filled[i]!.trim() == (i < answers.length ? answers[i] : ''),
+          ).every((b) => b);
     }
     if (correct) {
       HapticFeedback.mediumImpact();
@@ -19637,45 +21650,68 @@ class _FillBlankGameWidgetState extends State<FillBlankGameWidget> {
                   children: List.generate(_parts.length, (i) {
                     final items = <Widget>[];
                     if (_parts[i].isNotEmpty) {
-                      items.add(Text(
-                        _parts[i],
-                        style: const TextStyle(fontSize: 17, height: 2.0, color: kInk, fontWeight: FontWeight.w500),
-                      ));
+                      items.add(
+                        Text(
+                          _parts[i],
+                          style: const TextStyle(
+                            fontSize: 17,
+                            height: 2.0,
+                            color: kInk,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      );
                     }
                     if (i < _filled.length) {
                       final filled = _filled[i];
                       if (filled != null) {
-                        items.add(GestureDetector(
-                          onTap: _submitted ? null : () => _onRemoveBlank(i),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF6366F1),
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: Text(
-                              filled,
-                              style: const TextStyle(
-                                fontSize: 15,
-                                fontWeight: FontWeight.w800,
-                                color: Colors.white,
+                        items.add(
+                          GestureDetector(
+                            onTap: _submitted ? null : () => _onRemoveBlank(i),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 4,
+                              ),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF6366F1),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Text(
+                                filled,
+                                style: const TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w800,
+                                  color: Colors.white,
+                                ),
                               ),
                             ),
                           ),
-                        ));
+                        );
                       } else {
-                        items.add(Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFF3F4F6),
-                            borderRadius: BorderRadius.circular(6),
-                            border: Border.all(color: const Color(0xFFD1D5DB), width: 1),
+                        items.add(
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 18,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF3F4F6),
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(
+                                color: const Color(0xFFD1D5DB),
+                                width: 1,
+                              ),
+                            ),
+                            child: const Text(
+                              '＿＿＿＿',
+                              style: TextStyle(
+                                fontSize: 15,
+                                color: Color(0xFF9CA3AF),
+                              ),
+                            ),
                           ),
-                          child: const Text(
-                            '＿＿＿＿',
-                            style: TextStyle(fontSize: 15, color: Color(0xFF9CA3AF)),
-                          ),
-                        ));
+                        );
                       }
                     }
                     return items;
@@ -19696,7 +21732,10 @@ class _FillBlankGameWidgetState extends State<FillBlankGameWidget> {
                   onTap: used ? null : () => _onTapWord(word),
                   child: AnimatedContainer(
                     duration: const Duration(milliseconds: 200),
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 10,
+                    ),
                     decoration: BoxDecoration(
                       color: used ? kLine : Colors.white,
                       borderRadius: BorderRadius.circular(10),
@@ -19704,13 +21743,17 @@ class _FillBlankGameWidgetState extends State<FillBlankGameWidget> {
                         color: used ? kLine : const Color(0xFF6366F1),
                         width: 1.5,
                       ),
-                      boxShadow: used ? null : [
-                        BoxShadow(
-                          color: const Color(0xFF6366F1).withValues(alpha: 0.15),
-                          blurRadius: 6,
-                          offset: const Offset(0, 2),
-                        ),
-                      ],
+                      boxShadow: used
+                          ? null
+                          : [
+                              BoxShadow(
+                                color: const Color(
+                                  0xFF6366F1,
+                                ).withValues(alpha: 0.15),
+                                blurRadius: 6,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
                     ),
                     child: Text(
                       word,
@@ -19731,12 +21774,20 @@ class _FillBlankGameWidgetState extends State<FillBlankGameWidget> {
               child: ElevatedButton.icon(
                 onPressed: _filled.any((w) => w == null) ? null : _check,
                 icon: const Icon(Icons.check_rounded, size: 18),
-                label: const Text('提交', style: TextStyle(fontWeight: FontWeight.w700)),
+                label: const Text(
+                  '提交',
+                  style: TextStyle(fontWeight: FontWeight.w700),
+                ),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF6366F1),
                   foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 32,
+                    vertical: 12,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                 ),
               ),
             ),
@@ -19749,7 +21800,11 @@ class _FillBlankGameWidgetState extends State<FillBlankGameWidget> {
 // ===== v2.9.1: 8. 真假快判 TrueFalseGameWidget（滑动卡片）=====
 
 class TrueFalseGameWidget extends StatefulWidget {
-  const TrueFalseGameWidget({super.key, required this.game, required this.onComplete});
+  const TrueFalseGameWidget({
+    super.key,
+    required this.game,
+    required this.onComplete,
+  });
   final MiniGame game;
   final void Function({
     required bool correct,
@@ -19757,7 +21812,8 @@ class TrueFalseGameWidget extends StatefulWidget {
     String? questionText,
     String? userAnswer,
     String? correctAnswer,
-  }) onComplete;
+  })
+  onComplete;
 
   @override
   State<TrueFalseGameWidget> createState() => _TrueFalseGameWidgetState();
@@ -19776,8 +21832,14 @@ class _TrueFalseGameWidgetState extends State<TrueFalseGameWidget>
   @override
   void initState() {
     super.initState();
-    _cardCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 400));
-    _flashCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 500));
+    _cardCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 400),
+    );
+    _flashCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 500),
+    );
   }
 
   @override
@@ -19846,7 +21908,11 @@ class _TrueFalseGameWidgetState extends State<TrueFalseGameWidget>
               SizedBox(width: 6),
               Text(
                 '左滑=错 · 右滑=对 · 或点击按钮',
-                style: TextStyle(fontSize: 12, color: kMuted, fontWeight: FontWeight.w600),
+                style: TextStyle(
+                  fontSize: 12,
+                  color: kMuted,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             ],
           ),
@@ -19872,7 +21938,9 @@ class _TrueFalseGameWidgetState extends State<TrueFalseGameWidget>
                   animation: Listenable.merge([_cardCtrl]),
                   builder: (_, child) {
                     final dx = _submitted
-                        ? _flyFrom + (_flyTo - _flyFrom) * Curves.easeIn.transform(_cardCtrl.value)
+                        ? _flyFrom +
+                              (_flyTo - _flyFrom) *
+                                  Curves.easeIn.transform(_cardCtrl.value)
                         : _dragX;
                     final angle = (dx / 300).clamp(-0.5, 0.5);
                     return Transform.translate(
@@ -19883,12 +21951,13 @@ class _TrueFalseGameWidgetState extends State<TrueFalseGameWidget>
                   child: AnimatedBuilder(
                     animation: _flashCtrl,
                     builder: (_, child) {
-                      final flash = _flashCtrl.value > 0 && _flashCtrl.value < 0.5;
+                      final flash =
+                          _flashCtrl.value > 0 && _flashCtrl.value < 0.5;
                       final color = _result == true
                           ? const Color(0xFFD1FAE5)
                           : _result == false
-                              ? const Color(0xFFFEE2E2)
-                              : Colors.white;
+                          ? const Color(0xFFFEE2E2)
+                          : Colors.white;
                       return Container(
                         width: double.infinity,
                         padding: const EdgeInsets.all(28),
@@ -19899,8 +21968,8 @@ class _TrueFalseGameWidgetState extends State<TrueFalseGameWidget>
                             color: _result == true
                                 ? kGreen
                                 : _result == false
-                                    ? kRed
-                                    : kLine,
+                                ? kRed
+                                : kLine,
                             width: 2,
                           ),
                           boxShadow: [
@@ -19914,7 +21983,11 @@ class _TrueFalseGameWidgetState extends State<TrueFalseGameWidget>
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            const Icon(Icons.format_quote_rounded, size: 32, color: Color(0xFFD1D5DB)),
+                            const Icon(
+                              Icons.format_quote_rounded,
+                              size: 32,
+                              color: Color(0xFFD1D5DB),
+                            ),
                             const SizedBox(height: 12),
                             Text(
                               widget.game.prompt,
@@ -19950,9 +22023,20 @@ class _TrueFalseGameWidgetState extends State<TrueFalseGameWidget>
                         padding: const EdgeInsets.symmetric(vertical: 18),
                         child: const Column(
                           children: [
-                            Icon(Icons.close_rounded, size: 32, color: Colors.white),
+                            Icon(
+                              Icons.close_rounded,
+                              size: 32,
+                              color: Colors.white,
+                            ),
                             SizedBox(height: 4),
-                            Text('错', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: Colors.white)),
+                            Text(
+                              '错',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w900,
+                                color: Colors.white,
+                              ),
+                            ),
                           ],
                         ),
                       ),
@@ -19971,9 +22055,20 @@ class _TrueFalseGameWidgetState extends State<TrueFalseGameWidget>
                         padding: const EdgeInsets.symmetric(vertical: 18),
                         child: const Column(
                           children: [
-                            Icon(Icons.check_rounded, size: 32, color: Colors.white),
+                            Icon(
+                              Icons.check_rounded,
+                              size: 32,
+                              color: Colors.white,
+                            ),
                             SizedBox(height: 4),
-                            Text('对', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: Colors.white)),
+                            Text(
+                              '对',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w900,
+                                color: Colors.white,
+                              ),
+                            ),
                           ],
                         ),
                       ),
@@ -19991,7 +22086,11 @@ class _TrueFalseGameWidgetState extends State<TrueFalseGameWidget>
 // ===== v2.9.1: 9. 连连看 LinkUpGameWidget（网格点击配对消除）=====
 
 class LinkUpGameWidget extends StatefulWidget {
-  const LinkUpGameWidget({super.key, required this.game, required this.onComplete});
+  const LinkUpGameWidget({
+    super.key,
+    required this.game,
+    required this.onComplete,
+  });
   final MiniGame game;
   final void Function({
     required bool correct,
@@ -19999,7 +22098,8 @@ class LinkUpGameWidget extends StatefulWidget {
     String? questionText,
     String? userAnswer,
     String? correctAnswer,
-  }) onComplete;
+  })
+  onComplete;
 
   @override
   State<LinkUpGameWidget> createState() => _LinkUpGameWidgetState();
@@ -20028,8 +22128,14 @@ class _LinkUpGameWidgetState extends State<LinkUpGameWidget>
     }
     tiles.shuffle(Random());
     _tiles = tiles;
-    _flashCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 300));
-    _popCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 400));
+    _flashCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 300),
+    );
+    _popCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 400),
+    );
   }
 
   @override
@@ -20112,18 +22218,29 @@ class _LinkUpGameWidgetState extends State<LinkUpGameWidget>
               Expanded(
                 child: Text(
                   widget.game.prompt,
-                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: kInk),
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: kInk,
+                  ),
                 ),
               ),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 4,
+                ),
                 decoration: BoxDecoration(
                   color: const Color(0xFFEEF2FF),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text(
                   '$_clearedPairs/$_totalPairs',
-                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Color(0xFF6366F1)),
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                    color: Color(0xFF6366F1),
+                  ),
                 ),
               ),
             ],
@@ -20149,24 +22266,27 @@ class _LinkUpGameWidgetState extends State<LinkUpGameWidget>
                     onTap: tile.cleared ? null : () => _onTapTile(idx),
                     child: AnimatedContainer(
                       duration: const Duration(milliseconds: 250),
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 12,
+                      ),
                       decoration: BoxDecoration(
                         color: tile.cleared
                             ? kLine.withValues(alpha: 0.3)
                             : tile.wrongFlash
-                                ? kRed.withValues(alpha: 0.2)
-                                : selected
-                                    ? const Color(0xFF6366F1)
-                                    : Colors.white,
+                            ? kRed.withValues(alpha: 0.2)
+                            : selected
+                            ? const Color(0xFF6366F1)
+                            : Colors.white,
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
                           color: tile.cleared
                               ? Colors.transparent
                               : tile.wrongFlash
-                                  ? kRed
-                                  : selected
-                                      ? const Color(0xFF6366F1)
-                                      : kLine,
+                              ? kRed
+                              : selected
+                              ? const Color(0xFF6366F1)
+                              : kLine,
                           width: selected ? 2 : 1,
                         ),
                         boxShadow: tile.cleared || selected || tile.wrongFlash
@@ -20190,9 +22310,11 @@ class _LinkUpGameWidgetState extends State<LinkUpGameWidget>
                             color: tile.cleared
                                 ? kMuted
                                 : selected
-                                    ? Colors.white
-                                    : kInk,
-                            decoration: tile.cleared ? TextDecoration.lineThrough : TextDecoration.none,
+                                ? Colors.white
+                                : kInk,
+                            decoration: tile.cleared
+                                ? TextDecoration.lineThrough
+                                : TextDecoration.none,
                           ),
                         ),
                       ),
