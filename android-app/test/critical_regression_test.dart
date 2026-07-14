@@ -1,6 +1,7 @@
 import 'package:ai_question_bank_android/main.dart';
 import 'package:ai_question_bank_android/features/challenge/challenge_rules.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:syncfusion_flutter_pdf/pdf.dart';
 
@@ -13,6 +14,29 @@ const _rpgResult = RpgLevelResult(
   chapterCleared: false,
   allCleared: false,
 );
+
+MiniGame _trueFalseGame(int index) => MiniGame(
+  type: MiniGameType.truefalse,
+  prompt: 'Test001 statement $index',
+  options: const [],
+  answer: '对',
+  explanation: 'Test001 explanation',
+  knowledgePoint: 'Test001 knowledge',
+);
+
+MiniGameSession _challengeSession(int level) {
+  final rule = ChallengeRules.forLevel(level);
+  return MiniGameSession(
+    materialName: 'Test001 material',
+    games: List.generate(rule.questionCount, _trueFalseGame),
+    subject: '通用',
+    chapter: 1,
+    level: level,
+    isBoss: rule.isBoss,
+    startTime: DateTime(2026, 7, 14),
+    lives: rule.shield,
+  );
+}
 
 void main() {
   test('RPG levels follow challenge counts and exclude listening games', () {
@@ -32,6 +56,143 @@ void main() {
         }
       }
     }
+  });
+
+  test('mistake ambush replaces generated games with stored mistakes', () {
+    final wrong = WrongItem(
+      materialName: 'Test001 material',
+      question: AiQuestion(
+        type: 'choice',
+        question: 'Which widget has immutable configuration?',
+        options: const [
+          'StatefulWidget',
+          'StatelessWidget',
+          'State',
+          'Element',
+        ],
+        answer: 'B',
+        explanation: 'StatelessWidget has immutable configuration.',
+      ),
+      userAnswer: 'A',
+      createdAt: DateTime(2026, 7, 14),
+    );
+    final mixed = mixWrongAmbushGames(
+      generated: List.generate(5, _trueFalseGame),
+      wrongItems: [wrong],
+      targetCount: 5,
+    );
+
+    expect(mixed, hasLength(5));
+    expect(mixed.where((game) => game.knowledgePoint == '历史错题'), hasLength(1));
+    expect(
+      mixed.any((game) => game.prompt.contains('immutable configuration')),
+      isTrue,
+    );
+  });
+
+  for (var level = 1; level <= 5; level++) {
+    testWidgets('challenge level $level completes a full playable round', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(420, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      AppHaptics.instance.setEnabled(false);
+      SoundService.instance.setMuted(true);
+      MiniGameLevelResult? result;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: MiniGamePage(
+            session: _challengeSession(level),
+            onExit: () {},
+            onComplete: (value) => result = value,
+          ),
+        ),
+      );
+
+      final count = ChallengeRules.forLevel(level).questionCount;
+      for (var index = 0; index < count; index++) {
+        expect(find.text('对'), findsOneWidget);
+        await tester.tap(find.text('对'));
+        await tester.pump(const Duration(milliseconds: 750));
+      }
+
+      expect(result, isNotNull);
+      expect(result!.total, count);
+      expect(result!.correct, count);
+      expect(result!.remainingShield, 3);
+      if (ChallengeRules.forLevel(level).usesCombo) {
+        expect(result!.maxCombo, count);
+      }
+      // Let the final combo-burst dismissal timer settle before disposal.
+      await tester.pump(const Duration(milliseconds: 800));
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+  }
+
+  testWidgets('survival challenge stops when all shields are depleted', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(420, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    AppHaptics.instance.setEnabled(false);
+    SoundService.instance.setMuted(true);
+    MiniGameLevelResult? result;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MiniGamePage(
+          session: _challengeSession(4),
+          onExit: () {},
+          onComplete: (value) => result = value,
+        ),
+      ),
+    );
+
+    for (var index = 0; index < 3; index++) {
+      await tester.tap(find.text('错'));
+      await tester.pump(const Duration(milliseconds: 750));
+    }
+
+    expect(result, isNotNull);
+    expect(result!.correct, 0);
+    expect(result!.remainingShield, 0);
+    expect(result!.weakKnowledgePoints, contains('Test001 knowledge'));
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('haptic gateway suppresses platform vibration when disabled', (
+    tester,
+  ) async {
+    final calls = <MethodCall>[];
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        calls.add(call);
+        return null;
+      },
+    );
+    addTearDown(() {
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        null,
+      );
+      AppHaptics.instance.setEnabled(true);
+    });
+
+    AppHaptics.instance.setEnabled(false);
+    await AppHaptics.instance.mediumImpact();
+    expect(calls, isEmpty);
+
+    AppHaptics.instance.setEnabled(true);
+    await AppHaptics.instance.mediumImpact();
+    expect(
+      calls.map((call) => call.method),
+      contains('HapticFeedback.vibrate'),
+    );
   });
 
   test('rich content target stays between twenty and thirty percent', () {

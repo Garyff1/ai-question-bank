@@ -226,6 +226,35 @@ class SoundService {
   }
 }
 
+/// Central haptic gateway so the user-facing vibration switch applies to
+/// legacy screens and the challenge mini-games as well as the new shell.
+class AppHaptics {
+  AppHaptics._();
+
+  static final AppHaptics instance = AppHaptics._();
+
+  bool _enabled = true;
+
+  void setEnabled(bool value) => _enabled = value;
+  bool get isEnabled => _enabled;
+
+  Future<void> selectionClick() async {
+    if (_enabled) await HapticFeedback.selectionClick();
+  }
+
+  Future<void> lightImpact() async {
+    if (_enabled) await HapticFeedback.lightImpact();
+  }
+
+  Future<void> mediumImpact() async {
+    if (_enabled) await HapticFeedback.mediumImpact();
+  }
+
+  Future<void> heavyImpact() async {
+    if (_enabled) await HapticFeedback.heavyImpact();
+  }
+}
+
 // ===== v2.9.0: Mini-Game 数据模型 =====
 
 /// Mini-Game 类型：5 种轻量游戏化学习形式
@@ -506,6 +535,7 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final settings = await AppSettingsController.load();
   SoundService.instance.setMuted(!settings.soundEnabled);
+  AppHaptics.instance.setEnabled(settings.hapticsEnabled);
   runApp(AiQuestionBankApp(settings: settings, home: const AppShell()));
 }
 
@@ -2003,6 +2033,84 @@ int richContentTargetCount(int total) {
   return (total * 0.25).round().clamp(1, total);
 }
 
+/// Converts a stored mistake into a playable challenge card. Choice questions
+/// keep their original options; other question types use a compact two-choice
+/// recall card so old data can always participate in the ambush level.
+MiniGame rpgMiniGameFromWrongItem(WrongItem item) {
+  final question = item.question;
+  final answerText = question.answer is List
+      ? (question.answer as List).join('、')
+      : question.answer.toString().trim();
+  final optionLetters = RegExp(r'[A-D]', caseSensitive: false)
+      .allMatches(answerText.toUpperCase())
+      .map((match) => match.group(0)!)
+      .toList(growable: false);
+
+  if (question.options.length >= 2 && optionLetters.length == 1) {
+    final optionLines = question.options.asMap().entries.map((entry) {
+      final raw = entry.value.trim();
+      final prefix = String.fromCharCode(65 + entry.key);
+      return RegExp(r'^[A-D][.、)）]\s*', caseSensitive: false).hasMatch(raw)
+          ? raw
+          : '$prefix. $raw';
+    });
+    return MiniGame(
+      type: MiniGameType.flashcard,
+      prompt: ['历史错题伏击：${question.question}', ...optionLines].join('\n'),
+      options: [
+        question.explanation.trim().isEmpty
+            ? '先回忆原题，再选择正确答案'
+            : question.explanation.trim(),
+      ],
+      answer: optionLetters.first,
+      explanation: question.explanation,
+      knowledgePoint: '历史错题',
+    );
+  }
+
+  final fallbackWrong = item.userAnswer.trim();
+  final distractor = fallbackWrong.isNotEmpty && fallbackWrong != answerText
+      ? fallbackWrong
+      : '需要重新检查题意';
+  return MiniGame(
+    type: MiniGameType.flashcard,
+    prompt: [
+      '历史错题伏击：${question.question}',
+      'A. $answerText',
+      'B. $distractor',
+    ].join('\n'),
+    options: [
+      question.explanation.trim().isEmpty
+          ? '回忆这道错题的正确结论'
+          : question.explanation.trim(),
+    ],
+    answer: 'A',
+    explanation: question.explanation,
+    knowledgePoint: '历史错题',
+  );
+}
+
+/// Replaces up to two generated games with real historical mistakes while
+/// keeping the level's configured question count stable.
+List<MiniGame> mixWrongAmbushGames({
+  required List<MiniGame> generated,
+  required List<WrongItem> wrongItems,
+  required int targetCount,
+}) {
+  final result = generated.take(targetCount).toList(growable: true);
+  if (result.isEmpty || wrongItems.isEmpty || targetCount <= 0) return result;
+  final ambushCount = min(2, min(wrongItems.length, result.length));
+  for (var index = 0; index < ambushCount; index++) {
+    final targetIndex = ambushCount == 1
+        ? result.length ~/ 2
+        : ((index + 1) * result.length / (ambushCount + 1)).floor();
+    result[targetIndex.clamp(0, result.length - 1)] = rpgMiniGameFromWrongItem(
+      wrongItems[index],
+    );
+  }
+  return result;
+}
+
 class AppShell extends StatefulWidget {
   const AppShell({super.key});
 
@@ -2342,13 +2450,13 @@ class _AppShellState extends State<AppShell> {
   void _selectTab(int index) {
     if (index == _tab) return;
     if (AppSettingsScope.of(context).hapticsEnabled) {
-      HapticFeedback.lightImpact();
+      AppHaptics.instance.lightImpact();
     }
     setState(() => _tab = index);
   }
 
   Future<void> _openConfigPage() async {
-    HapticFeedback.selectionClick();
+    AppHaptics.instance.selectionClick();
     await Navigator.of(context).push<void>(
       MaterialPageRoute(
         builder: (_) => Scaffold(
@@ -2367,7 +2475,7 @@ class _AppShellState extends State<AppShell> {
   }
 
   void _openPaperViewer(Paper paper) {
-    HapticFeedback.selectionClick();
+    AppHaptics.instance.selectionClick();
     Navigator.of(context).push<void>(
       MaterialPageRoute(
         builder: (_) => PaperViewer(
@@ -2389,14 +2497,14 @@ class _AppShellState extends State<AppShell> {
       confirmText: '删除',
     );
     if (!ok || !mounted) return;
-    HapticFeedback.mediumImpact();
+    AppHaptics.instance.mediumImpact();
     setState(() => _papers.removeWhere((p) => p.id == id));
     await _savePapers();
     _showSnack('试卷已删除');
   }
 
   Future<void> _downloadPaper(Paper paper) async {
-    HapticFeedback.selectionClick();
+    AppHaptics.instance.selectionClick();
     try {
       final pdfBytes = await PaperPdfService.buildPaperPdf(paper);
       final stamp = paper.createdAt;
@@ -2417,7 +2525,7 @@ class _AppShellState extends State<AppShell> {
   }
 
   Future<void> _downloadPaperAnswer(Paper paper) async {
-    HapticFeedback.selectionClick();
+    AppHaptics.instance.selectionClick();
     try {
       final pdfBytes = await PaperPdfService.buildAnswerPdf(paper);
       final stamp = paper.createdAt;
@@ -2441,7 +2549,7 @@ class _AppShellState extends State<AppShell> {
   /// 重写：合并为单个 mp3 文件，每题前加中文引导"现在是第X大题第Y小问"，
   /// 听力原文重复 3 遍，每遍之间停顿 1 秒，结束后提示"下一题"
   Future<void> _downloadPaperAudio(Paper paper) async {
-    HapticFeedback.selectionClick();
+    AppHaptics.instance.selectionClick();
     // v2.7.3: 按试卷预览的实际结构计算大题号与小问号，确保与试卷显示一致
     // 试卷预览中：大题按 section 分组顺序编号（一、二、三...），小问按组内顺序编号（1、2、3...）
     final listeningItems = <_ListeningItem>[];
@@ -2618,7 +2726,7 @@ class _AppShellState extends State<AppShell> {
   }
 
   void _openFeedback() {
-    HapticFeedback.selectionClick();
+    AppHaptics.instance.selectionClick();
     final contentCtrl = TextEditingController();
     String type = 'Bug 反馈';
     showModalBottomSheet<void>(
@@ -2800,7 +2908,7 @@ class _AppShellState extends State<AppShell> {
       return;
     }
     if (_materials.length >= 20) {
-      HapticFeedback.heavyImpact();
+      AppHaptics.instance.heavyImpact();
       _showSnack('最多只能导入 20 份资料，请先删除旧资料再导入新的');
       return;
     }
@@ -2824,7 +2932,7 @@ class _AppShellState extends State<AppShell> {
       confirmText: '确认删除',
     );
     if (!ok || !mounted) return;
-    HapticFeedback.mediumImpact();
+    AppHaptics.instance.mediumImpact();
     setState(() {
       _materials.removeWhere((item) => item.id == material.id);
       if (_selectedMaterial?.id == material.id) {
@@ -3097,7 +3205,7 @@ class _AppShellState extends State<AppShell> {
       ),
     );
     if (proceed != true || !mounted) return;
-    HapticFeedback.mediumImpact();
+    AppHaptics.instance.mediumImpact();
     setState(() {
       _session = PracticeSession(
         materialName: '错题抽卡挑战',
@@ -3264,13 +3372,21 @@ class _AppShellState extends State<AppShell> {
         chapter: chapter,
         level: level,
         audience: _audience,
+        wrongItems: () {
+          final related = _wrongs
+              .where((item) => item.materialName == material.name)
+              .toList(growable: false);
+          return related.isNotEmpty
+              ? related
+              : _wrongs.take(5).toList(growable: false);
+        }(),
       );
       if (games.isEmpty) {
         _showSnack('AI 没有返回有效关卡，请重试');
         return;
       }
       if (!mounted) return;
-      HapticFeedback.mediumImpact();
+      AppHaptics.instance.mediumImpact();
       SoundService.instance.play(SoundType.levelup);
       setState(() {
         _miniGameSession = MiniGameSession(
@@ -3359,7 +3475,7 @@ class _AppShellState extends State<AppShell> {
       );
     }
 
-    HapticFeedback.heavyImpact();
+    AppHaptics.instance.heavyImpact();
     if (rpgResult.stars > 0) {
       SoundService.instance.play(SoundType.levelup);
     } else {
@@ -3598,7 +3714,7 @@ class _AppShellState extends State<AppShell> {
       _showSnack('本组暂无错题');
       return;
     }
-    HapticFeedback.selectionClick();
+    AppHaptics.instance.selectionClick();
     setState(() {
       _session = PracticeSession(
         materialName: '错题练习',
@@ -3628,7 +3744,7 @@ class _AppShellState extends State<AppShell> {
 
   /// 打开"管理资料"底部弹窗：导入文件 / 粘贴 / 示例 / 删除
   void _openMaterialManager() {
-    HapticFeedback.selectionClick();
+    AppHaptics.instance.selectionClick();
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -4005,7 +4121,7 @@ class _AppShellState extends State<AppShell> {
     await _saveWrongs();
     await _savePracticeLog();
     await _saveRpgProgress();
-    HapticFeedback.heavyImpact();
+    AppHaptics.instance.heavyImpact();
     if (!mounted) return;
     setState(() {
       _pendingRpgCompletion = RpgCompletionPayload(
@@ -4017,7 +4133,7 @@ class _AppShellState extends State<AppShell> {
   }
 
   Future<void> _showLevelUp(int newLevel) async {
-    HapticFeedback.heavyImpact();
+    AppHaptics.instance.heavyImpact();
     await showDialog<void>(
       context: context,
       barrierColor: Colors.transparent,
@@ -4074,6 +4190,7 @@ class _AppShellState extends State<AppShell> {
   Widget build(BuildContext context) {
     final appSettings = AppSettingsScope.of(context);
     SoundService.instance.setMuted(!appSettings.soundEnabled);
+    AppHaptics.instance.setEnabled(appSettings.hapticsEnabled);
     if (_loading) {
       return const Scaffold(body: _SplashLoadingView());
     }
@@ -4135,11 +4252,11 @@ class _AppShellState extends State<AppShell> {
         enableRichContent: _enableRichContent,
         enableListening: _enableListening,
         onMaterialChanged: (material) {
-          HapticFeedback.selectionClick();
+          AppHaptics.instance.selectionClick();
           setState(() => _selectedMaterial = material);
         },
         onToggleType: (type) {
-          HapticFeedback.selectionClick();
+          AppHaptics.instance.selectionClick();
           setState(() {
             if (_selectedTypes.contains(type)) {
               if (_selectedTypes.length == 1) {
@@ -4153,21 +4270,21 @@ class _AppShellState extends State<AppShell> {
           });
         },
         onCountChanged: (count) {
-          HapticFeedback.selectionClick();
+          AppHaptics.instance.selectionClick();
           setState(() => _questionCount = count);
         },
         onAudienceChanged: (value) {
-          HapticFeedback.selectionClick();
+          AppHaptics.instance.selectionClick();
           setState(() => _audience = value);
         },
         onToggleRichContent: (v) async {
-          HapticFeedback.selectionClick();
+          AppHaptics.instance.selectionClick();
           setState(() => _enableRichContent = v);
           final prefs = await SharedPreferences.getInstance();
           await prefs.setBool(_enableRichKey, v);
         },
         onToggleListening: (v) async {
-          HapticFeedback.selectionClick();
+          AppHaptics.instance.selectionClick();
           setState(() => _enableListening = v);
           final prefs = await SharedPreferences.getInstance();
           await prefs.setBool(_enableListeningKey, v);
@@ -4187,13 +4304,13 @@ class _AppShellState extends State<AppShell> {
         enableRichContent: _enableRichContent,
         enableListening: _enableListening,
         onToggleRichContent: (v) async {
-          HapticFeedback.selectionClick();
+          AppHaptics.instance.selectionClick();
           setState(() => _enableRichContent = v);
           final prefs = await SharedPreferences.getInstance();
           await prefs.setBool(_enableRichKey, v);
         },
         onToggleListening: (v) async {
-          HapticFeedback.selectionClick();
+          AppHaptics.instance.selectionClick();
           setState(() => _enableListening = v);
           final prefs = await SharedPreferences.getInstance();
           await prefs.setBool(_enableListeningKey, v);
@@ -4206,7 +4323,7 @@ class _AppShellState extends State<AppShell> {
         onDownloadAudio: _downloadPaperAudio,
         onOpenConfig: _openConfigPage,
         onDeletePapers: (toDelete) async {
-          HapticFeedback.mediumImpact();
+          AppHaptics.instance.mediumImpact();
           if (toDelete.isEmpty) return;
           setState(() {
             for (final p in toDelete) {
@@ -4231,7 +4348,7 @@ class _AppShellState extends State<AppShell> {
         onPracticeGroup: _startWrongPractice,
         onDeleteWrong: _deleteWrongItem,
         onDeleteWrongs: (toDelete) async {
-          HapticFeedback.mediumImpact();
+          AppHaptics.instance.mediumImpact();
           if (toDelete.isEmpty) return;
           setState(() {
             for (final w in toDelete) {
@@ -4263,7 +4380,7 @@ class _AppShellState extends State<AppShell> {
         onOpenFeedback: _openFeedback,
         practiceLog: _practiceLog,
         onClearRecords: () async {
-          HapticFeedback.mediumImpact();
+          AppHaptics.instance.mediumImpact();
           setState(() => _records = []);
           await _saveRecords();
           if (mounted) {
@@ -4276,7 +4393,7 @@ class _AppShellState extends State<AppShell> {
           }
         },
         onClearWrongs: () async {
-          HapticFeedback.mediumImpact();
+          AppHaptics.instance.mediumImpact();
           setState(() => _wrongs = []);
           await _saveWrongs();
           if (mounted) {
@@ -4325,7 +4442,7 @@ class _AppShellState extends State<AppShell> {
           }
         },
         onDeleteRecords: (toDelete) async {
-          HapticFeedback.mediumImpact();
+          AppHaptics.instance.mediumImpact();
           if (toDelete.isEmpty) return;
           setState(() {
             for (final r in toDelete) {
@@ -4347,7 +4464,7 @@ class _AppShellState extends State<AppShell> {
           }
         },
         onDeleteWrongs: (toDelete) async {
-          HapticFeedback.mediumImpact();
+          AppHaptics.instance.mediumImpact();
           if (toDelete.isEmpty) return;
           setState(() {
             for (final w in toDelete) {
@@ -4475,7 +4592,7 @@ class _OnboardingGuideState extends State<OnboardingGuide> {
       _finish();
       return;
     }
-    HapticFeedback.selectionClick();
+    AppHaptics.instance.selectionClick();
     await _controller.nextPage(
       duration: const Duration(milliseconds: 260),
       curve: Curves.easeOutCubic,
@@ -4521,7 +4638,7 @@ class _OnboardingGuideState extends State<OnboardingGuide> {
                   controller: _controller,
                   itemCount: _steps.length,
                   onPageChanged: (value) {
-                    HapticFeedback.selectionClick();
+                    AppHaptics.instance.selectionClick();
                     setState(() => _index = value);
                   },
                   itemBuilder: (context, index) =>
@@ -5702,6 +5819,7 @@ class GeneratePage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     final material = selectedMaterial;
     final activeMaterial =
         material ?? (materials.isEmpty ? null : materials.first);
@@ -5741,9 +5859,9 @@ class GeneratePage extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: colors.surface,
               borderRadius: BorderRadius.circular(24),
-              border: Border.all(color: kLine),
+              border: Border.all(color: colors.outlineVariant),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -5754,21 +5872,24 @@ class GeneratePage extends StatelessWidget {
                       width: 44,
                       height: 44,
                       decoration: BoxDecoration(
-                        color: const Color(0xFFEFF6FF),
+                        color: colors.primaryContainer,
                         borderRadius: BorderRadius.circular(16),
                       ),
-                      child: const Icon(Icons.menu_book_rounded, color: kBlue),
+                      child: Icon(
+                        Icons.menu_book_rounded,
+                        color: colors.primary,
+                      ),
                     ),
                     const SizedBox(width: 12),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text(
+                          Text(
                             '当前练习资料',
                             style: TextStyle(
                               fontWeight: FontWeight.w900,
-                              color: kInk,
+                              color: colors.onSurface,
                             ),
                           ),
                           const SizedBox(height: 3),
@@ -5776,8 +5897,8 @@ class GeneratePage extends StatelessWidget {
                             activeMaterial == null
                                 ? '未选择资料'
                                 : '${activeMaterial.content.length} 字 · ${_dateText(activeMaterial.createdAt)}',
-                            style: const TextStyle(
-                              color: kMuted,
+                            style: TextStyle(
+                              color: colors.onSurfaceVariant,
                               fontSize: 12,
                               fontWeight: FontWeight.w700,
                             ),
@@ -5790,6 +5911,11 @@ class GeneratePage extends StatelessWidget {
                 const SizedBox(height: 14),
                 DropdownButtonFormField<StudyMaterial>(
                   initialValue: activeMaterial,
+                  dropdownColor: colors.surface,
+                  style: TextStyle(
+                    color: colors.onSurface,
+                    fontWeight: FontWeight.w700,
+                  ),
                   items: materials
                       .map(
                         (item) => DropdownMenuItem(
@@ -5805,7 +5931,8 @@ class GeneratePage extends StatelessWidget {
                   decoration: InputDecoration(
                     labelText: '切换资料',
                     filled: true,
-                    fillColor: const Color(0xFFF8FAFC),
+                    fillColor: colors.surfaceContainerHighest,
+                    labelStyle: TextStyle(color: colors.onSurfaceVariant),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(18),
                     ),
@@ -5819,7 +5946,7 @@ class GeneratePage extends StatelessWidget {
                     icon: const Icon(Icons.folder_open_rounded, size: 18),
                     label: const Text('管理资料（导入 / 删除）'),
                     style: OutlinedButton.styleFrom(
-                      foregroundColor: kBlue,
+                      foregroundColor: colors.primary,
                       minimumSize: const Size.fromHeight(46),
                     ),
                   ),
@@ -5861,17 +5988,19 @@ class GeneratePage extends StatelessWidget {
                       padding: const EdgeInsets.all(14),
                       decoration: BoxDecoration(
                         color: selected
-                            ? const Color(0xFFEFF6FF)
-                            : Colors.white,
+                            ? colors.primaryContainer
+                            : colors.surface,
                         borderRadius: BorderRadius.circular(20),
                         border: Border.all(
-                          color: selected ? kBlue : kLine,
+                          color: selected
+                              ? colors.primary
+                              : colors.outlineVariant,
                           width: selected ? 2 : 1.4,
                         ),
                         boxShadow: selected
-                            ? const [
+                            ? [
                                 BoxShadow(
-                                  color: Color(0x1A2563EB),
+                                  color: colors.primary.withValues(alpha: 0.14),
                                   blurRadius: 18,
                                   offset: Offset(0, 8),
                                 ),
@@ -5881,13 +6010,13 @@ class GeneratePage extends StatelessWidget {
                       child: Stack(
                         children: [
                           if (selected)
-                            const Positioned(
+                            Positioned(
                               right: 12,
                               top: 10,
                               child: CircleAvatar(
                                 radius: 12,
-                                backgroundColor: kBlue,
-                                child: Icon(
+                                backgroundColor: colors.primary,
+                                child: const Icon(
                                   Icons.check,
                                   size: 15,
                                   color: Colors.white,
@@ -5900,22 +6029,26 @@ class GeneratePage extends StatelessWidget {
                               children: [
                                 Icon(
                                   _typeIcon(meta.type),
-                                  color: selected ? kBlue : kMuted,
+                                  color: selected
+                                      ? colors.primary
+                                      : colors.onSurfaceVariant,
                                   size: 28,
                                 ),
                                 const SizedBox(height: 8),
                                 Text(
                                   meta.title,
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                     fontSize: 17,
                                     fontWeight: FontWeight.w900,
-                                    color: kInk,
+                                    color: colors.onSurface,
                                   ),
                                 ),
                                 const SizedBox(height: 8),
                                 Text(
                                   meta.subtitle,
-                                  style: const TextStyle(color: kMuted),
+                                  style: TextStyle(
+                                    color: colors.onSurfaceVariant,
+                                  ),
                                 ),
                               ],
                             ),
@@ -5936,15 +6069,20 @@ class GeneratePage extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: colors.surface,
               borderRadius: BorderRadius.circular(24),
-              border: Border.all(color: kLine),
+              border: Border.all(color: colors.outlineVariant),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 DropdownButtonFormField<String>(
                   initialValue: audience,
+                  dropdownColor: colors.surface,
+                  style: TextStyle(
+                    color: colors.onSurface,
+                    fontWeight: FontWeight.w700,
+                  ),
                   items: audiences
                       .map(
                         (item) =>
@@ -5957,19 +6095,20 @@ class GeneratePage extends StatelessWidget {
                   decoration: InputDecoration(
                     labelText: '目标群体',
                     filled: true,
-                    fillColor: const Color(0xFFF8FAFC),
+                    fillColor: colors.surfaceContainerHighest,
+                    labelStyle: TextStyle(color: colors.onSurfaceVariant),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(18),
                     ),
                   ),
                 ),
                 const SizedBox(height: 16),
-                const Center(
+                Center(
                   child: Text(
                     '题目数量',
                     style: TextStyle(
                       fontWeight: FontWeight.w900,
-                      color: kMuted,
+                      color: colors.onSurfaceVariant,
                     ),
                   ),
                 ),
@@ -5980,9 +6119,9 @@ class GeneratePage extends StatelessWidget {
                     vertical: 10,
                   ),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFF8FAFC),
+                    color: colors.surfaceContainerHighest,
                     borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: kLine),
+                    border: Border.all(color: colors.outlineVariant),
                   ),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -6023,9 +6162,12 @@ class GeneratePage extends StatelessWidget {
                   }).toList(),
                 ),
                 const SizedBox(height: 10),
-                const Text(
+                Text(
                   '范围 1—20 题；题型多选时会混合生成。',
-                  style: TextStyle(color: kMuted, fontSize: 12),
+                  style: TextStyle(
+                    color: colors.onSurfaceVariant,
+                    fontSize: 12,
+                  ),
                 ),
                 const SizedBox(height: 14),
                 Container(
@@ -6035,13 +6177,13 @@ class GeneratePage extends StatelessWidget {
                   ),
                   decoration: BoxDecoration(
                     color: enableRichContent
-                        ? const Color(0xFFEFF6FF)
-                        : const Color(0xFFF8FAFC),
+                        ? colors.primaryContainer
+                        : colors.surfaceContainerHighest,
                     borderRadius: BorderRadius.circular(14),
                     border: Border.all(
                       color: enableRichContent
-                          ? const Color(0xFF93C5FD)
-                          : kLine,
+                          ? colors.primary
+                          : colors.outlineVariant,
                     ),
                   ),
                   child: Row(
@@ -6051,13 +6193,15 @@ class GeneratePage extends StatelessWidget {
                         height: 36,
                         decoration: BoxDecoration(
                           color: enableRichContent
-                              ? const Color(0xFF3B82F6)
-                              : const Color(0xFFE2E8F0),
+                              ? colors.primary
+                              : colors.surfaceContainerHigh,
                           borderRadius: BorderRadius.circular(10),
                         ),
                         child: Icon(
                           Icons.insights_rounded,
-                          color: enableRichContent ? Colors.white : kMuted,
+                          color: enableRichContent
+                              ? colors.onPrimary
+                              : colors.onSurfaceVariant,
                           size: 20,
                         ),
                       ),
@@ -6066,19 +6210,19 @@ class GeneratePage extends StatelessWidget {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text(
+                            Text(
                               '启用图表/公式渲染',
                               style: TextStyle(
                                 fontWeight: FontWeight.w900,
-                                color: kInk,
+                                color: colors.onSurface,
                               ),
                             ),
                             Text(
                               enableRichContent
                                   ? '已开启：图表题约占总题数 25%（保持在 20%-30%）'
                                   : '关闭：纯文字题目，生成更快',
-                              style: const TextStyle(
-                                color: kMuted,
+                              style: TextStyle(
+                                color: colors.onSurfaceVariant,
                                 fontSize: 11,
                               ),
                             ),
@@ -6088,10 +6232,10 @@ class GeneratePage extends StatelessWidget {
                       Switch(
                         value: enableRichContent,
                         onChanged: (v) {
-                          HapticFeedback.selectionClick();
+                          AppHaptics.instance.selectionClick();
                           onToggleRichContent(v);
                         },
-                        activeThumbColor: kBlue,
+                        activeThumbColor: colors.primary,
                       ),
                     ],
                   ),
@@ -6105,11 +6249,13 @@ class GeneratePage extends StatelessWidget {
                   ),
                   decoration: BoxDecoration(
                     color: enableListening
-                        ? const Color(0xFFECFDF5)
-                        : const Color(0xFFF8FAFC),
+                        ? colors.tertiaryContainer
+                        : colors.surfaceContainerHighest,
                     borderRadius: BorderRadius.circular(14),
                     border: Border.all(
-                      color: enableListening ? const Color(0xFF86EFAC) : kLine,
+                      color: enableListening
+                          ? colors.tertiary
+                          : colors.outlineVariant,
                     ),
                   ),
                   child: Row(
@@ -6119,13 +6265,15 @@ class GeneratePage extends StatelessWidget {
                         height: 36,
                         decoration: BoxDecoration(
                           color: enableListening
-                              ? const Color(0xFF10B981)
-                              : const Color(0xFFE2E8F0),
+                              ? colors.tertiary
+                              : colors.surfaceContainerHigh,
                           borderRadius: BorderRadius.circular(10),
                         ),
                         child: Icon(
                           Icons.headphones_rounded,
-                          color: enableListening ? Colors.white : kMuted,
+                          color: enableListening
+                              ? colors.onTertiary
+                              : colors.onSurfaceVariant,
                           size: 20,
                         ),
                       ),
@@ -6134,19 +6282,19 @@ class GeneratePage extends StatelessWidget {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text(
+                            Text(
                               '启用音频题（英语听力）',
                               style: TextStyle(
                                 fontWeight: FontWeight.w900,
-                                color: kInk,
+                                color: colors.onSurface,
                               ),
                             ),
                             Text(
                               enableListening
                                   ? '已开启：听力题约占总题数 25%（保持在 20%-30%）'
                                   : '关闭：纯文字题，无听力音频',
-                              style: const TextStyle(
-                                color: kMuted,
+                              style: TextStyle(
+                                color: colors.onSurfaceVariant,
                                 fontSize: 11,
                               ),
                             ),
@@ -6156,10 +6304,10 @@ class GeneratePage extends StatelessWidget {
                       Switch(
                         value: enableListening,
                         onChanged: (v) {
-                          HapticFeedback.selectionClick();
+                          AppHaptics.instance.selectionClick();
                           onToggleListening(v);
                         },
-                        activeThumbColor: const Color(0xFF10B981),
+                        activeThumbColor: colors.tertiary,
                       ),
                     ],
                   ),
@@ -6327,7 +6475,7 @@ class _PracticeScreenState extends State<PracticeScreen> {
     });
     // 全屏打勾/打叉评判动画
     if (mounted) {
-      HapticFeedback.heavyImpact();
+      AppHaptics.instance.heavyImpact();
       await showDialog<void>(
         context: context,
         barrierColor: Colors.transparent,
@@ -6688,7 +6836,7 @@ class _ResultBoxState extends State<_ResultBox>
       end: Offset.zero,
     ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOut));
     _controller.forward();
-    HapticFeedback.mediumImpact();
+    AppHaptics.instance.mediumImpact();
   }
 
   @override
@@ -6819,7 +6967,7 @@ class _WrongBookPageState extends State<WrongBookPage> {
     required String message,
     String confirmText = '确认',
   }) async {
-    HapticFeedback.mediumImpact();
+    AppHaptics.instance.mediumImpact();
     final result = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -6940,7 +7088,7 @@ class _WrongBookPageState extends State<WrongBookPage> {
                           final checked = selected.contains(i);
                           return InkWell(
                             onTap: () {
-                              HapticFeedback.selectionClick();
+                              AppHaptics.instance.selectionClick();
                               setSheet(() {
                                 if (checked) {
                                   selected.remove(i);
@@ -7068,7 +7216,7 @@ class _WrongBookPageState extends State<WrongBookPage> {
             IconButton(
               tooltip: _searchMode ? '关闭检索' : '检索错题',
               onPressed: () {
-                HapticFeedback.selectionClick();
+                AppHaptics.instance.selectionClick();
                 setState(() {
                   _searchMode = !_searchMode;
                   if (!_searchMode) {
@@ -7287,7 +7435,7 @@ class _WrongMaterialGroup extends StatelessWidget {
   final int wrongVisibleCount;
 
   Future<void> _confirmDelete(BuildContext context, WrongItem item) async {
-    HapticFeedback.mediumImpact();
+    AppHaptics.instance.mediumImpact();
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -7411,7 +7559,7 @@ class _WrongQuestionCard extends StatelessWidget {
         ),
         confirmDismiss: (_) async {
           if (onDelete == null) return false;
-          HapticFeedback.mediumImpact();
+          AppHaptics.instance.mediumImpact();
           onDelete!();
           return false;
         },
@@ -7419,7 +7567,7 @@ class _WrongQuestionCard extends StatelessWidget {
           onLongPress: onDelete == null
               ? null
               : () {
-                  HapticFeedback.mediumImpact();
+                  AppHaptics.instance.mediumImpact();
                   onDelete!();
                 },
           borderRadius: BorderRadius.circular(18),
@@ -7773,7 +7921,7 @@ class _PaperPageState extends State<PaperPage> {
     required String message,
     String confirmText = '确认',
   }) async {
-    HapticFeedback.mediumImpact();
+    AppHaptics.instance.mediumImpact();
     final result = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -7894,7 +8042,7 @@ class _PaperPageState extends State<PaperPage> {
                           final checked = selected.contains(i);
                           return InkWell(
                             onTap: () {
-                              HapticFeedback.selectionClick();
+                              AppHaptics.instance.selectionClick();
                               setSheet(() {
                                 if (checked) {
                                   selected.remove(i);
@@ -8106,7 +8254,7 @@ class _PaperPageState extends State<PaperPage> {
     required String value,
     required List<String> list,
   }) async {
-    HapticFeedback.mediumImpact();
+    AppHaptics.instance.mediumImpact();
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -8211,14 +8359,14 @@ class _PaperPageState extends State<PaperPage> {
     if (result == null) return;
     final n = int.tryParse(result);
     if (n == null || n < 1 || n > 12) {
-      HapticFeedback.heavyImpact();
+      AppHaptics.instance.heavyImpact();
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('页数必须是 1-12 之间的整数')));
       return;
     }
-    HapticFeedback.selectionClick();
+    AppHaptics.instance.selectionClick();
     setState(() => _pageCount = n);
   }
 
@@ -8254,14 +8402,14 @@ class _PaperPageState extends State<PaperPage> {
     if (result == null) return;
     final n = int.tryParse(result);
     if (n == null || n <= 0 || n > 500) {
-      HapticFeedback.heavyImpact();
+      AppHaptics.instance.heavyImpact();
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('请输入 1-500 之间的正整数')));
       return;
     }
-    HapticFeedback.selectionClick();
+    AppHaptics.instance.selectionClick();
     onConfirm(n);
   }
 
@@ -8365,7 +8513,7 @@ class _PaperPageState extends State<PaperPage> {
           customHint: '如：计算机、会计、行测...',
           customTitle: '自定义学科',
           onSelected: (s) {
-            HapticFeedback.selectionClick();
+            AppHaptics.instance.selectionClick();
             setState(() => _subject = s);
           },
           onPickCustom: (preset) => _pickCustom(
@@ -8400,7 +8548,7 @@ class _PaperPageState extends State<PaperPage> {
           customHint: '如：专升本、研究生、自学考试...',
           customTitle: '自定义学段',
           onSelected: (s) {
-            HapticFeedback.selectionClick();
+            AppHaptics.instance.selectionClick();
             setState(() => _stage = s);
           },
           onPickCustom: (preset) => _pickCustom(
@@ -8435,7 +8583,7 @@ class _PaperPageState extends State<PaperPage> {
           customHint: '如：单元测、模拟考、真题演练...',
           customTitle: '自定义类型',
           onSelected: (s) {
-            HapticFeedback.selectionClick();
+            AppHaptics.instance.selectionClick();
             setState(() => _examType = s);
           },
           onPickCustom: (preset) => _pickCustom(
@@ -8480,7 +8628,7 @@ class _PaperPageState extends State<PaperPage> {
                   label: '$p 面',
                   selected: selected,
                   onTap: () {
-                    HapticFeedback.selectionClick();
+                    AppHaptics.instance.selectionClick();
                     setState(() => _pageCount = p);
                   },
                 );
@@ -8910,7 +9058,7 @@ class _PaperPageState extends State<PaperPage> {
               Switch(
                 value: widget.enableRichContent,
                 onChanged: (v) {
-                  HapticFeedback.selectionClick();
+                  AppHaptics.instance.selectionClick();
                   widget.onToggleRichContent(v);
                 },
                 activeThumbColor: kBlue,
@@ -8972,7 +9120,7 @@ class _PaperPageState extends State<PaperPage> {
               Switch(
                 value: widget.enableListening,
                 onChanged: (v) {
-                  HapticFeedback.selectionClick();
+                  AppHaptics.instance.selectionClick();
                   widget.onToggleListening(v);
                 },
                 activeThumbColor: const Color(0xFF10B981),
@@ -9026,7 +9174,7 @@ class _PaperPageState extends State<PaperPage> {
                       onPressed: _listeningCount <= 0
                           ? null
                           : () {
-                              HapticFeedback.selectionClick();
+                              AppHaptics.instance.selectionClick();
                               setState(
                                 () => _listeningCount = (_listeningCount - 1)
                                     .clamp(0, 30),
@@ -9053,7 +9201,7 @@ class _PaperPageState extends State<PaperPage> {
                       onPressed: _listeningCount >= 30
                           ? null
                           : () {
-                              HapticFeedback.selectionClick();
+                              AppHaptics.instance.selectionClick();
                               setState(
                                 () => _listeningCount = (_listeningCount + 1)
                                     .clamp(0, 30),
@@ -9075,7 +9223,7 @@ class _PaperPageState extends State<PaperPage> {
             onPressed: widget.generating || activeMaterial == null
                 ? null
                 : () {
-                    HapticFeedback.mediumImpact();
+                    AppHaptics.instance.mediumImpact();
                     final gradeLevel = '$_stage·$_examType';
                     _saveLastSelection();
                     widget.onGenerate(
@@ -9410,7 +9558,7 @@ class _ScoreNumberField extends StatelessWidget {
               IconButton(
                 onPressed: value > 1
                     ? () {
-                        HapticFeedback.selectionClick();
+                        AppHaptics.instance.selectionClick();
                         onChanged(value - 1);
                       }
                     : null,
@@ -9432,7 +9580,7 @@ class _ScoreNumberField extends StatelessWidget {
               IconButton(
                 onPressed: value < 100
                     ? () {
-                        HapticFeedback.selectionClick();
+                        AppHaptics.instance.selectionClick();
                         onChanged(value + 1);
                       }
                     : null,
@@ -9813,7 +9961,7 @@ class _PaperViewerState extends State<PaperViewer> {
             icon: Icon(_showAnswer ? Icons.visibility_off : Icons.visibility),
             tooltip: _showAnswer ? '隐藏答案' : '查看答案',
             onPressed: () {
-              HapticFeedback.selectionClick();
+              AppHaptics.instance.selectionClick();
               setState(() => _showAnswer = !_showAnswer);
             },
           ),
@@ -10279,7 +10427,7 @@ class _MePageState extends State<MePage> {
     required String message,
     String confirmText = '确认',
   }) async {
-    HapticFeedback.mediumImpact();
+    AppHaptics.instance.mediumImpact();
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -10400,7 +10548,7 @@ class _MePageState extends State<MePage> {
                           final checked = selected.contains(i);
                           return InkWell(
                             onTap: () {
-                              HapticFeedback.selectionClick();
+                              AppHaptics.instance.selectionClick();
                               setSheet(() {
                                 if (checked) {
                                   selected.remove(i);
@@ -10600,7 +10748,7 @@ class _MePageState extends State<MePage> {
                           final checked = selected.contains(i);
                           return InkWell(
                             onTap: () {
-                              HapticFeedback.selectionClick();
+                              AppHaptics.instance.selectionClick();
                               setSheet(() {
                                 if (checked) {
                                   selected.remove(i);
@@ -10714,6 +10862,7 @@ class _MePageState extends State<MePage> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     final records = widget.records;
     final wrongs = widget.wrongs;
     final xpProfile = widget.xpProfile;
@@ -10747,7 +10896,7 @@ class _MePageState extends State<MePage> {
             IconButton(
               tooltip: _searchMode ? '关闭检索' : '检索历史/错题',
               onPressed: () {
-                HapticFeedback.selectionClick();
+                AppHaptics.instance.selectionClick();
                 setState(() {
                   _searchMode = !_searchMode;
                   if (!_searchMode) {
@@ -10758,12 +10907,15 @@ class _MePageState extends State<MePage> {
               },
               icon: Icon(
                 _searchMode ? Icons.search_off_rounded : Icons.search_rounded,
-                color: kInk,
+                color: colors.onSurface,
               ),
             ),
             PopupMenuButton<String>(
               tooltip: '清理',
-              icon: const Icon(Icons.cleaning_services_outlined, color: kInk),
+              icon: Icon(
+                Icons.cleaning_services_outlined,
+                color: colors.onSurface,
+              ),
               itemBuilder: (_) => [
                 const PopupMenuItem(
                   value: 'batch_records',
@@ -10799,9 +10951,9 @@ class _MePageState extends State<MePage> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: colors.surface,
               borderRadius: BorderRadius.circular(999),
-              border: Border.all(color: kLine),
+              border: Border.all(color: colors.outlineVariant),
             ),
             child: TextField(
               controller: _controller,
@@ -11014,20 +11166,20 @@ class _WeeklyTrendCard extends StatelessWidget {
                 width: 42,
                 height: 42,
                 decoration: BoxDecoration(
-                  color: const Color(0xFFEFF6FF),
+                  color: colors.primaryContainer,
                   borderRadius: BorderRadius.circular(15),
                 ),
-                child: const Icon(Icons.show_chart_rounded, color: kBlue),
+                child: Icon(Icons.show_chart_rounded, color: colors.primary),
               ),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
+                    Text(
                       '本周练习趋势',
                       style: TextStyle(
-                        color: kInk,
+                        color: colors.onSurface,
                         fontSize: 17,
                         fontWeight: FontWeight.w900,
                       ),
@@ -11035,8 +11187,8 @@ class _WeeklyTrendCard extends StatelessWidget {
                     const SizedBox(height: 3),
                     Text(
                       '近 7 天共完成 $total 道题',
-                      style: const TextStyle(
-                        color: kMuted,
+                      style: TextStyle(
+                        color: colors.onSurfaceVariant,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
@@ -11062,8 +11214,8 @@ class _WeeklyTrendCard extends StatelessWidget {
                       children: [
                         Text(
                           '$value',
-                          style: const TextStyle(
-                            color: kMuted,
+                          style: TextStyle(
+                            color: colors.onSurfaceVariant,
                             fontSize: 11,
                             fontWeight: FontWeight.w800,
                           ),
@@ -11099,8 +11251,8 @@ class _WeeklyTrendCard extends StatelessWidget {
                 child: Center(
                   child: Text(
                     label,
-                    style: const TextStyle(
-                      color: kMuted,
+                    style: TextStyle(
+                      color: colors.onSurfaceVariant,
                       fontSize: 12,
                       fontWeight: FontWeight.w800,
                     ),
@@ -11143,13 +11295,13 @@ class _PracticeRecordTile extends StatelessWidget {
       ),
       confirmDismiss: (_) async {
         if (onDelete == null) return false;
-        HapticFeedback.mediumImpact();
+        AppHaptics.instance.mediumImpact();
         onDelete!();
         return false; // 由回调处理实际删除
       },
       child: InkWell(
         onTap: () {
-          HapticFeedback.selectionClick();
+          AppHaptics.instance.selectionClick();
           Navigator.of(context).push(
             MaterialPageRoute(
               builder: (_) => PracticeHistoryDetailPage(record: record),
@@ -11159,7 +11311,7 @@ class _PracticeRecordTile extends StatelessWidget {
         onLongPress: onDelete == null
             ? null
             : () {
-                HapticFeedback.mediumImpact();
+                AppHaptics.instance.mediumImpact();
                 onDelete!();
               },
         borderRadius: BorderRadius.circular(18),
@@ -11965,10 +12117,10 @@ class _ConfigEntryCard extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
+                  Text(
                     'API 配置',
                     style: TextStyle(
-                      color: kInk,
+                      color: colors.onSurface,
                       fontSize: 17,
                       fontWeight: FontWeight.w900,
                     ),
@@ -11976,13 +12128,16 @@ class _ConfigEntryCard extends StatelessWidget {
                   const SizedBox(height: 4),
                   Text(
                     configReady ? '已配置模型接口，可继续生成题目。' : '首次使用前，请配置自己的 API Key。',
-                    style: const TextStyle(color: kMuted, height: 1.35),
+                    style: TextStyle(
+                      color: colors.onSurfaceVariant,
+                      height: 1.35,
+                    ),
                   ),
                 ],
               ),
             ),
             const SizedBox(width: 8),
-            const Icon(Icons.chevron_right_rounded, color: kMuted),
+            Icon(Icons.chevron_right_rounded, color: colors.onSurfaceVariant),
           ],
         ),
       ),
@@ -12088,7 +12243,7 @@ class _CollapsibleSectionState extends State<_CollapsibleSection> {
           InkWell(
             borderRadius: BorderRadius.circular(14),
             onTap: () {
-              HapticFeedback.selectionClick();
+              AppHaptics.instance.selectionClick();
               setState(() => _expanded = !_expanded);
             },
             child: Container(
@@ -12239,25 +12394,25 @@ class _XpPanel extends StatelessWidget {
                   children: [
                     Text(
                       title,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 19,
                         fontWeight: FontWeight.w900,
-                        color: kInk,
+                        color: colors.onSurface,
                       ),
                     ),
                     const SizedBox(height: 3),
                     Text(
                       '${profile.totalXp} XP · 连续 ${profile.checkinStreak} 天',
-                      style: const TextStyle(
-                        color: kMuted,
+                      style: TextStyle(
+                        color: colors.onSurfaceVariant,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
                     const SizedBox(height: 3),
                     Text(
                       '再获 $remainToNext XP 可升级',
-                      style: const TextStyle(
-                        color: kBlue,
+                      style: TextStyle(
+                        color: colors.primary,
                         fontSize: 11,
                         fontWeight: FontWeight.w700,
                       ),
@@ -12274,7 +12429,7 @@ class _XpPanel extends StatelessWidget {
             child: LinearProgressIndicator(
               value: progress,
               minHeight: 9,
-              backgroundColor: const Color(0xFFEFF6FF),
+              backgroundColor: colors.primaryContainer,
             ),
           ),
           const SizedBox(height: 12),
@@ -12283,11 +12438,11 @@ class _XpPanel extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             decoration: BoxDecoration(
               color: boostActive
-                  ? const Color(0xFFFFF7ED)
-                  : const Color(0xFFF8FAFC),
+                  ? colors.tertiaryContainer
+                  : colors.surfaceContainerHighest,
               borderRadius: BorderRadius.circular(16),
               border: Border.all(
-                color: boostActive ? const Color(0xFFFDBA74) : kLine,
+                color: boostActive ? colors.tertiary : colors.outlineVariant,
               ),
             ),
             child: Row(
@@ -12296,7 +12451,9 @@ class _XpPanel extends StatelessWidget {
                   boostActive
                       ? Icons.local_fire_department_rounded
                       : Icons.style_outlined,
-                  color: boostActive ? const Color(0xFFF97316) : kMuted,
+                  color: boostActive
+                      ? colors.tertiary
+                      : colors.onSurfaceVariant,
                 ),
                 const SizedBox(width: 8),
                 Expanded(
@@ -12305,7 +12462,9 @@ class _XpPanel extends StatelessWidget {
                         ? '三倍经验剩余 ${_durationText(profile.boostRemaining())}'
                         : '完成 5 道错题抽卡并全对，可开启 10 分钟三倍经验',
                     style: TextStyle(
-                      color: boostActive ? const Color(0xFF9A3412) : kMuted,
+                      color: boostActive
+                          ? colors.onTertiaryContainer
+                          : colors.onSurfaceVariant,
                       fontWeight: FontWeight.w800,
                     ),
                   ),
@@ -12405,7 +12564,7 @@ class _WrongCardDrawDialogState extends State<WrongCardDrawDialog>
 
   void _chooseCard(int index) {
     if (_selectedIndex != null) return;
-    HapticFeedback.mediumImpact();
+    AppHaptics.instance.mediumImpact();
     _idleTimer?.cancel();
     setState(() {
       _selectedIndex = index;
@@ -12414,13 +12573,13 @@ class _WrongCardDrawDialogState extends State<WrongCardDrawDialog>
     _streamController.stop();
     _revealController.forward(from: 0).then((_) {
       if (!mounted) return;
-      HapticFeedback.heavyImpact();
+      AppHaptics.instance.heavyImpact();
       setState(() => _revealed = true);
     });
   }
 
   void _redraw() {
-    HapticFeedback.selectionClick();
+    AppHaptics.instance.selectionClick();
     setState(() {
       _selectedIndex = null;
       _revealed = false;
@@ -13015,7 +13174,7 @@ class _PracticeCompleteOverlayState extends State<PracticeCompleteOverlay>
     });
     Future.delayed(const Duration(milliseconds: 500), () {
       if (mounted) {
-        HapticFeedback.mediumImpact();
+        AppHaptics.instance.mediumImpact();
         _xpCtrl.forward();
       }
     });
@@ -13227,7 +13386,7 @@ class _PracticeCompleteOverlayState extends State<PracticeCompleteOverlay>
   }
 
   void _dismiss(BuildContext context) {
-    HapticFeedback.selectionClick();
+    AppHaptics.instance.selectionClick();
     Navigator.pop(context);
   }
 }
@@ -14974,6 +15133,7 @@ $materialText
     required int chapter,
     required int level,
     String audience = '通用',
+    List<WrongItem> wrongItems = const [],
   }) async {
     final materialText = material.length > 6500
         ? material.substring(0, 6500)
@@ -15102,6 +15262,7 @@ $materialText
         )
         .toList();
     // 兜底：模型偶尔少返回题目时，用资料片段补齐，保证每关完整 5 题。
+    late final List<MiniGame> completedGames;
     if (games.length < gameCount) {
       final completed = [...games];
       final fallback = _generateFallbackMiniGames(
@@ -15115,9 +15276,17 @@ $materialText
         completed.add(fallback[index % fallback.length]);
         index++;
       }
-      return completed.take(gameCount).toList();
+      completedGames = completed.take(gameCount).toList();
+    } else {
+      completedGames = games.take(gameCount).toList();
     }
-    return games.take(gameCount).toList();
+    return rule.mixesWrongQuestions
+        ? mixWrongAmbushGames(
+            generated: completedGames,
+            wrongItems: wrongItems,
+            targetCount: gameCount,
+          )
+        : completedGames;
   }
 
   /// v2.9.0: 兜底 mini-game 生成（AI 失败时）
@@ -16171,7 +16340,7 @@ class _BouncyTapState extends State<_BouncyTap>
   void _tap() {
     if (!widget.enabled) return;
     final settings = AppSettingsScope.of(context);
-    if (settings.hapticsEnabled) HapticFeedback.selectionClick();
+    if (settings.hapticsEnabled) AppHaptics.instance.selectionClick();
     widget.onTap();
   }
 
@@ -18329,7 +18498,7 @@ class _RpgLevelCompleteOverlayState extends State<RpgLevelCompleteOverlay>
   void _finish(RpgCompletionAction action) {
     if (_actionTaken) return;
     _actionTaken = true;
-    HapticFeedback.selectionClick();
+    AppHaptics.instance.selectionClick();
     final callback = widget.onAction;
     if (callback != null) {
       callback(action);
@@ -19461,14 +19630,14 @@ class _MiniGamePageState extends State<MiniGamePage>
           _bossEnergy--;
         }
         _showComboBurst = _combo >= 2;
-        HapticFeedback.lightImpact();
+        AppHaptics.instance.lightImpact();
         SoundService.instance.play(SoundType.correct);
         if (_combo >= 2) SoundService.instance.play(SoundType.combo);
       } else {
         _combo = 0;
         _showComboBurst = false;
         _lives--;
-        HapticFeedback.heavyImpact();
+        AppHaptics.instance.heavyImpact();
         SoundService.instance.play(SoundType.wrong);
         if (wrong != null) _wrongs.add(wrong);
         final knowledgePoint = currentGame.knowledgePoint?.trim() ?? '';
@@ -19723,26 +19892,48 @@ class _MiniGamePageState extends State<MiniGamePage>
   }
 
   Widget _buildGame(MiniGame game) {
-    switch (game.type) {
-      case MiniGameType.matching:
-        return MatchingGameWidget(game: game, onComplete: _onGameComplete);
-      case MiniGameType.listening:
-        return ListeningGameWidget(game: game, onComplete: _onGameComplete);
-      case MiniGameType.flashcard:
-        return FlashcardGameWidget(game: game, onComplete: _onGameComplete);
-      case MiniGameType.reorder:
-        return ReorderGameWidget(game: game, onComplete: _onGameComplete);
-      case MiniGameType.tapfast:
-        return TapFastGameWidget(game: game, onComplete: _onGameComplete);
-      case MiniGameType.spell:
-        return SpellGameWidget(game: game, onComplete: _onGameComplete);
-      case MiniGameType.fillblank:
-        return FillBlankGameWidget(game: game, onComplete: _onGameComplete);
-      case MiniGameType.truefalse:
-        return TrueFalseGameWidget(game: game, onComplete: _onGameComplete);
-      case MiniGameType.linkup:
-        return LinkUpGameWidget(game: game, onComplete: _onGameComplete);
-    }
+    final child = switch (game.type) {
+      MiniGameType.matching => MatchingGameWidget(
+        game: game,
+        onComplete: _onGameComplete,
+      ),
+      MiniGameType.listening => ListeningGameWidget(
+        game: game,
+        onComplete: _onGameComplete,
+      ),
+      MiniGameType.flashcard => FlashcardGameWidget(
+        game: game,
+        onComplete: _onGameComplete,
+      ),
+      MiniGameType.reorder => ReorderGameWidget(
+        game: game,
+        onComplete: _onGameComplete,
+      ),
+      MiniGameType.tapfast => TapFastGameWidget(
+        game: game,
+        onComplete: _onGameComplete,
+      ),
+      MiniGameType.spell => SpellGameWidget(
+        game: game,
+        onComplete: _onGameComplete,
+      ),
+      MiniGameType.fillblank => FillBlankGameWidget(
+        game: game,
+        onComplete: _onGameComplete,
+      ),
+      MiniGameType.truefalse => TrueFalseGameWidget(
+        game: game,
+        onComplete: _onGameComplete,
+      ),
+      MiniGameType.linkup => LinkUpGameWidget(
+        game: game,
+        onComplete: _onGameComplete,
+      ),
+    };
+    return KeyedSubtree(
+      key: ValueKey('mini-game-$_currentGameIndex-${game.type.name}'),
+      child: child,
+    );
   }
 }
 
@@ -19884,7 +20075,7 @@ class _MatchingGameWidgetState extends State<MatchingGameWidget>
       _flashCtrl.forward(from: 0).then((_) {
         if (mounted) setState(() => _flashIdx = null);
       });
-      HapticFeedback.lightImpact();
+      AppHaptics.instance.lightImpact();
       // 检查是否全部完成
       if (_matchedPairs.length == _lefts.length) {
         Future.delayed(const Duration(milliseconds: 500), () {
@@ -19899,7 +20090,7 @@ class _MatchingGameWidgetState extends State<MatchingGameWidget>
       _flashCtrl.forward(from: 0).then((_) {
         if (mounted) setState(() => _flashIdx = null);
       });
-      HapticFeedback.heavyImpact();
+      AppHaptics.instance.heavyImpact();
       // 错误：扣血但不结束，允许重试
       // 如果想严格：可以扣血到 0 则结束
       // 这里设计为：配对错误允许重试，不直接结束
@@ -20236,10 +20427,10 @@ class _ListeningGameWidgetState extends State<ListeningGameWidget> {
     final isCorrect = userAns == correctAns;
     setState(() => _answered = true);
     if (isCorrect) {
-      HapticFeedback.lightImpact();
+      AppHaptics.instance.lightImpact();
       SoundService.instance.play(SoundType.correct);
     } else {
-      HapticFeedback.heavyImpact();
+      AppHaptics.instance.heavyImpact();
       SoundService.instance.play(SoundType.wrong);
     }
     WrongItem? wrong;
@@ -20494,10 +20685,10 @@ class _FlashcardGameWidgetState extends State<FlashcardGameWidget>
     final isCorrect = userAns == correctAns;
     setState(() => _answered = true);
     if (isCorrect) {
-      HapticFeedback.lightImpact();
+      AppHaptics.instance.lightImpact();
       SoundService.instance.play(SoundType.correct);
     } else {
-      HapticFeedback.heavyImpact();
+      AppHaptics.instance.heavyImpact();
       SoundService.instance.play(SoundType.wrong);
     }
     WrongItem? wrong;
@@ -20773,7 +20964,7 @@ class _ReorderGameWidgetState extends State<ReorderGameWidget> {
     if (_userOrder.contains(i)) return;
     SoundService.instance.play(SoundType.click);
     setState(() => _userOrder.add(i));
-    HapticFeedback.selectionClick();
+    AppHaptics.instance.selectionClick();
     // 检查是否全部排列完成
     if (_userOrder.length == _items.length) {
       _submit();
@@ -20784,10 +20975,10 @@ class _ReorderGameWidgetState extends State<ReorderGameWidget> {
     final isCorrect = _listEquals(_userOrder, _correctOrder);
     setState(() => _answered = true);
     if (isCorrect) {
-      HapticFeedback.lightImpact();
+      AppHaptics.instance.lightImpact();
       SoundService.instance.play(SoundType.correct);
     } else {
-      HapticFeedback.heavyImpact();
+      AppHaptics.instance.heavyImpact();
       SoundService.instance.play(SoundType.wrong);
     }
     WrongItem? wrong;
@@ -21007,11 +21198,11 @@ class _TapFastGameWidgetState extends State<TapFastGameWidget>
     _userAnswers.add(userSaysCorrect ? '对' : '错');
     if (isRight) {
       _correctCount++;
-      HapticFeedback.lightImpact();
+      AppHaptics.instance.lightImpact();
       SoundService.instance.play(SoundType.correct);
     } else {
       _wrongCount++;
-      HapticFeedback.heavyImpact();
+      AppHaptics.instance.heavyImpact();
       SoundService.instance.play(SoundType.wrong);
     }
     setState(() {
@@ -21320,7 +21511,7 @@ class _SpellGameWidgetState extends State<SpellGameWidget>
   void _onTapUnit(int idx) {
     if (_submitted || _selected.contains(idx)) return;
     setState(() => _selected.add(idx));
-    HapticFeedback.selectionClick();
+    AppHaptics.instance.selectionClick();
     SoundService.instance.play(SoundType.click);
     if (_selected.length == _units.length) {
       _check();
@@ -21330,7 +21521,7 @@ class _SpellGameWidgetState extends State<SpellGameWidget>
   void _onRemoveAt(int pos) {
     if (_submitted) return;
     setState(() => _selected.removeAt(pos));
-    HapticFeedback.selectionClick();
+    AppHaptics.instance.selectionClick();
   }
 
   void _check() {
@@ -21338,11 +21529,11 @@ class _SpellGameWidgetState extends State<SpellGameWidget>
     final built = _selected.map((i) => _units[i]).join();
     final correct = built == _target;
     if (correct) {
-      HapticFeedback.mediumImpact();
+      AppHaptics.instance.mediumImpact();
       SoundService.instance.play(SoundType.correct);
     } else {
       _shakeCtrl.forward(from: 0);
-      HapticFeedback.heavyImpact();
+      AppHaptics.instance.heavyImpact();
       SoundService.instance.play(SoundType.wrong);
     }
     WrongItem? wrong;
@@ -21566,14 +21757,14 @@ class _FillBlankGameWidgetState extends State<FillBlankGameWidget> {
     final idx = _filled.indexOf(null);
     if (idx == -1) return;
     setState(() => _filled[idx] = word);
-    HapticFeedback.selectionClick();
+    AppHaptics.instance.selectionClick();
     SoundService.instance.play(SoundType.click);
   }
 
   void _onRemoveBlank(int idx) {
     if (_submitted) return;
     setState(() => _filled[idx] = null);
-    HapticFeedback.selectionClick();
+    AppHaptics.instance.selectionClick();
   }
 
   void _check() {
@@ -21594,10 +21785,10 @@ class _FillBlankGameWidgetState extends State<FillBlankGameWidget> {
           ).every((b) => b);
     }
     if (correct) {
-      HapticFeedback.mediumImpact();
+      AppHaptics.instance.mediumImpact();
       SoundService.instance.play(SoundType.correct);
     } else {
-      HapticFeedback.heavyImpact();
+      AppHaptics.instance.heavyImpact();
       SoundService.instance.play(SoundType.wrong);
     }
     WrongItem? wrong;
@@ -21863,10 +22054,10 @@ class _TrueFalseGameWidgetState extends State<TrueFalseGameWidget>
     _dragX = _flyTo;
     _cardCtrl.forward();
     if (correct) {
-      HapticFeedback.mediumImpact();
+      AppHaptics.instance.mediumImpact();
       SoundService.instance.play(SoundType.correct);
     } else {
-      HapticFeedback.heavyImpact();
+      AppHaptics.instance.heavyImpact();
       SoundService.instance.play(SoundType.wrong);
     }
     WrongItem? wrong;
@@ -22149,7 +22340,7 @@ class _LinkUpGameWidgetState extends State<LinkUpGameWidget>
     if (_submitted || _tiles[idx].cleared) return;
     if (_firstSelected == null) {
       setState(() => _firstSelected = idx);
-      HapticFeedback.selectionClick();
+      AppHaptics.instance.selectionClick();
       SoundService.instance.play(SoundType.click);
     } else if (_firstSelected == idx) {
       setState(() => _firstSelected = null);
@@ -22164,7 +22355,7 @@ class _LinkUpGameWidgetState extends State<LinkUpGameWidget>
           _clearedPairs++;
         });
         _popCtrl.forward(from: 0);
-        HapticFeedback.mediumImpact();
+        AppHaptics.instance.mediumImpact();
         SoundService.instance.play(SoundType.star);
         if (_clearedPairs == _totalPairs) {
           _onAllCleared();
@@ -22172,7 +22363,7 @@ class _LinkUpGameWidgetState extends State<LinkUpGameWidget>
       } else {
         final prev = _firstSelected!;
         setState(() => _firstSelected = null);
-        HapticFeedback.heavyImpact();
+        AppHaptics.instance.heavyImpact();
         SoundService.instance.play(SoundType.wrong);
         _flashCtrl.forward(from: 0);
         setState(() {
@@ -22193,7 +22384,7 @@ class _LinkUpGameWidgetState extends State<LinkUpGameWidget>
 
   void _onAllCleared() {
     _submitted = true;
-    HapticFeedback.mediumImpact();
+    AppHaptics.instance.mediumImpact();
     SoundService.instance.play(SoundType.levelup);
     Future.delayed(const Duration(milliseconds: 400), () {
       widget.onComplete(
