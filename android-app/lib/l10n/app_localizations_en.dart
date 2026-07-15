@@ -268,4 +268,47 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get apiPageSubtitle =>
       'The Android app calls the model API directly and does not require an external backend.';
+
+  @override
+  String get ocrLanguage => 'OCR recognition language';
+
+  @override
+  String get ocrAuto => 'Auto detect';
+
+  @override
+  String get ocrChinese => 'Chinese';
+
+  @override
+  String get ocrEnglish => 'English';
+
+  @override
+  String get ocrMixed => 'Chinese + English';
+
+  @override
+  String get scanReady => 'Scan material';
+
+  @override
+  String get scanReadySubtitle =>
+      'Capture or select multiple pages, then recognize and edit on device';
+
+  @override
+  String get cancel => 'Cancel';
+
+  @override
+  String get confirm => 'Confirm';
+
+  @override
+  String get delete => 'Delete';
+
+  @override
+  String get clear => 'Clear';
+
+  @override
+  String get search => 'Search';
+
+  @override
+  String get empty => 'Nothing here yet';
+
+  @override
+  String get loading => 'Loading…';
 }

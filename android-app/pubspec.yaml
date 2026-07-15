@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 3.0.0+51
+version: 3.0.0+52
 
 environment:
   sdk: ^3.11.5
@@ -52,6 +52,14 @@ dependencies:
   # TTS 音频播放
   audioplayers: ^6.7.0
   path_provider: ^2.1.5
+  # v3 Phase 2: 本地 OCR 扫描、裁剪与中英文识别
+  image_picker: ^1.2.3
+  image_cropper: ^12.2.1
+  google_mlkit_text_recognition: 0.15.1
+  # v3 Phase 2: 统一的本地图表与系统 TTS 服务
+  # smart_content_viewer 1.x currently constrains fl_chart to 0.69.x.
+  fl_chart: ^0.69.2
+  flutter_tts: ^4.2.5
 
 dev_dependencies:
   flutter_test:

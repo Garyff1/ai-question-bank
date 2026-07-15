@@ -42,6 +42,11 @@ android {
     }
 }
 
+dependencies {
+    // ML Kit 默认只携带拉丁字符模型；中文教材识别需要显式加入中文模型。
+    implementation("com.google.mlkit:text-recognition-chinese:16.0.1")
+}
+
 flutter {
     source = "../.."
 }

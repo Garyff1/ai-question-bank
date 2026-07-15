@@ -84,5 +84,19 @@
   "mePageTitle": "我的",
   "mePageSubtitle": "学习数据、API 配置和项目信息都在这里。",
   "apiPageTitle": "API 配置",
-  "apiPageSubtitle": "安卓单体版直接从手机请求大模型，不需要外部后端。"
+  "apiPageSubtitle": "安卓单体版直接从手机请求大模型，不需要外部后端。",
+  "ocrLanguage": "OCR 识别语言",
+  "ocrAuto": "自动识别",
+  "ocrChinese": "中文",
+  "ocrEnglish": "英文",
+  "ocrMixed": "中英混合",
+  "scanReady": "扫描资料",
+  "scanReadySubtitle": "拍照或选择多页图片，在本机识别并编辑",
+  "cancel": "取消",
+  "confirm": "确认",
+  "delete": "删除",
+  "clear": "清空",
+  "search": "搜索",
+  "empty": "暂无内容",
+  "loading": "正在加载…"
 }

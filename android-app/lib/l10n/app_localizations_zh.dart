@@ -262,4 +262,46 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get apiPageSubtitle => '安卓单体版直接从手机请求大模型，不需要外部后端。';
+
+  @override
+  String get ocrLanguage => 'OCR 识别语言';
+
+  @override
+  String get ocrAuto => '自动识别';
+
+  @override
+  String get ocrChinese => '中文';
+
+  @override
+  String get ocrEnglish => '英文';
+
+  @override
+  String get ocrMixed => '中英混合';
+
+  @override
+  String get scanReady => '扫描资料';
+
+  @override
+  String get scanReadySubtitle => '拍照或选择多页图片，在本机识别并编辑';
+
+  @override
+  String get cancel => '取消';
+
+  @override
+  String get confirm => '确认';
+
+  @override
+  String get delete => '删除';
+
+  @override
+  String get clear => '清空';
+
+  @override
+  String get search => '搜索';
+
+  @override
+  String get empty => '暂无内容';
+
+  @override
+  String get loading => '正在加载…';
 }

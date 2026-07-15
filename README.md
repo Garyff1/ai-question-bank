@@ -301,6 +301,12 @@ ai-question-bank/
 
 MIT
 
+### 第三方开源项目与致谢
+
+Android 客户端基于 Flutter，并使用 OCR、图表、TTS、文件处理与 PDF 等第三方组件。应用内可从“设置 → 开源许可”查看随包许可证原文；直接依赖、用途及商业许可风险详见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+
+特别说明：`syncfusion_flutter_pdf` 使用 Syncfusion Community / Commercial License，并不自动适用本仓库的 MIT 许可证。项目商业化前必须确认 Community License 资格、取得商业许可或更换 PDF 方案。
+
 
 
 ---

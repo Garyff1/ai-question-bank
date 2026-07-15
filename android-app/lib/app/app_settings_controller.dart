@@ -8,6 +8,8 @@ enum AppLocalePreference { system, zh, en }
 
 enum GenerationLanguage { followMaterial, zh, en }
 
+enum OcrLanguageMode { auto, chinese, english, mixed }
+
 class AppSettingsController extends ChangeNotifier {
   AppSettingsController._(this._storage);
 
@@ -18,6 +20,7 @@ class AppSettingsController extends ChangeNotifier {
   static const _backgroundSoundKey = 'settings.background_sound_v3';
   static const _hapticsKey = 'settings.haptics_v3';
   static const _reduceMotionKey = 'settings.reduce_motion_v3';
+  static const _ocrLanguageKey = 'settings.ocr_language_v3';
 
   final LocalStorage _storage;
 
@@ -28,6 +31,7 @@ class AppSettingsController extends ChangeNotifier {
   bool _backgroundSoundEnabled = false;
   bool _hapticsEnabled = true;
   bool _reduceMotion = false;
+  OcrLanguageMode _ocrLanguage = OcrLanguageMode.auto;
 
   static Future<AppSettingsController> load() async {
     final storage = await LocalStorage.create();
@@ -52,6 +56,11 @@ class AppSettingsController extends ChangeNotifier {
         storage.getBool(_backgroundSoundKey) ?? false;
     controller._hapticsEnabled = storage.getBool(_hapticsKey) ?? true;
     controller._reduceMotion = storage.getBool(_reduceMotionKey) ?? false;
+    controller._ocrLanguage = _enumValue(
+      OcrLanguageMode.values,
+      storage.getString(_ocrLanguageKey),
+      OcrLanguageMode.auto,
+    );
     return controller;
   }
 
@@ -62,6 +71,7 @@ class AppSettingsController extends ChangeNotifier {
   bool get backgroundSoundEnabled => _backgroundSoundEnabled;
   bool get hapticsEnabled => _hapticsEnabled;
   bool get reduceMotion => _reduceMotion;
+  OcrLanguageMode get ocrLanguage => _ocrLanguage;
 
   ThemeMode get themeMode => switch (_themePreference) {
     AppThemePreference.system => ThemeMode.system,
@@ -122,6 +132,13 @@ class AppSettingsController extends ChangeNotifier {
     _reduceMotion = value;
     notifyListeners();
     await _storage.setBool(_reduceMotionKey, value);
+  }
+
+  Future<void> setOcrLanguage(OcrLanguageMode value) async {
+    if (_ocrLanguage == value) return;
+    _ocrLanguage = value;
+    notifyListeners();
+    await _storage.setString(_ocrLanguageKey, value.name);
   }
 
   static T _enumValue<T extends Enum>(

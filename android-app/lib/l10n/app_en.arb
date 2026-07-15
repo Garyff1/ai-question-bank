@@ -84,5 +84,19 @@
   "mePageTitle": "My learning",
   "mePageSubtitle": "Learning data, API configuration and project information.",
   "apiPageTitle": "API configuration",
-  "apiPageSubtitle": "The Android app calls the model API directly and does not require an external backend."
+  "apiPageSubtitle": "The Android app calls the model API directly and does not require an external backend.",
+  "ocrLanguage": "OCR recognition language",
+  "ocrAuto": "Auto detect",
+  "ocrChinese": "Chinese",
+  "ocrEnglish": "English",
+  "ocrMixed": "Chinese + English",
+  "scanReady": "Scan material",
+  "scanReadySubtitle": "Capture or select multiple pages, then recognize and edit on device",
+  "cancel": "Cancel",
+  "confirm": "Confirm",
+  "delete": "Delete",
+  "clear": "Clear",
+  "search": "Search",
+  "empty": "Nothing here yet",
+  "loading": "Loading…"
 }

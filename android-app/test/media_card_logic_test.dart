@@ -39,7 +39,9 @@ void main() {
     final chart = question.richContent.firstWhere(
       (item) => item['type'] == 'chart',
     );
-    expect(chart['data']['data'], '甲:10,乙:20,丙:30');
+    expect(chart['data']['chartType'], 'bar');
+    expect(chart['data']['xLabels'], ['甲', '乙', '丙']);
+    expect(chart['data']['series'].single['values'], [10.0, 20.0, 30.0]);
   });
 
   test('chart fallback parses parenthesized textbook data', () {
@@ -48,8 +50,9 @@ void main() {
     final chart = question.richContent.firstWhere(
       (item) => item['type'] == 'chart',
     );
-    expect(chart['data']['chart_type'], 'line');
-    expect(chart['data']['data'], '一月:12,二月:18,三月:25');
+    expect(chart['data']['chartType'], 'line');
+    expect(chart['data']['xLabels'], ['一月', '二月', '三月']);
+    expect(chart['data']['series'].single['values'], [12.0, 18.0, 25.0]);
   });
 
   test(

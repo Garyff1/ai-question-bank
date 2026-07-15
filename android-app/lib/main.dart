@@ -19,7 +19,11 @@ import 'app/app.dart';
 import 'app/app_settings_controller.dart';
 import 'core/localization/localization_extensions.dart';
 import 'features/challenge/challenge_rules.dart';
+import 'features/materials/ocr/ocr_models.dart';
+import 'features/materials/ocr/ocr_scan_page.dart';
+import 'features/rich_content/chart_data.dart';
 import 'features/settings/settings_center_card.dart';
+import 'features/wrong_book/knowledge_diagnosis.dart';
 import 'rich_content.dart';
 import 'dart:io';
 import 'dart:typed_data';
@@ -1003,20 +1007,23 @@ class AiQuestion {
     // 至少需要 2 组数据才生成图表
     if (dataMap.length < 2) return null;
 
-    // 构建 data 字符串
-    final dataStr = dataMap.entries
-        .take(10)
-        .map((e) {
-          final v = e.value == e.value.roundToDouble()
-              ? e.value.round().toString()
-              : e.value.toString();
-          return '${e.key}:$v';
-        })
-        .join(',');
+    final entries = dataMap.entries.take(10).toList(growable: false);
 
     return {
       'type': 'chart',
-      'data': {'chart_type': chartType, 'data': dataStr, 'title': title},
+      'data': {
+        'chartType': chartType == 'histogram' ? 'bar' : chartType,
+        'title': title,
+        'xLabels': entries.map((entry) => entry.key).toList(growable: false),
+        'series': [
+          {
+            'name': '',
+            'values': entries
+                .map((entry) => entry.value)
+                .toList(growable: false),
+          },
+        ],
+      },
     };
   }
 
@@ -1419,6 +1426,8 @@ class QuestionStat {
     required this.isCorrect,
     required this.answerLetter,
     required this.knowledgePoint,
+    this.questionText = '',
+    this.explanation = '',
   });
 
   /// 'choice' | 'multi_choice' | 'fill' | 'true_false' | 'subjective'
@@ -1430,12 +1439,16 @@ class QuestionStat {
 
   /// 知识点（目前用 section/题目前缀近似，未来可由 AI 显式标注）
   final String knowledgePoint;
+  final String questionText;
+  final String explanation;
 
   Map<String, dynamic> toJson() => {
     'type': type,
     'isCorrect': isCorrect,
     'answerLetter': answerLetter,
     'knowledgePoint': knowledgePoint,
+    if (questionText.isNotEmpty) 'questionText': questionText,
+    if (explanation.isNotEmpty) 'explanation': explanation,
   };
 
   factory QuestionStat.fromJson(Map<String, dynamic> json) => QuestionStat(
@@ -1443,6 +1456,8 @@ class QuestionStat {
     isCorrect: json['isCorrect'] as bool? ?? false,
     answerLetter: json['answerLetter'] as String? ?? '',
     knowledgePoint: json['knowledgePoint'] as String? ?? '综合',
+    questionText: json['questionText'] as String? ?? '',
+    explanation: json['explanation'] as String? ?? '',
   );
 }
 
@@ -2732,7 +2747,7 @@ class _AppShellState extends State<AppShell> {
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.white,
+      backgroundColor: Theme.of(context).colorScheme.surface,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
@@ -3011,6 +3026,16 @@ class _AppShellState extends State<AppShell> {
         });
       }
     }
+  }
+
+  Future<void> _openOcrScan() async {
+    final draft = await Navigator.of(context).push<OcrMaterialDraft>(
+      MaterialPageRoute(builder: (_) => const OcrScanPage()),
+    );
+    if (draft == null || !mounted) return;
+    await _addMaterial(draft.title, draft.content);
+    if (!mounted) return;
+    _showSnack('已识别并保存 ${draft.pageCount} 页资料');
   }
 
   /// 拍照识题功能已暂时移除：DeepSeek API 不支持图片输入，本地 OCR 中文识别准确度不足。
@@ -3822,6 +3847,18 @@ class _AppShellState extends State<AppShell> {
                   ],
                 ),
                 const SizedBox(height: 10),
+                OutlinedButton.icon(
+                  onPressed: () {
+                    Navigator.pop(context);
+                    Future.microtask(_openOcrScan);
+                  },
+                  icon: const Icon(Icons.document_scanner_rounded),
+                  label: Text(context.l10n.scanMaterial),
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size.fromHeight(46),
+                  ),
+                ),
+                const SizedBox(height: 10),
                 Container(
                   width: double.infinity,
                   padding: const EdgeInsets.symmetric(
@@ -3844,7 +3881,7 @@ class _AppShellState extends State<AppShell> {
                       SizedBox(width: 8),
                       Expanded(
                         child: Text(
-                          '支持格式：PDF、Word（.docx / .doc）；其他格式可使用「粘贴文本」导入。',
+                          '支持 PDF、Word 与图片 OCR 扫描；其他格式可使用「粘贴文本」导入。',
                           style: TextStyle(
                             fontSize: 12,
                             color: kInk,
@@ -4023,6 +4060,8 @@ class _AppShellState extends State<AppShell> {
           isCorrect: isCorrect,
           answerLetter: letter,
           knowledgePoint: kp.isEmpty ? '综合' : kp,
+          questionText: q.question,
+          explanation: q.explanation,
         ),
       );
     }
@@ -4095,6 +4134,8 @@ class _AppShellState extends State<AppShell> {
           isCorrect: isCorrect,
           answerLetter: '',
           knowledgePoint: kp.isEmpty ? 'RPG' : kp,
+          questionText: q.question,
+          explanation: q.explanation,
         ),
       );
     }
@@ -4239,7 +4280,7 @@ class _AppShellState extends State<AppShell> {
         onCheckIn: _dailyCheckIn,
         onOpenConfig: _openConfigPage,
         onRpgChallenge: _openRpgMap,
-        onScan: () => _showSnack(context.l10n.scanComingSoon),
+        onScan: _openOcrScan,
       ),
       GeneratePage(
         materials: _materials,
@@ -7005,7 +7046,7 @@ class _WrongBookPageState extends State<WrongBookPage> {
     final confirmed = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.white,
+      backgroundColor: Theme.of(context).colorScheme.surface,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
@@ -7191,6 +7232,8 @@ class _WrongBookPageState extends State<WrongBookPage> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final isEnglish = Localizations.localeOf(context).languageCode == 'en';
     final wrongs = widget.wrongs;
     final xpProfile = widget.xpProfile;
     final grouped = <String, List<WrongItem>>{};
@@ -7227,13 +7270,16 @@ class _WrongBookPageState extends State<WrongBookPage> {
               },
               icon: Icon(
                 _searchMode ? Icons.search_off_rounded : Icons.search_rounded,
-                color: kInk,
+                color: colors.onSurface,
               ),
             ),
             if (wrongs.isNotEmpty)
               PopupMenuButton<String>(
                 tooltip: '清理',
-                icon: const Icon(Icons.cleaning_services_outlined, color: kInk),
+                icon: Icon(
+                  Icons.cleaning_services_outlined,
+                  color: colors.onSurface,
+                ),
                 itemBuilder: (_) => [
                   const PopupMenuItem(
                     value: 'batch_wrongs',
@@ -7258,9 +7304,9 @@ class _WrongBookPageState extends State<WrongBookPage> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: colors.surface,
               borderRadius: BorderRadius.circular(999),
-              border: Border.all(color: kLine),
+              border: Border.all(color: colors.outlineVariant),
             ),
             child: TextField(
               controller: _controller,
@@ -7304,23 +7350,29 @@ class _WrongBookPageState extends State<WrongBookPage> {
         ),
         const SizedBox(height: 14),
         if (wrongs.isEmpty)
-          const _EmptyCard(
+          _EmptyCard(
             icon: Icons.check_circle_outline,
-            title: '暂无错题',
-            subtitle: '做题后答错的题目会自动收录到这里。',
+            title: isEnglish ? 'No mistakes yet' : '暂无错题',
+            subtitle: isEnglish
+                ? 'Incorrect answers will be collected here automatically.'
+                : '做题后答错的题目会自动收录到这里。',
           )
         else if (_searchMode && filteredCount == 0)
-          const _EmptyCard(
+          _EmptyCard(
             icon: Icons.search_off,
-            title: '没有匹配的错题',
-            subtitle: '换个关键词试试。',
+            title: isEnglish ? 'No matching mistakes' : '没有匹配的错题',
+            subtitle: isEnglish ? 'Try another keyword.' : '换个关键词试试。',
           )
         else ...[
           _SectionHeader(
-            title: '错题收纳',
+            title: isEnglish ? 'Mistakes by material' : '错题收纳',
             subtitle: _query.isEmpty
-                ? '按资料自动归类（最近 3 份资料，每份前 3 题）'
-                : '检索结果（$filteredCount 道）',
+                ? (isEnglish
+                      ? 'Grouped by material (3 recent materials)'
+                      : '按资料自动归类（最近 3 份资料，每份前 3 题）')
+                : (isEnglish
+                      ? '$filteredCount results'
+                      : '检索结果（$filteredCount 道）'),
           ),
           const SizedBox(height: 10),
           // 检索模式下不折叠（用户主动在找），普通模式下只显示最近 3 份资料
@@ -7356,12 +7408,14 @@ class _WrongOverviewCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final isEnglish = Localizations.localeOf(context).languageCode == 'en';
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: colors.surface,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: kLine),
+        border: Border.all(color: colors.outlineVariant),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -7370,14 +7424,14 @@ class _WrongOverviewCard extends StatelessWidget {
             children: [
               _MiniMetric(
                 icon: Icons.error_outline_rounded,
-                label: '错题',
-                value: '$total 道',
+                label: isEnglish ? 'Mistakes' : '错题',
+                value: isEnglish ? '$total' : '$total 道',
               ),
               const SizedBox(width: 10),
               _MiniMetric(
                 icon: Icons.inventory_2_outlined,
-                label: '资料收纳',
-                value: '$groupCount 组',
+                label: isEnglish ? 'Materials' : '资料收纳',
+                value: isEnglish ? '$groupCount' : '$groupCount 组',
               ),
             ],
           ),
@@ -7400,8 +7454,12 @@ class _WrongOverviewCard extends StatelessWidget {
                 Expanded(
                   child: Text(
                     weakestName == null
-                        ? '暂无薄弱资料，完成练习后会自动分析。'
-                        : '当前薄弱资料：$weakestName（$weakestCount 道错题）',
+                        ? (isEnglish
+                              ? 'Weak materials will appear after practice.'
+                              : '暂无薄弱资料，完成练习后会自动分析。')
+                        : (isEnglish
+                              ? 'Needs attention: $weakestName ($weakestCount mistakes)'
+                              : '当前薄弱资料：$weakestName（$weakestCount 道错题）'),
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
@@ -7459,13 +7517,15 @@ class _WrongMaterialGroup extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final isEnglish = Localizations.localeOf(context).languageCode == 'en';
     return Container(
       margin: const EdgeInsets.only(bottom: 14),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: colors.surface,
         borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: kLine),
+        border: Border.all(color: colors.outlineVariant),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -7487,8 +7547,8 @@ class _WrongMaterialGroup extends StatelessWidget {
                   group.key,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: kInk,
+                  style: TextStyle(
+                    color: colors.onSurface,
                     fontSize: 16,
                     fontWeight: FontWeight.w900,
                   ),
@@ -7503,9 +7563,9 @@ class _WrongMaterialGroup extends StatelessWidget {
             child: FilledButton.tonalIcon(
               onPressed: onPractice,
               icon: const Icon(Icons.menu_book_rounded, size: 18),
-              label: const Text(
-                '练习本组错题',
-                style: TextStyle(fontWeight: FontWeight.w800),
+              label: Text(
+                isEnglish ? 'Practice this group' : '练习本组错题',
+                style: const TextStyle(fontWeight: FontWeight.w800),
               ),
               style: FilledButton.styleFrom(
                 backgroundColor: const Color(0xFFEFF6FF),
@@ -7541,6 +7601,8 @@ class _WrongQuestionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final isEnglish = Localizations.localeOf(context).languageCode == 'en';
     return RepaintBoundary(
       child: Dismissible(
         key: ValueKey(
@@ -7575,9 +7637,9 @@ class _WrongQuestionCard extends StatelessWidget {
             margin: const EdgeInsets.only(bottom: 10),
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
-              color: const Color(0xFFF8FAFC),
+              color: colors.surfaceContainerLow,
               borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: kLine),
+              border: Border.all(color: colors.outlineVariant),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -7620,11 +7682,11 @@ class _WrongQuestionCard extends StatelessWidget {
                 ],
                 const SizedBox(height: 8),
                 Text(
-                  '你的答案：${item.userAnswer}',
+                  '${isEnglish ? 'Your answer' : '你的答案'}：${item.userAnswer}',
                   style: const TextStyle(color: kRed),
                 ),
                 Text(
-                  '参考答案：${_answerString(item.question.answer)}',
+                  '${isEnglish ? 'Answer' : '参考答案'}：${_answerString(item.question.answer)}',
                   style: const TextStyle(color: kGreen),
                 ),
                 const SizedBox(height: 6),
@@ -8415,6 +8477,8 @@ class _PaperPageState extends State<PaperPage> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final isEnglish = Localizations.localeOf(context).languageCode == 'en';
     final activeMaterial =
         _material ?? (widget.materials.isEmpty ? null : widget.materials.first);
 
@@ -8457,25 +8521,29 @@ class _PaperPageState extends State<PaperPage> {
           subtitle: context.l10n.paperPageSubtitle,
         ),
         const SizedBox(height: 16),
-        const _FlowStepHeader(
+        _FlowStepHeader(
           step: '01',
-          title: '选择资料',
-          subtitle: '试卷会基于所选资料出题。',
+          title: isEnglish ? 'Choose material' : '选择资料',
+          subtitle: isEnglish
+              ? 'The paper will be generated from this material.'
+              : '试卷会基于所选资料出题。',
         ),
         const SizedBox(height: 10),
         if (widget.materials.isEmpty)
-          const _EmptyCard(
+          _EmptyCard(
             icon: Icons.upload_file,
-            title: '还没有资料',
-            subtitle: '请先到“出题”页导入 PDF / Word / TXT 或粘贴文本。',
+            title: isEnglish ? 'No material yet' : '还没有资料',
+            subtitle: isEnglish
+                ? 'Import a file, scan images or paste text first.'
+                : '请先导入 PDF / Word / 图片扫描资料，或粘贴文本。',
           )
         else
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: colors.surface,
               borderRadius: BorderRadius.circular(24),
-              border: Border.all(color: kLine),
+              border: Border.all(color: colors.outlineVariant),
             ),
             child: DropdownButtonFormField<StudyMaterial>(
               initialValue: activeMaterial,
@@ -8500,10 +8568,12 @@ class _PaperPageState extends State<PaperPage> {
             ),
           ),
         const SizedBox(height: 18),
-        const _FlowStepHeader(
+        _FlowStepHeader(
           step: '02',
-          title: '选择学科',
-          subtitle: '九科预设或自定义（适合考研、考编、职业考试等）。',
+          title: isEnglish ? 'Choose subject' : '选择学科',
+          subtitle: isEnglish
+              ? 'Use a preset or create a custom subject.'
+              : '九科预设或自定义（适合考研、考编、职业考试等）。',
         ),
         const SizedBox(height: 10),
         _ChipGroup(
@@ -8535,10 +8605,12 @@ class _PaperPageState extends State<PaperPage> {
           ),
         ),
         const SizedBox(height: 18),
-        const _FlowStepHeader(
+        _FlowStepHeader(
           step: '03',
-          title: '选择学段',
-          subtitle: '小学 / 初中 / 高中 / 成年人，或自定义。',
+          title: isEnglish ? 'Choose level' : '选择学段',
+          subtitle: isEnglish
+              ? 'Primary, middle, high school, adult or custom.'
+              : '小学 / 初中 / 高中 / 成年人，或自定义。',
         ),
         const SizedBox(height: 10),
         _ChipGroup(
@@ -8570,10 +8642,12 @@ class _PaperPageState extends State<PaperPage> {
           ),
         ),
         const SizedBox(height: 18),
-        const _FlowStepHeader(
+        _FlowStepHeader(
           step: '04',
-          title: '选择考试类型',
-          subtitle: '期末 / 期中 / 中高考模拟 / 周测 / 小测，或自定义。',
+          title: isEnglish ? 'Choose exam type' : '选择考试类型',
+          subtitle: isEnglish
+              ? 'Final, midterm, mock exam, weekly quiz or custom.'
+              : '期末 / 期中 / 中高考模拟 / 周测 / 小测，或自定义。',
         ),
         const SizedBox(height: 10),
         _ChipGroup(
@@ -8605,18 +8679,20 @@ class _PaperPageState extends State<PaperPage> {
           ),
         ),
         const SizedBox(height: 18),
-        const _FlowStepHeader(
+        _FlowStepHeader(
           step: '05',
-          title: '选择试卷页数',
-          subtitle: '2 / 4 / 6 / 8 面或自定义，最多 12 面。',
+          title: isEnglish ? 'Choose paper length' : '选择试卷页数',
+          subtitle: isEnglish
+              ? '2 / 4 / 6 / 8 pages or custom, up to 12.'
+              : '2 / 4 / 6 / 8 面或自定义，最多 12 面。',
         ),
         const SizedBox(height: 10),
         Container(
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: colors.surface,
             borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: kLine),
+            border: Border.all(color: colors.outlineVariant),
           ),
           child: Wrap(
             spacing: 10,
@@ -8653,9 +8729,9 @@ class _PaperPageState extends State<PaperPage> {
         // 「更多选项」折叠区：总分 + 各题型小题分值
         Container(
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: colors.surface,
             borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: kLine),
+            border: Border.all(color: colors.outlineVariant),
           ),
           child: ExpansionTile(
             initiallyExpanded: _moreExpanded,
@@ -9266,12 +9342,12 @@ class _PaperPageState extends State<PaperPage> {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            const Text(
-              '历史试卷',
+            Text(
+              isEnglish ? 'Paper history' : '历史试卷',
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.w900,
-                color: kInk,
+                color: colors.onSurface,
               ),
             ),
             Row(
@@ -9317,10 +9393,12 @@ class _PaperPageState extends State<PaperPage> {
         ),
         const SizedBox(height: 10),
         if (widget.papers.isEmpty)
-          const _EmptyCard(
+          _EmptyCard(
             icon: Icons.description_outlined,
-            title: '还没有生成过试卷',
-            subtitle: '选好资料、学科、学段、类型和页数后，点击“生成试卷”。',
+            title: isEnglish ? 'No papers yet' : '还没有生成过试卷',
+            subtitle: isEnglish
+                ? 'Choose the options above, then generate a paper.'
+                : '选好资料、学科、学段、类型和页数后，点击“生成试卷”。',
           )
         else
           _CollapsibleSection(
@@ -9373,15 +9451,16 @@ class _ChipGroup extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     final allPresets = <String>[...presets, ...customItems];
     final isCustomSelected = !allPresets.contains(selected);
     final customSet = customItems.toSet();
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: colors.surface,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: kLine),
+        border: Border.all(color: colors.outlineVariant),
       ),
       child: Wrap(
         spacing: 10,
@@ -9430,6 +9509,7 @@ class _PresetChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     return InkWell(
       onTap: onTap,
       onLongPress: onLongPress,
@@ -9438,7 +9518,7 @@ class _PresetChip extends StatelessWidget {
         duration: const Duration(milliseconds: 160),
         padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
         decoration: BoxDecoration(
-          color: selected ? kBlue : const Color(0xFFF1F5F9),
+          color: selected ? kBlue : colors.surfaceContainerHighest,
           borderRadius: BorderRadius.circular(16),
         ),
         child: Row(
@@ -9448,14 +9528,14 @@ class _PresetChip extends StatelessWidget {
               Icon(
                 Icons.tune,
                 size: 14,
-                color: selected ? Colors.white : kMuted,
+                color: selected ? Colors.white : colors.onSurfaceVariant,
               ),
               const SizedBox(width: 4),
             ],
             Text(
               label,
               style: TextStyle(
-                color: selected ? Colors.white : kInk,
+                color: selected ? Colors.white : colors.onSurface,
                 fontWeight: FontWeight.w800,
               ),
             ),
@@ -9489,6 +9569,7 @@ class _ScoreOptionChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(14),
@@ -9496,7 +9577,7 @@ class _ScoreOptionChip extends StatelessWidget {
         duration: const Duration(milliseconds: 160),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         decoration: BoxDecoration(
-          color: selected ? kBlue : const Color(0xFFF1F5F9),
+          color: selected ? kBlue : colors.surfaceContainerHighest,
           borderRadius: BorderRadius.circular(14),
         ),
         child: Row(
@@ -9506,7 +9587,7 @@ class _ScoreOptionChip extends StatelessWidget {
               Icon(
                 Icons.tune,
                 size: 13,
-                color: selected ? Colors.white : kMuted,
+                color: selected ? Colors.white : colors.onSurfaceVariant,
               ),
               const SizedBox(width: 4),
             ],
@@ -9514,7 +9595,7 @@ class _ScoreOptionChip extends StatelessWidget {
               label,
               style: TextStyle(
                 fontSize: 13,
-                color: selected ? Colors.white : kInk,
+                color: selected ? Colors.white : colors.onSurface,
                 fontWeight: FontWeight.w800,
               ),
             ),
@@ -10404,6 +10485,9 @@ class _MePageState extends State<MePage> {
   bool _searchMode = false;
   final TextEditingController _controller = TextEditingController();
 
+  bool get _english => Localizations.localeOf(context).languageCode == 'en';
+  String _t(String zh, String en) => _english ? en : zh;
+
   @override
   void dispose() {
     _controller.dispose();
@@ -10425,7 +10509,7 @@ class _MePageState extends State<MePage> {
   Future<bool> _confirm({
     required String title,
     required String message,
-    String confirmText = '确认',
+    String? confirmText,
   }) async {
     AppHaptics.instance.mediumImpact();
     final ok = await showDialog<bool>(
@@ -10436,12 +10520,12 @@ class _MePageState extends State<MePage> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('取消'),
+            child: Text(_t('取消', 'Cancel')),
           ),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: kRed),
             onPressed: () => Navigator.pop(ctx, true),
-            child: Text(confirmText),
+            child: Text(confirmText ?? _t('确认', 'Confirm')),
           ),
         ],
       ),
@@ -10454,9 +10538,9 @@ class _MePageState extends State<MePage> {
     final records = widget.records;
     if (records.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('历史记录已经是空的'),
-          duration: Duration(seconds: 1),
+        SnackBar(
+          content: Text(_t('历史记录已经是空的', 'Practice history is already empty')),
+          duration: const Duration(seconds: 1),
         ),
       );
       return;
@@ -10497,10 +10581,10 @@ class _MePageState extends State<MePage> {
                     ),
                     Row(
                       children: [
-                        const Expanded(
+                        Expanded(
                           child: Text(
-                            '批量删除历史记录',
-                            style: TextStyle(
+                            _t('批量删除历史记录', 'Delete practice history'),
+                            style: const TextStyle(
                               fontSize: 18,
                               fontWeight: FontWeight.w900,
                               color: kInk,
@@ -10520,7 +10604,9 @@ class _MePageState extends State<MePage> {
                             });
                           },
                           child: Text(
-                            selected.length == records.length ? '取消全选' : '全选',
+                            selected.length == records.length
+                                ? _t('取消全选', 'Clear selection')
+                                : _t('全选', 'Select all'),
                             style: const TextStyle(
                               color: kBlue,
                               fontWeight: FontWeight.w800,
@@ -10531,7 +10617,10 @@ class _MePageState extends State<MePage> {
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      '已选 ${selected.length} / ${records.length} 条；勾选后点击底部按钮删除。',
+                      _t(
+                        '已选 ${selected.length} / ${records.length} 条；勾选后点击底部按钮删除。',
+                        '${selected.length} of ${records.length} selected. Use the button below to delete.',
+                      ),
                       style: const TextStyle(color: kMuted, fontSize: 12),
                     ),
                     const SizedBox(height: 10),
@@ -10607,7 +10696,7 @@ class _MePageState extends State<MePage> {
                         Expanded(
                           child: TextButton(
                             onPressed: () => Navigator.pop(ctx, false),
-                            child: const Text('取消'),
+                            child: Text(_t('取消', 'Cancel')),
                           ),
                         ),
                         const SizedBox(width: 10),
@@ -10620,8 +10709,11 @@ class _MePageState extends State<MePage> {
                             icon: const Icon(Icons.delete_outline, size: 18),
                             label: Text(
                               selected.isEmpty
-                                  ? '未选择'
-                                  : '删除选中 (${selected.length})',
+                                  ? _t('未选择', 'Nothing selected')
+                                  : _t(
+                                      '删除选中 (${selected.length})',
+                                      'Delete selected (${selected.length})',
+                                    ),
                             ),
                             style: FilledButton.styleFrom(
                               backgroundColor: kRed,
@@ -10641,9 +10733,12 @@ class _MePageState extends State<MePage> {
     if (confirmed == true && selected.isNotEmpty) {
       final toDelete = selected.map((i) => records[i]).toList();
       final ok = await _confirm(
-        title: '确认删除选中的历史记录？',
-        message: '将删除 ${toDelete.length} 条记录，删除后无法恢复。',
-        confirmText: '删除',
+        title: _t('确认删除选中的历史记录？', 'Delete selected history?'),
+        message: _t(
+          '将删除 ${toDelete.length} 条记录，删除后无法恢复。',
+          '${toDelete.length} records will be permanently deleted.',
+        ),
+        confirmText: _t('删除', 'Delete'),
       );
       if (ok) widget.onDeleteRecords(toDelete);
     }
@@ -10654,9 +10749,9 @@ class _MePageState extends State<MePage> {
     final wrongs = widget.wrongs;
     if (wrongs.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('错题本已经是空的'),
-          duration: Duration(seconds: 1),
+        SnackBar(
+          content: Text(_t('错题本已经是空的', 'Mistake book is already empty')),
+          duration: const Duration(seconds: 1),
         ),
       );
       return;
@@ -10697,10 +10792,10 @@ class _MePageState extends State<MePage> {
                     ),
                     Row(
                       children: [
-                        const Expanded(
+                        Expanded(
                           child: Text(
-                            '批量删除错题',
-                            style: TextStyle(
+                            _t('批量删除错题', 'Delete mistakes'),
+                            style: const TextStyle(
                               fontSize: 18,
                               fontWeight: FontWeight.w900,
                               color: kInk,
@@ -10720,7 +10815,9 @@ class _MePageState extends State<MePage> {
                             });
                           },
                           child: Text(
-                            selected.length == wrongs.length ? '取消全选' : '全选',
+                            selected.length == wrongs.length
+                                ? _t('取消全选', 'Clear selection')
+                                : _t('全选', 'Select all'),
                             style: const TextStyle(
                               color: kBlue,
                               fontWeight: FontWeight.w800,
@@ -10731,7 +10828,10 @@ class _MePageState extends State<MePage> {
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      '已选 ${selected.length} / ${wrongs.length} 道；勾选后点击底部按钮删除。',
+                      _t(
+                        '已选 ${selected.length} / ${wrongs.length} 道；勾选后点击底部按钮删除。',
+                        '${selected.length} of ${wrongs.length} selected. Use the button below to delete.',
+                      ),
                       style: const TextStyle(color: kMuted, fontSize: 12),
                     ),
                     const SizedBox(height: 10),
@@ -10818,7 +10918,7 @@ class _MePageState extends State<MePage> {
                         Expanded(
                           child: TextButton(
                             onPressed: () => Navigator.pop(ctx, false),
-                            child: const Text('取消'),
+                            child: Text(_t('取消', 'Cancel')),
                           ),
                         ),
                         const SizedBox(width: 10),
@@ -10831,8 +10931,11 @@ class _MePageState extends State<MePage> {
                             icon: const Icon(Icons.delete_outline, size: 18),
                             label: Text(
                               selected.isEmpty
-                                  ? '未选择'
-                                  : '删除选中 (${selected.length})',
+                                  ? _t('未选择', 'Nothing selected')
+                                  : _t(
+                                      '删除选中 (${selected.length})',
+                                      'Delete selected (${selected.length})',
+                                    ),
                             ),
                             style: FilledButton.styleFrom(
                               backgroundColor: kRed,
@@ -10852,9 +10955,12 @@ class _MePageState extends State<MePage> {
     if (confirmed == true && selected.isNotEmpty) {
       final toDelete = selected.map((i) => wrongs[i]).toList();
       final ok = await _confirm(
-        title: '确认删除选中的错题？',
-        message: '将删除 ${toDelete.length} 道错题，删除后无法恢复。',
-        confirmText: '删除',
+        title: _t('确认删除选中的错题？', 'Delete selected mistakes?'),
+        message: _t(
+          '将删除 ${toDelete.length} 道错题，删除后无法恢复。',
+          '${toDelete.length} mistakes will be permanently deleted.',
+        ),
+        confirmText: _t('删除', 'Delete'),
       );
       if (ok) widget.onDeleteWrongs(toDelete);
     }
@@ -10863,6 +10969,7 @@ class _MePageState extends State<MePage> {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
+    final isEnglish = _english;
     final records = widget.records;
     final wrongs = widget.wrongs;
     final xpProfile = widget.xpProfile;
@@ -10894,7 +11001,9 @@ class _MePageState extends State<MePage> {
               ),
             ),
             IconButton(
-              tooltip: _searchMode ? '关闭检索' : '检索历史/错题',
+              tooltip: _searchMode
+                  ? _t('关闭检索', 'Close search')
+                  : _t('检索历史/错题', 'Search history and mistakes'),
               onPressed: () {
                 AppHaptics.instance.selectionClick();
                 setState(() {
@@ -10911,27 +11020,31 @@ class _MePageState extends State<MePage> {
               ),
             ),
             PopupMenuButton<String>(
-              tooltip: '清理',
+              tooltip: _t('清理', 'Clean up'),
               icon: Icon(
                 Icons.cleaning_services_outlined,
                 color: colors.onSurface,
               ),
               itemBuilder: (_) => [
-                const PopupMenuItem(
+                PopupMenuItem(
                   value: 'batch_records',
                   child: ListTile(
                     leading: Icon(Icons.checklist_rounded, color: kBlue),
-                    title: Text('批量删除历史记录'),
-                    subtitle: Text('勾选要删除的记录（可全选）'),
+                    title: Text(_t('批量删除历史记录', 'Delete practice history')),
+                    subtitle: Text(
+                      _t('勾选要删除的记录（可全选）', 'Select records to delete'),
+                    ),
                     dense: true,
                   ),
                 ),
-                const PopupMenuItem(
+                PopupMenuItem(
                   value: 'batch_wrongs',
                   child: ListTile(
                     leading: Icon(Icons.checklist_rounded, color: kRed),
-                    title: Text('批量删除错题'),
-                    subtitle: Text('勾选要删除的错题（可全选）'),
+                    title: Text(_t('批量删除错题', 'Delete mistakes')),
+                    subtitle: Text(
+                      _t('勾选要删除的错题（可全选）', 'Select mistakes to delete'),
+                    ),
                     dense: true,
                   ),
                 ),
@@ -10958,12 +11071,19 @@ class _MePageState extends State<MePage> {
             child: TextField(
               controller: _controller,
               onChanged: (v) => setState(() => _query = v.trim()),
-              decoration: const InputDecoration(
-                hintText: '搜索资料名 / 题干 / 知识点',
+              decoration: InputDecoration(
+                hintText: _t(
+                  '搜索资料名 / 题干 / 知识点',
+                  'Search material / question / topic',
+                ),
                 border: InputBorder.none,
-                icon: Icon(Icons.search, size: 20, color: kMuted),
+                icon: Icon(
+                  Icons.search,
+                  size: 20,
+                  color: colors.onSurfaceVariant,
+                ),
                 isDense: true,
-                contentPadding: EdgeInsets.symmetric(vertical: 10),
+                contentPadding: const EdgeInsets.symmetric(vertical: 10),
               ),
             ),
           ),
@@ -10971,9 +11091,12 @@ class _MePageState extends State<MePage> {
             Padding(
               padding: const EdgeInsets.only(top: 8),
               child: Text(
-                '命中 ${filteredRecords.length} 条历史记录',
-                style: const TextStyle(
-                  color: kMuted,
+                _t(
+                  '命中 ${filteredRecords.length} 条历史记录',
+                  '${filteredRecords.length} history records found',
+                ),
+                style: TextStyle(
+                  color: colors.onSurfaceVariant,
                   fontSize: 12,
                   fontWeight: FontWeight.w700,
                 ),
@@ -11006,23 +11129,23 @@ class _MePageState extends State<MePage> {
           children: [
             _StatCard(
               icon: Icons.task_alt_rounded,
-              label: '累计做题',
+              label: isEnglish ? 'Questions' : '累计做题',
               value: '$total',
             ),
             _StatCard(
               icon: Icons.verified_rounded,
-              label: '正确题数',
+              label: isEnglish ? 'Correct' : '正确题数',
               value: '$correct',
               color: kGreen,
             ),
             _StatCard(
               icon: Icons.speed_rounded,
-              label: '正确率',
+              label: isEnglish ? 'Accuracy' : '正确率',
               value: '$accuracy%',
             ),
             _StatCard(
               icon: Icons.bookmark_remove_outlined,
-              label: '错题数',
+              label: isEnglish ? 'Mistakes' : '错题数',
               value: '${wrongs.length}',
               color: kRed,
             ),
@@ -11034,41 +11157,50 @@ class _MePageState extends State<MePage> {
           children: [
             Expanded(
               child: _SectionHeader(
-                title: '练习历史',
+                title: isEnglish ? 'Practice history' : '练习历史',
                 subtitle: _query.isEmpty
-                    ? '${records.length} 次记录'
-                    : '${filteredRecords.length}/${records.length} 条命中',
+                    ? _t('${records.length} 次记录', '${records.length} records')
+                    : _t(
+                        '${filteredRecords.length}/${records.length} 条命中',
+                        '${filteredRecords.length}/${records.length} matches',
+                      ),
               ),
             ),
           ],
         ),
         const SizedBox(height: 10),
         if (records.isEmpty)
-          const _EmptyCard(
+          _EmptyCard(
             icon: Icons.history,
-            title: '还没有练习历史',
-            subtitle: '完成一组题目后会显示在这里。',
+            title: _t('还没有练习历史', 'No practice history yet'),
+            subtitle: _t(
+              '完成一组题目后会显示在这里。',
+              'Complete a practice session to see it here.',
+            ),
           )
         else if (_searchMode && filteredRecords.isEmpty)
-          const _EmptyCard(
+          _EmptyCard(
             icon: Icons.search_off,
-            title: '没有匹配的历史记录',
-            subtitle: '换个关键词试试。',
+            title: _t('没有匹配的历史记录', 'No matching history'),
+            subtitle: _t('换个关键词试试。', 'Try another keyword.'),
           )
         else
           _CollapsibleSection(
             itemCount: filteredRecords.length,
             // 检索模式下不折叠（用户主动在找），普通模式下只显示最近 5 条
             visibleCount: _searchMode ? filteredRecords.length : 5,
-            label: '次记录',
+            label: isEnglish ? 'records' : '次记录',
             itemBuilder: (i) => _PracticeRecordTile(
               record: filteredRecords[i],
               onDelete: () async {
                 final record = filteredRecords[i];
                 final ok = await _confirm(
-                  title: '删除该历史记录？',
-                  message: '将删除「${record.materialName}」的练习记录，删除后无法恢复。',
-                  confirmText: '删除',
+                  title: _t('删除该历史记录？', 'Delete this history record?'),
+                  message: _t(
+                    '将删除「${record.materialName}」的练习记录，删除后无法恢复。',
+                    'The practice record for "${record.materialName}" will be permanently deleted.',
+                  ),
+                  confirmText: _t('删除', 'Delete'),
                 );
                 if (ok) widget.onDeleteRecord(record);
               },
@@ -11149,7 +11281,10 @@ class _WeeklyTrendCard extends StatelessWidget {
     final maxValue = values.isEmpty ? 1 : max(1, values.reduce(max));
     final now = DateTime.now();
     final colors = Theme.of(context).colorScheme;
-    const weekNames = ['一', '二', '三', '四', '五', '六', '日'];
+    final english = Localizations.localeOf(context).languageCode == 'en';
+    final weekNames = english
+        ? const ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+        : const ['一', '二', '三', '四', '五', '六', '日'];
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
@@ -11177,7 +11312,7 @@ class _WeeklyTrendCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      '本周练习趋势',
+                      english ? 'Weekly practice trend' : '本周练习趋势',
                       style: TextStyle(
                         color: colors.onSurface,
                         fontSize: 17,
@@ -11186,7 +11321,9 @@ class _WeeklyTrendCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 3),
                     Text(
-                      '近 7 天共完成 $total 道题',
+                      english
+                          ? '$total questions in the last 7 days'
+                          : '近 7 天共完成 $total 道题',
                       style: TextStyle(
                         color: colors.onSurfaceVariant,
                         fontWeight: FontWeight.w700,
@@ -11195,7 +11332,11 @@ class _WeeklyTrendCard extends StatelessWidget {
                   ],
                 ),
               ),
-              _TinyBadge(label: total >= 30 ? '节奏不错' : '继续加油'),
+              _TinyBadge(
+                label: total >= 30
+                    ? (english ? 'Good pace' : '节奏不错')
+                    : (english ? 'Keep going' : '继续加油'),
+              ),
             ],
           ),
           const SizedBox(height: 18),
@@ -11275,6 +11416,8 @@ class _PracticeRecordTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final english = Localizations.localeOf(context).languageCode == 'en';
     final accent = record.isWrongCardChallenge
         ? kBlue
         : (record.accuracy >= 60 ? kGreen : kRed);
@@ -11319,9 +11462,9 @@ class _PracticeRecordTile extends StatelessWidget {
           margin: const EdgeInsets.only(bottom: 10),
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: colors.surface,
             borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: kLine),
+            border: Border.all(color: colors.outlineVariant),
           ),
           child: Row(
             children: [
@@ -11348,17 +11491,22 @@ class _PracticeRecordTile extends StatelessWidget {
                       record.materialName,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: kInk,
+                      style: TextStyle(
+                        color: colors.onSurface,
                         fontWeight: FontWeight.w900,
                       ),
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      '${record.correct}/${record.total} 正确 · +${record.xpEarned} XP · ${_dateText(record.createdAt)}',
+                      english
+                          ? '${record.correct}/${record.total} correct · +${record.xpEarned} XP · ${_dateText(record.createdAt)}'
+                          : '${record.correct}/${record.total} 正确 · +${record.xpEarned} XP · ${_dateText(record.createdAt)}',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(color: kMuted, fontSize: 12),
+                      style: TextStyle(
+                        color: colors.onSurfaceVariant,
+                        fontSize: 12,
+                      ),
                     ),
                   ],
                 ),
@@ -11371,7 +11519,9 @@ class _PracticeRecordTile extends StatelessWidget {
               ),
               const SizedBox(width: 4),
               Text(
-                record.isWrongCardChallenge ? '抽卡' : '${record.accuracy}%',
+                record.isWrongCardChallenge
+                    ? (english ? 'Cards' : '抽卡')
+                    : '${record.accuracy}%',
                 style: TextStyle(color: accent, fontWeight: FontWeight.w900),
               ),
             ],
@@ -11419,15 +11569,28 @@ class _PracticeHistoryDetailPageState extends State<PracticeHistoryDetailPage>
   Widget build(BuildContext context) {
     final r = widget.record;
     final stats = r.questionStats;
+    final isEnglish = Localizations.localeOf(context).languageCode == 'en';
+    final colors = Theme.of(context).colorScheme;
+    final diagnoses = buildKnowledgeDiagnoses(
+      stats.map(
+        (stat) => KnowledgeAttempt(
+          knowledgePoint: stat.knowledgePoint,
+          isCorrect: stat.isCorrect,
+          occurredAt: r.createdAt,
+          question: stat.questionText,
+          explanation: stat.explanation,
+        ),
+      ),
+    );
     return Scaffold(
-      backgroundColor: const Color(0xFFF8F9FB),
+      backgroundColor: colors.surface,
       appBar: AppBar(
-        backgroundColor: Colors.white,
-        foregroundColor: kInk,
+        backgroundColor: colors.surface,
+        foregroundColor: colors.onSurface,
         elevation: 0,
-        title: const Text(
-          '练习详情',
-          style: TextStyle(fontSize: 17, fontWeight: FontWeight.w900),
+        title: Text(
+          isEnglish ? 'Practice details' : '练习详情',
+          style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900),
         ),
       ),
       body: ListView(
@@ -11437,8 +11600,10 @@ class _PracticeHistoryDetailPageState extends State<PracticeHistoryDetailPage>
           const SizedBox(height: 16),
           // 圆饼图：正确 vs 错误
           _ChartCard(
-            title: '正确率分布',
-            subtitle: '正确 ${r.correct} 题 · 错误 ${r.wrong} 题',
+            title: isEnglish ? 'Accuracy' : '正确率分布',
+            subtitle: isEnglish
+                ? '${r.correct} correct · ${r.wrong} wrong'
+                : '正确 ${r.correct} 题 · 错误 ${r.wrong} 题',
             child: AnimatedBuilder(
               animation: _curve,
               builder: (context, _) {
@@ -11453,8 +11618,10 @@ class _PracticeHistoryDetailPageState extends State<PracticeHistoryDetailPage>
           const SizedBox(height: 16),
           // 直方图 1：题型分布
           _ChartCard(
-            title: '题型分布',
-            subtitle: '每种题型的对错情况',
+            title: isEnglish ? 'Question types' : '题型分布',
+            subtitle: isEnglish
+                ? 'Correct and incorrect answers by type'
+                : '每种题型的对错情况',
             child: AnimatedBuilder(
               animation: _curve,
               builder: (context, _) {
@@ -11463,16 +11630,24 @@ class _PracticeHistoryDetailPageState extends State<PracticeHistoryDetailPage>
             ),
           ),
           const SizedBox(height: 16),
-          // 直方图 2：错题知识点 Top 5
+          // 知识点诊断使用可操作列表，不再用柱状图表达掌握情况。
           _ChartCard(
-            title: '错题知识点 Top 5',
-            subtitle: '错误最多的知识点',
-            child: AnimatedBuilder(
-              animation: _curve,
-              builder: (context, _) {
-                return _KnowledgeHistogram(
-                  stats: stats,
-                  progress: _curve.value,
+            title: isEnglish ? 'Knowledge diagnosis' : '错题知识点诊断',
+            subtitle: isEnglish
+                ? 'Sort, review and reinforce weak concepts'
+                : '按薄弱程度排序、查看并巩固知识点',
+            child: KnowledgeDiagnosisList(
+              items: diagnoses,
+              onReinforce: (item) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      isEnglish
+                          ? 'Open the mistake book to reinforce “${item.name}”.'
+                          : '已定位“${item.name}”，请前往错题本开始专项训练。',
+                    ),
+                    behavior: SnackBarBehavior.floating,
+                  ),
                 );
               },
             ),
@@ -11490,15 +11665,16 @@ class _DetailHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     final accent = record.isWrongCardChallenge
         ? kBlue
         : (record.accuracy >= 60 ? kGreen : kRed);
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: colors.surfaceContainerLow,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: kLine),
+        border: Border.all(color: Theme.of(context).dividerColor),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -11528,18 +11704,18 @@ class _DetailHeader extends StatelessWidget {
                       record.materialName,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w900,
-                        color: kInk,
+                        color: colors.onSurface,
                       ),
                     ),
                     const SizedBox(height: 4),
                     Text(
                       record.isWrongCardChallenge ? '错题抽卡挑战' : '常规练习',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 12,
-                        color: kMuted,
+                        color: colors.onSurfaceVariant,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
@@ -11639,26 +11815,30 @@ class _ChartCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: colors.surfaceContainerLow,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: kLine),
+        border: Border.all(color: Theme.of(context).dividerColor),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
             title,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 15,
               fontWeight: FontWeight.w900,
-              color: kInk,
+              color: colors.onSurface,
             ),
           ),
           const SizedBox(height: 4),
-          Text(subtitle, style: const TextStyle(fontSize: 12, color: kMuted)),
+          Text(
+            subtitle,
+            style: TextStyle(fontSize: 12, color: colors.onSurfaceVariant),
+          ),
           const SizedBox(height: 14),
           child,
         ],
@@ -11889,73 +12069,6 @@ class _TypeHistogram extends StatelessWidget {
             correctCount: r.correct,
             wrongCount: r.wrong,
             total: total,
-          ),
-        );
-      }).toList(),
-    );
-  }
-}
-
-/// 直方图：错题知识点 Top 5（按错误次数排序，错得最多的排前面）
-class _KnowledgeHistogram extends StatelessWidget {
-  const _KnowledgeHistogram({required this.stats, required this.progress});
-  final List<QuestionStat> stats;
-  final double progress;
-
-  @override
-  Widget build(BuildContext context) {
-    // 知识点兜底：若 AI 没标注，用题型作为分组依据
-    final typeLabels = <String, String>{
-      'choice': '选择题综合',
-      'multi_choice': '多选题综合',
-      'fill': '填空题综合',
-      'true_false': '判断题综合',
-      'subjective': '解答题综合',
-    };
-    final wrongMap = <String, int>{};
-    final correctMap = <String, int>{};
-    for (final s in stats) {
-      final kp = s.knowledgePoint.trim().isNotEmpty
-          ? s.knowledgePoint.trim()
-          : (typeLabels[s.type] ?? '综合');
-      if (s.isCorrect) {
-        correctMap[kp] = (correctMap[kp] ?? 0) + 1;
-      } else {
-        wrongMap[kp] = (wrongMap[kp] ?? 0) + 1;
-      }
-    }
-    if (wrongMap.isEmpty) {
-      return const _EmptyChart('本次练习没有错题，继续保持！');
-    }
-    // 只展示出现过错题的知识点；错误次数相同时按正确次数升序稳定排序。
-    final entries =
-        wrongMap.keys.map((kp) {
-          final wrong = wrongMap[kp] ?? 0;
-          final correct = correctMap[kp] ?? 0;
-          return MapEntry(kp, (wrong, correct));
-        }).toList()..sort((a, b) {
-          final wrongCompare = b.value.$1.compareTo(a.value.$1);
-          return wrongCompare != 0
-              ? wrongCompare
-              : a.value.$2.compareTo(b.value.$2);
-        });
-    final top = entries.take(5).toList();
-    final maxVal = top.fold<int>(1, (a, e) => a > e.value.$1 ? a : e.value.$1);
-    return Column(
-      children: top.map((e) {
-        final wrong = e.value.$1;
-        final correct = e.value.$2;
-        final correctW = (correct / maxVal) * progress;
-        final wrongW = (wrong / maxVal) * progress;
-        return Padding(
-          padding: const EdgeInsets.only(bottom: 10),
-          child: _BarRow(
-            label: e.key,
-            correctWidth: correctW,
-            wrongWidth: wrongW,
-            correctCount: correct,
-            wrongCount: wrong,
-            total: correct + wrong,
           ),
         );
       }).toList(),
@@ -12291,6 +12404,7 @@ class _AboutAppCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
+    final english = Localizations.localeOf(context).languageCode == 'en';
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -12298,21 +12412,23 @@ class _AboutAppCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(22),
         border: Border.all(color: Theme.of(context).dividerColor),
       ),
-      child: const Column(
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            '关于 AI题库',
+            english ? 'About AI Question Bank' : '关于 AI题库',
             style: TextStyle(
-              color: kInk,
+              color: colors.onSurface,
               fontSize: 17,
               fontWeight: FontWeight.w900,
             ),
           ),
-          SizedBox(height: 8),
+          const SizedBox(height: 8),
           Text(
-            'v2.7.0 · 个人 AI 学习训练台，支持多学科富内容渲染（数学公式、函数图、统计图、物理示意图、化学结构、英语听力）、试卷生成、错题本与练习历史折叠收纳。官网：aichuti.ccwu.cc，开源：github.com/Garyff1/ai-question-bank。',
-            style: TextStyle(color: kMuted, height: 1.5),
+            english
+                ? 'v3.0.0 Phase 2 Dev002 · A personal AI learning workspace with local materials, OCR, rich-content questions, papers, mistake review and challenge training.'
+                : 'v3.0.0 Phase 2 Dev002 · 个人 AI 学习训练台，支持本地资料、OCR 扫描、富内容题目、试卷生成、错题诊断与闯关训练。',
+            style: TextStyle(color: colors.onSurfaceVariant, height: 1.5),
           ),
         ],
       ),
@@ -14611,9 +14727,8 @@ class PaperPdfService {
     double pageHeight,
     double pageWidth,
   ) {
-    final rawChartType = (rcData['chart_type'] ?? 'bar')
-        .toString()
-        .toLowerCase();
+    final structured = StructuredChartData.fromRichContent(rcData);
+    final rawChartType = structured.chartType.name;
     final chartType =
         rawChartType.contains('折') || rawChartType.contains('line')
         ? 'line'
@@ -14624,10 +14739,25 @@ class PaperPdfService {
         : rawChartType.contains('直方') || rawChartType.contains('histogram')
         ? 'histogram'
         : 'bar';
-    final title = (rcData['title'] ?? '').toString();
-
-    final dataMap = parsePdfChartData(rcData['data'] ?? rcData);
-    if (dataMap.length < 2) return -1;
+    final title = structured.title;
+    final dataMap = <String, double>{};
+    if (structured.isValid) {
+      final values = structured.series.first.values;
+      for (var i = 0; i < structured.xLabels.length; i++) {
+        dataMap[structured.xLabels[i]] = values[i];
+      }
+    } else {
+      dataMap.addAll(parsePdfChartData(rcData['data'] ?? rcData));
+    }
+    final labels = structured.isValid
+        ? structured.xLabels
+        : dataMap.keys.toList(growable: false);
+    final seriesValues = structured.isValid
+        ? structured.series
+              .map((series) => series.values)
+              .toList(growable: false)
+        : <List<double>>[dataMap.values.toList(growable: false)];
+    if (labels.length < 2 || seriesValues.isEmpty) return -1;
 
     // 如果空间不够，换页
     if (y > pageHeight - marginBottom - height - 30) {
@@ -14670,22 +14800,22 @@ class PaperPdfService {
       );
     }
 
-    final entries = dataMap.entries.toList();
-    final maxValue = entries
-        .map((e) => e.value)
+    final maxValue = seriesValues
+        .expand((values) => values)
         .reduce((a, b) => a > b ? a : b);
     final safeMax = maxValue == 0 ? 1.0 : maxValue;
 
     if (chartType == 'pie') {
       // 饼图：从 12 点钟方向开始，顺时针
-      final total = entries.map((e) => e.value).fold(0.0, (a, b) => a + b);
+      final values = seriesValues.first;
+      final total = values.fold(0.0, (a, b) => a + b);
       if (total == 0) return -1;
       final cx = x + width / 2;
       final cy = chartY + chartH / 2;
       final radius = chartW < chartH ? chartW / 2 : chartH / 2;
       var startAngle = -90.0; // 从 12 点开始
-      for (var i = 0; i < entries.length; i++) {
-        final sweepAngle = (entries[i].value / total) * 360;
+      for (var i = 0; i < values.length; i++) {
+        final sweepAngle = (values[i] / total) * 360;
         g.drawPie(
           Rect.fromLTWH(cx - radius, cy - radius, radius * 2, radius * 2),
           startAngle,
@@ -14698,14 +14828,14 @@ class PaperPdfService {
       // 图例
       var legendY = chartY + chartH + 5;
       var legendX = x + 5.0;
-      for (var i = 0; i < entries.length; i++) {
+      for (var i = 0; i < values.length; i++) {
         // 色块
         g.drawRectangle(
           bounds: Rect.fromLTWH(legendX, legendY, 10, 10),
           brush: PdfSolidBrush(colors[i % colors.length]),
         );
         // 标签
-        final labelText = '${entries[i].key}: ${_fmtNum(entries[i].value)}';
+        final labelText = '${labels[i]}: ${_fmtNum(values[i])}';
         g.drawString(
           labelText,
           chartLabelFont,
@@ -14731,47 +14861,45 @@ class PaperPdfService {
         Offset(chartX, chartY + chartH),
         Offset(chartX + chartW, chartY + chartH),
       );
-      // 数据点
-      final stepX = chartW / (entries.length - 1).clamp(1, entries.length - 1);
-      var prevX = chartX;
-      var prevY = chartY + chartH - (entries[0].value / safeMax) * chartH;
-      // 画第一个点
-      g.drawEllipse(
-        Rect.fromLTWH(prevX - 2.5, prevY - 2.5, 5, 5),
-        brush: PdfSolidBrush(colors[0]),
-      );
-      // X 轴标签 + 折线
-      for (var i = 1; i < entries.length; i++) {
-        final px = chartX + i * stepX;
-        final py = chartY + chartH - (entries[i].value / safeMax) * chartH;
-        // 线
-        g.drawLine(
-          PdfPen(colors[i % colors.length], width: 2),
-          Offset(prevX, prevY),
-          Offset(px, py),
-        );
-        // 点
+      // 数据点与折线：每个 series 使用独立颜色。
+      final stepX = chartW / (labels.length - 1).clamp(1, labels.length - 1);
+      for (
+        var seriesIndex = 0;
+        seriesIndex < seriesValues.length;
+        seriesIndex++
+      ) {
+        final values = seriesValues[seriesIndex];
+        var prevX = chartX;
+        var prevY = chartY + chartH - (values.first / safeMax) * chartH;
         g.drawEllipse(
-          Rect.fromLTWH(px - 2.5, py - 2.5, 5, 5),
-          brush: PdfSolidBrush(colors[i % colors.length]),
+          Rect.fromLTWH(prevX - 2.5, prevY - 2.5, 5, 5),
+          brush: PdfSolidBrush(colors[seriesIndex % colors.length]),
         );
-        // X 轴标签
+        for (var i = 1; i < values.length; i++) {
+          final px = chartX + i * stepX;
+          final py = chartY + chartH - (values[i] / safeMax) * chartH;
+          g.drawLine(
+            PdfPen(colors[seriesIndex % colors.length], width: 2),
+            Offset(prevX, prevY),
+            Offset(px, py),
+          );
+          g.drawEllipse(
+            Rect.fromLTWH(px - 2.5, py - 2.5, 5, 5),
+            brush: PdfSolidBrush(colors[seriesIndex % colors.length]),
+          );
+          prevX = px;
+          prevY = py;
+        }
+      }
+      for (var i = 0; i < labels.length; i++) {
+        final px = chartX + i * stepX;
         g.drawString(
-          entries[i].key,
+          labels[i],
           chartLabelFont,
           brush: PdfSolidBrush(PdfColor(77, 77, 77)),
           bounds: Rect.fromLTWH(px - 15, chartY + chartH + 3, 30, 10),
         );
-        prevX = px;
-        prevY = py;
       }
-      // 第一个 X 轴标签
-      g.drawString(
-        entries[0].key,
-        chartLabelFont,
-        brush: PdfSolidBrush(PdfColor(77, 77, 77)),
-        bounds: Rect.fromLTWH(chartX - 15, chartY + chartH + 3, 30, 10),
-      );
     } else {
       // 柱状图 / 直方图（统一处理）
       // 坐标轴
@@ -14786,30 +14914,41 @@ class PaperPdfService {
         Offset(chartX + chartW, chartY + chartH),
       );
       // 柱子
-      final barWidth = (chartW / entries.length) * 0.6;
-      final barGap = (chartW / entries.length) * 0.4;
-      for (var i = 0; i < entries.length; i++) {
-        final bx = chartX + i * (barWidth + barGap) + barGap / 2;
-        final bh = (entries[i].value / safeMax) * chartH;
-        final by = chartY + chartH - bh;
-        g.drawRectangle(
-          bounds: Rect.fromLTWH(bx, by, barWidth, bh),
-          brush: PdfSolidBrush(colors[i % colors.length]),
-          pen: PdfPen(PdfColor(51, 51, 51), width: 0.3),
-        );
-        // 数值标签
-        g.drawString(
-          _fmtNum(entries[i].value),
-          chartLabelFont,
-          brush: PdfSolidBrush(PdfColor(26, 26, 26)),
-          bounds: Rect.fromLTWH(bx - 5, by - 12, barWidth + 10, 10),
-        );
+      final groupWidth = chartW / labels.length;
+      final seriesCount = seriesValues.length;
+      final barWidth = (groupWidth * 0.72 / seriesCount).clamp(2.0, 32.0);
+      for (var i = 0; i < labels.length; i++) {
+        final groupLeft = chartX + i * groupWidth + groupWidth * 0.14;
+        for (var seriesIndex = 0; seriesIndex < seriesCount; seriesIndex++) {
+          final value = seriesValues[seriesIndex][i];
+          final bx = groupLeft + seriesIndex * barWidth;
+          final bh = (value / safeMax) * chartH;
+          final by = chartY + chartH - bh;
+          g.drawRectangle(
+            bounds: Rect.fromLTWH(bx, by, barWidth, bh),
+            brush: PdfSolidBrush(colors[seriesIndex % colors.length]),
+            pen: PdfPen(PdfColor(51, 51, 51), width: 0.3),
+          );
+          if (seriesCount == 1) {
+            g.drawString(
+              _fmtNum(value),
+              chartLabelFont,
+              brush: PdfSolidBrush(PdfColor(26, 26, 26)),
+              bounds: Rect.fromLTWH(bx - 5, by - 12, barWidth + 10, 10),
+            );
+          }
+        }
         // X 轴标签
         g.drawString(
-          entries[i].key,
+          labels[i],
           chartLabelFont,
           brush: PdfSolidBrush(PdfColor(77, 77, 77)),
-          bounds: Rect.fromLTWH(bx - 5, chartY + chartH + 3, barWidth + 10, 10),
+          bounds: Rect.fromLTWH(
+            chartX + i * groupWidth,
+            chartY + chartH + 3,
+            groupWidth,
+            10,
+          ),
         );
       }
     }
@@ -14925,7 +15064,7 @@ class AiService {
         ? '''6. **rich_content 启用**：当题目涉及以下情况时**必须**返回 rich_content 数组：
    - 数学公式（含分式、根号、上下标、求和、积分等）→ type:"math"，content 用 \$\$...\$\$
    - 函数图像（一次/二次/三角/指数等）→ type:"math"，content 用 [graph: f(x)=...]
-   - 统计图（柱状/折线/饼图）→ type:"chart"，data.chart_type + data.data
+   - 统计图（柱状/折线/饼图）→ type:"chart"，使用结构化 data.chartType、data.xLabels 和 data.series
    - 物理受力/电路/光路等示意图 → type:"physics"
    - 化学分子结构/反应方程 → type:"chemistry"${enableListening ? '''
    - 英语听力原文 → type:"listening"（仅英语学科使用，audio_text 必填）''' : ''}
@@ -14937,7 +15076,7 @@ class AiService {
         ? '6. 本次为纯文字题目模式，**不要返回 math/physics/chemistry/chart/svg 等 rich_content**；但**英语听力题的 listening 块例外**，必须按第 8 条要求返回 listening rich_content。'
         : '6. 本次为纯文字题目模式，不要返回 rich_content 字段或留空数组 []，避免拖长输出导致 JSON 截断。';
     final chartNote = enableRichContent
-        ? '\n8. **图表题配额（强制）**：总共 $count 道题中，必须恰好有 $richTarget 道题包含 type:"chart" 的 rich_content（约 25%，必须保持在 20%-30%）。chart.data 必须是与题干一致的真实数据，格式为“标签:数值,标签:数值”，至少 2 组；其余题目不得返回 chart。'
+        ? '\n8. **图表题配额（强制）**：总共 $count 道题中，必须恰好有 $richTarget 道题包含 type:"chart" 的 rich_content（约 25%，必须保持在 20%-30%）。图表必须返回结构化数据，例如 {"type":"chart","data":{"chartType":"bar","title":"分布","xLabels":["A","B","C"],"series":[{"name":"人数","values":[30,50,20]}],"unit":"人","description":""}}。xLabels 与 values 数量必须一致且至少 2 组，数据必须与题干完全一致；其余题目不得返回 chart。'
         : '\n8. 本次不开启图表题，不要返回 chart 类型。';
     final listeningNote = enableListening
         ? '\n9. **听力题配额（强制）**：总共 $count 道题中，必须恰好有 $richTarget 道题包含 type:"listening" 的 rich_content（约 25%，必须保持在 20%-30%）。\n   - listening 块格式：{"type":"listening","data":{"audio_text":"完整可朗读段落（30-80 词，来自资料或基于资料改编，不要只截取零散词语）","voice":"en-US 或 zh-CN"}}\n   - audio_text 必须是完整句子或段落，各题不得重复\n   - 若图表和听力同时开启，两类各占约 25%，不要放在同一道题中'
@@ -15567,8 +15706,8 @@ $materialText
 2. 函数图像
 {"type":"math","data":{"content":"[graph: f(x)=x^2-4*x+3, x=-1..5, y=-2..10]"}}
 
-3. 统计图
-{"type":"chart","data":{"chart_type":"bar","data":"A:30,B:50,C:20","title":"分布"}}
+3. 统计图（只返回结构化数据，不返回图表图片）
+{"type":"chart","data":{"chartType":"bar","title":"分布","xLabels":["A","B","C"],"series":[{"name":"人数","values":[30,50,20]}],"unit":"人","description":""}}
 
 4. 物理示意图（仅物理题）
 {"type":"physics","data":{"diagram_type":"forces","params":"angle:30,mass:5,friction:0.3"}}
@@ -15596,7 +15735,7 @@ $materialText
    普通纯文字题目可留空数组 []。'''
         : '10. 本次为纯文字题目模式，不要返回 rich_content 字段或留空数组 []。';
     final chartPaperNote = enableRichContent
-        ? '\n12. **图表题配额（强制）**：全卷 $totalQ 题中必须恰好有 $richTarget 道题包含 type:"chart" 的 rich_content（约 25%，保持在 20%-30%）。data.data 必须使用“标签:数值,标签:数值”格式，至少 2 组，并与题干完全一致。其余题目不得返回 chart。'
+        ? '\n12. **图表题配额（强制）**：全卷 $totalQ 题中必须恰好有 $richTarget 道题包含 type:"chart" 的 rich_content（约 25%，保持在 20%-30%）。图表只返回结构化数据：data.chartType、data.title、data.xLabels、data.series、可选 data.unit 和 data.description；xLabels 与每组 series.values 长度一致且至少 2 组，并与题干完全一致。其余题目不得返回 chart。'
         : '\n12. 本次不开启图表题，不要返回 chart 类型。';
     final listeningPaperNote = enableListening
         ? '\n13. **听力题配额（强制）**：全卷 $totalQ 题中必须恰好有 $effectiveListeningTarget 道题包含 type:"listening" 的 rich_content（保持在 20%-30%）。audio_text 为完整可朗读段落（30-80 词），各题不得重复；若图表同时开启，两类不要放在同一道题中。'

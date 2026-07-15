@@ -2,15 +2,13 @@
 // 支持：英语听力（TTS）、SVG 矢量图、数学公式与函数图、化学分子/物理图、统计图表
 // 所有组件均为无状态、自包含，可直接嵌入题目详情页
 
-import 'dart:async';
-import 'dart:io';
-
-import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_edge_tts/flutter_edge_tts.dart';
 import 'package:flutter_svg/flutter_svg.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:smart_content_viewer/smart_content_viewer.dart';
+
+import 'features/audio/listening_audio_service.dart';
+import 'features/rich_content/chart_data.dart';
+import 'features/rich_content/structured_chart_widget.dart';
 
 /// 通用富内容块：根据 AI 返回的 [type] 字段分发到对应渲染组件
 class RichContentBlock extends StatelessWidget {
@@ -51,6 +49,8 @@ class RichContentBlock extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = type.toLowerCase();
+    final colors = Theme.of(context).colorScheme;
+    final english = Localizations.localeOf(context).languageCode == 'en';
     Widget? child;
     try {
       switch (t) {
@@ -80,10 +80,8 @@ class RichContentBlock extends StatelessWidget {
           );
           break;
         case 'chart':
-          child = _ChartWidget(
-            chartType: data['chart_type'] as String? ?? 'bar',
-            data: data['data'] as String? ?? '',
-            chartTitle: data['title'] as String?,
+          child = StructuredChartWidget(
+            data: StructuredChartData.fromRichContent(data),
           );
           break;
         case 'html':
@@ -100,25 +98,21 @@ class RichContentBlock extends StatelessWidget {
       margin: const EdgeInsets.symmetric(vertical: 6),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: const Color(0xFFEFF6FF),
+        color: colors.primaryContainer.withValues(alpha: 0.42),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFDBEAFE)),
+        border: Border.all(color: colors.outlineVariant),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              const Icon(
-                Icons.auto_awesome,
-                size: 14,
-                color: Color(0xFF2563EB),
-              ),
+              Icon(Icons.auto_awesome, size: 14, color: colors.primary),
               const SizedBox(width: 6),
               Text(
-                title ?? _defaultTitle(t),
-                style: const TextStyle(
-                  color: Color(0xFF2563EB),
+                title ?? _defaultTitle(t, english),
+                style: TextStyle(
+                  color: colors.primary,
                   fontSize: 12,
                   fontWeight: FontWeight.w800,
                 ),
@@ -132,22 +126,22 @@ class RichContentBlock extends StatelessWidget {
     );
   }
 
-  String _defaultTitle(String t) {
+  String _defaultTitle(String t, bool english) {
     switch (t) {
       case 'listening':
-        return '听力音频';
+        return english ? 'Listening audio' : '听力音频';
       case 'svg':
-        return '图形';
+        return english ? 'Diagram' : '图形';
       case 'math':
-        return '公式与图示';
+        return english ? 'Formula and diagram' : '公式与图示';
       case 'physics':
-        return '物理示意图';
+        return english ? 'Physics diagram' : '物理示意图';
       case 'chemistry':
-        return '化学结构图';
+        return english ? 'Chemistry structure' : '化学结构图';
       case 'chart':
-        return '数据图表';
+        return english ? 'Data chart' : '数据图表';
       default:
-        return '富内容';
+        return english ? 'Rich content' : '富内容';
     }
   }
 }
@@ -172,212 +166,152 @@ class _ListeningWidget extends StatefulWidget {
 }
 
 class _ListeningWidgetState extends State<_ListeningWidget> {
-  AudioPlayer? _player;
-  bool _loading = false;
-  bool _playing = false;
-  String? _audioPath;
-  String? _errorMsg;
-  FlutterEdgeTts? _tts;
-  StreamSubscription<PlayerState>? _playerStateSub;
+  late final ListeningAudioService _audio;
+
+  @override
+  void initState() {
+    super.initState();
+    _audio = ListeningAudioService();
+  }
 
   @override
   void dispose() {
-    _stopAndReset();
+    _audio.dispose();
     super.dispose();
-  }
-
-  void _stopAndReset() {
-    _player?.stop();
-    _playerStateSub?.cancel();
-    _playerStateSub = null;
-    _player = null;
-    _tts?.close();
-    _tts = null;
-  }
-
-  Future<void> _ensureTts() async {
-    if (_tts != null) return;
-    // v2.7.3: 根据 voice 字段映射到具体 TTS 声音名
-    // AI 返回的 voice 通常是 "en-US" / "zh-CN" 等 locale，不是 voice name
-    final voiceStr = widget.voice ?? 'en-US';
-    final String ttsVoiceName;
-    final String ttsLocale;
-    if (voiceStr.startsWith('zh')) {
-      ttsVoiceName = 'zh-CN-XiaoxiaoNeural';
-      ttsLocale = 'zh-CN';
-    } else if (voiceStr.startsWith('en')) {
-      ttsVoiceName = 'en-US-AriaNeural';
-      ttsLocale = 'en-US';
-    } else if (voiceStr.contains('AriaNeural') ||
-        voiceStr.contains('XiaoxiaoNeural') ||
-        voiceStr.contains('GuyNeural') ||
-        voiceStr.contains('YunxiNeural')) {
-      // 已经是完整 voice name
-      ttsVoiceName = voiceStr;
-      ttsLocale = voiceStr.substring(0, 5); // "en-US" or "zh-CN"
-    } else {
-      // 默认英文
-      ttsVoiceName = 'en-US-AriaNeural';
-      ttsLocale = 'en-US';
-    }
-    _tts = FlutterEdgeTts(
-      voice: ttsVoiceName,
-      voiceLocale: ttsLocale,
-      outputFormat: EdgeTtsOutputFormat.audio24Khz96KbitrateMonoMp3,
-      enableSentenceBoundary: true,
-    );
-    _player ??= AudioPlayer();
-    await _player!.setReleaseMode(ReleaseMode.stop);
-    await _player!.setVolume(1.0);
-    _playerStateSub ??= _player!.onPlayerStateChanged.listen((state) {
-      if (mounted) {
-        setState(() {
-          _playing = state == PlayerState.playing;
-          if (!_playing) _loading = false;
-        });
-      }
-    });
-  }
-
-  Future<void> _play() async {
-    final text = widget.audioText.trim();
-    if (text.isEmpty) {
-      setState(() => _errorMsg = '听力原文为空');
-      return;
-    }
-    setState(() {
-      _loading = true;
-      _errorMsg = null;
-    });
-    try {
-      await _ensureTts();
-      final dir = await getTemporaryDirectory();
-      final path =
-          '${dir.path}/tts_${DateTime.now().millisecondsSinceEpoch}.mp3';
-      await _tts!.synthesizeToFile(
-        text,
-        audioFilePath: path,
-        prosody: const EdgeTtsProsody(rate: '0.95', volume: '100'),
-      );
-      final audioFile = File(path);
-      if (!await audioFile.exists() || await audioFile.length() == 0) {
-        throw Exception('TTS 未生成有效音频文件');
-      }
-      _audioPath = path;
-      if (!mounted) return;
-      setState(() => _loading = false);
-      await _player!.play(DeviceFileSource(path));
-    } catch (e, stack) {
-      debugPrint('[Listening] 播放失败：$e');
-      debugPrintStack(stackTrace: stack);
-      if (!mounted) return;
-      setState(() {
-        _loading = false;
-        _playing = false;
-        _errorMsg = '播放失败，请检查网络连接、系统音量或稍后重试';
-      });
-    }
-  }
-
-  Future<void> _stop() async {
-    await _player?.stop();
-    if (mounted) setState(() => _playing = false);
   }
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
+    final colors = Theme.of(context).colorScheme;
+    final english = Localizations.localeOf(context).languageCode == 'en';
+    return AnimatedBuilder(
+      animation: _audio,
+      builder: (context, _) {
+        final loading = _audio.state == ListeningPlaybackState.loading;
+        final playing = _audio.state == ListeningPlaybackState.playing;
+        final paused = _audio.state == ListeningPlaybackState.paused;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            ElevatedButton.icon(
-              onPressed: _loading ? null : (_playing ? _stop : _play),
-              icon: _loading
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : Icon(
-                      _playing ? Icons.stop_rounded : Icons.play_arrow_rounded,
-                    ),
-              label: Text(_loading ? '合成中...' : (_playing ? '停止' : '播放听力')),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF2563EB),
-                foregroundColor: Colors.white,
-                elevation: 0,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 14,
-                  vertical: 8,
-                ),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
-                ),
-              ),
-            ),
-            const SizedBox(width: 8),
-            if (_audioPath != null && !_playing && !_loading)
-              const Icon(Icons.check_circle, color: Colors.green, size: 16),
-          ],
-        ),
-        const SizedBox(height: 8),
-        // v2.7.4: 出题/试卷环节隐藏听力原文，只在错题/历史记录展示
-        if (!widget.hideText)
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: const Color(0xFFE5E7EB)),
-            ),
-            child: Text(
-              widget.audioText,
-              style: const TextStyle(
-                fontSize: 13,
-                height: 1.5,
-                color: Color(0xFF1F2937),
-              ),
-            ),
-          )
-        else
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: const Color(0xFFFEF3C7),
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: const Color(0xFFFCD34D)),
-            ),
-            child: Row(
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              crossAxisAlignment: WrapCrossAlignment.center,
               children: [
-                const Icon(
-                  Icons.visibility_off_rounded,
-                  size: 14,
-                  color: Color(0xFF92400E),
-                ),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: Text(
-                    '听力原文已隐藏，答题后可在错题本/历史记录查看',
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: Color(0xFF92400E),
-                    ),
+                ElevatedButton.icon(
+                  onPressed: loading
+                      ? null
+                      : () => playing
+                            ? _audio.pause()
+                            : _audio.play(
+                                widget.audioText,
+                                locale: widget.voice,
+                              ),
+                  icon: loading
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : Icon(
+                          playing
+                              ? Icons.pause_rounded
+                              : Icons.play_arrow_rounded,
+                        ),
+                  label: Text(
+                    loading
+                        ? (english ? 'Preparing…' : '准备中…')
+                        : (playing
+                              ? (english ? 'Pause' : '暂停')
+                              : (english ? 'Play audio' : '播放听力')),
                   ),
+                ),
+                OutlinedButton.icon(
+                  onPressed: loading ? null : _audio.replay,
+                  icon: const Icon(Icons.replay_rounded),
+                  label: Text(english ? 'Replay' : '重播'),
+                ),
+                if (playing || paused)
+                  IconButton(
+                    tooltip: english ? 'Stop' : '停止',
+                    onPressed: _audio.stop,
+                    icon: const Icon(Icons.stop_circle_outlined),
+                  ),
+                DropdownButton<double>(
+                  value: _audio.rate,
+                  underline: const SizedBox.shrink(),
+                  items: const [
+                    DropdownMenuItem(value: 0.35, child: Text('0.75×')),
+                    DropdownMenuItem(value: 0.48, child: Text('1.0×')),
+                    DropdownMenuItem(value: 0.6, child: Text('1.25×')),
+                  ],
+                  onChanged: (value) {
+                    if (value != null) _audio.setRate(value);
+                  },
                 ),
               ],
             ),
-          ),
-        if (_errorMsg != null) ...[
-          const SizedBox(height: 6),
-          Text(
-            _errorMsg!,
-            style: const TextStyle(color: Colors.red, fontSize: 12),
-          ),
-        ],
-      ],
+            const SizedBox(height: 8),
+            // v2.7.4: 出题/试卷环节隐藏听力原文，只在错题/历史记录展示
+            if (!widget.hideText)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: colors.surface,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: colors.outlineVariant),
+                ),
+                child: Text(
+                  widget.audioText,
+                  style: TextStyle(
+                    fontSize: 13,
+                    height: 1.5,
+                    color: colors.onSurface,
+                  ),
+                ),
+              )
+            else
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: colors.tertiaryContainer,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: colors.outlineVariant),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.visibility_off_rounded,
+                      size: 14,
+                      color: colors.onTertiaryContainer,
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        english
+                            ? 'The transcript is hidden. Review it after answering in Mistakes or History.'
+                            : '听力原文已隐藏，答题后可在错题本/历史记录查看',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: colors.onTertiaryContainer,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            if (_audio.errorMessage != null) ...[
+              const SizedBox(height: 6),
+              Text(
+                _audio.errorMessage!,
+                style: const TextStyle(color: Colors.red, fontSize: 12),
+              ),
+            ],
+          ],
+        );
+      },
     );
   }
 }
@@ -501,47 +435,6 @@ class _ChemistryWidget extends StatelessWidget {
       diagramType: _resolve(),
       parameters: params,
       height: 220,
-    );
-  }
-}
-
-// ===== 统计图 =====
-
-class _ChartWidget extends StatelessWidget {
-  const _ChartWidget({
-    required this.chartType,
-    required this.data,
-    this.chartTitle,
-  });
-
-  final String chartType;
-  final String data;
-  final String? chartTitle;
-
-  ChartType _resolve() {
-    switch (chartType.toLowerCase()) {
-      case 'bar':
-        return ChartType.bar;
-      case 'line':
-        return ChartType.line;
-      case 'pie':
-        return ChartType.pie;
-      case 'histogram':
-        return ChartType.histogram;
-      default:
-        return ChartType.bar;
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return StatisticalChartViewer(
-      chartType: _resolve(),
-      data: data,
-      title: chartTitle,
-      height: 240,
-      showLegend: true,
-      showValues: true,
     );
   }
 }

@@ -607,6 +607,90 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'安卓单体版直接从手机请求大模型，不需要外部后端。'**
   String get apiPageSubtitle;
+
+  /// No description provided for @ocrLanguage.
+  ///
+  /// In zh, this message translates to:
+  /// **'OCR 识别语言'**
+  String get ocrLanguage;
+
+  /// No description provided for @ocrAuto.
+  ///
+  /// In zh, this message translates to:
+  /// **'自动识别'**
+  String get ocrAuto;
+
+  /// No description provided for @ocrChinese.
+  ///
+  /// In zh, this message translates to:
+  /// **'中文'**
+  String get ocrChinese;
+
+  /// No description provided for @ocrEnglish.
+  ///
+  /// In zh, this message translates to:
+  /// **'英文'**
+  String get ocrEnglish;
+
+  /// No description provided for @ocrMixed.
+  ///
+  /// In zh, this message translates to:
+  /// **'中英混合'**
+  String get ocrMixed;
+
+  /// No description provided for @scanReady.
+  ///
+  /// In zh, this message translates to:
+  /// **'扫描资料'**
+  String get scanReady;
+
+  /// No description provided for @scanReadySubtitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'拍照或选择多页图片，在本机识别并编辑'**
+  String get scanReadySubtitle;
+
+  /// No description provided for @cancel.
+  ///
+  /// In zh, this message translates to:
+  /// **'取消'**
+  String get cancel;
+
+  /// No description provided for @confirm.
+  ///
+  /// In zh, this message translates to:
+  /// **'确认'**
+  String get confirm;
+
+  /// No description provided for @delete.
+  ///
+  /// In zh, this message translates to:
+  /// **'删除'**
+  String get delete;
+
+  /// No description provided for @clear.
+  ///
+  /// In zh, this message translates to:
+  /// **'清空'**
+  String get clear;
+
+  /// No description provided for @search.
+  ///
+  /// In zh, this message translates to:
+  /// **'搜索'**
+  String get search;
+
+  /// No description provided for @empty.
+  ///
+  /// In zh, this message translates to:
+  /// **'暂无内容'**
+  String get empty;
+
+  /// No description provided for @loading.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在加载…'**
+  String get loading;
 }
 
 class _AppLocalizationsDelegate

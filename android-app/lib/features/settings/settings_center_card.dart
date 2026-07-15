@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../../app/app_settings_controller.dart';
 import '../../core/localization/localization_extensions.dart';
 import '../../core/theme/app_spacing.dart';
+import 'third_party_notices_page.dart';
 
 class SettingsCenterCard extends StatelessWidget {
   const SettingsCenterCard({super.key});
@@ -109,6 +110,35 @@ class SettingsCenterCard extends StatelessWidget {
                 settings.setGenerationLanguage(value);
               },
             ),
+            const SizedBox(height: 14),
+            _label(context, l10n.ocrLanguage),
+            const SizedBox(height: 8),
+            DropdownButtonFormField<OcrLanguageMode>(
+              initialValue: settings.ocrLanguage,
+              items: [
+                DropdownMenuItem(
+                  value: OcrLanguageMode.auto,
+                  child: Text(l10n.ocrAuto),
+                ),
+                DropdownMenuItem(
+                  value: OcrLanguageMode.chinese,
+                  child: Text(l10n.ocrChinese),
+                ),
+                DropdownMenuItem(
+                  value: OcrLanguageMode.english,
+                  child: Text(l10n.ocrEnglish),
+                ),
+                DropdownMenuItem(
+                  value: OcrLanguageMode.mixed,
+                  child: Text(l10n.ocrMixed),
+                ),
+              ],
+              onChanged: (value) {
+                if (value == null) return;
+                _feedback(settings);
+                settings.setOcrLanguage(value);
+              },
+            ),
             const SizedBox(height: 18),
             _label(context, l10n.soundAndHaptics),
             _switch(
@@ -176,10 +206,10 @@ class SettingsCenterCard extends StatelessWidget {
               leading: const Icon(Icons.policy_outlined),
               title: Text(l10n.openSourceLicenses),
               trailing: const Icon(Icons.chevron_right_rounded),
-              onTap: () => showLicensePage(
-                context: context,
-                applicationName: l10n.appTitle,
-                applicationVersion: '3.0.0 phase 1',
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const ThirdPartyNoticesPage(),
+                ),
               ),
             ),
           ],
