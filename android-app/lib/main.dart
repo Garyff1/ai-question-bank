@@ -12590,8 +12590,8 @@ class _AboutAppCard extends StatelessWidget {
           const SizedBox(height: 8),
           Text(
             english
-                ? 'v3.0.0 Phase 2 Test001 · A personal AI learning workspace with local materials, OCR, rich-content questions, papers, mistake review and challenge training.'
-                : 'v3.0.0 Phase 2 Test001 · 个人 AI 学习训练台，支持本地资料、OCR 扫描、富内容题目、试卷生成、错题诊断与闯关训练。',
+                ? 'v3.0.0 Phase 2 Test002 · A personal AI learning workspace with local materials, OCR, rich-content questions, papers, mistake review and challenge training.'
+                : 'v3.0.0 Phase 2 Test002 · 个人 AI 学习训练台，支持本地资料、OCR 扫描、富内容题目、试卷生成、错题诊断与闯关训练。',
             style: TextStyle(color: colors.onSurfaceVariant, height: 1.5),
           ),
         ],

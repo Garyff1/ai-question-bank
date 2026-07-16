@@ -64,7 +64,7 @@ class ThirdPartyNoticesPage extends StatelessWidget {
             onPressed: () => showLicensePage(
               context: context,
               applicationName: english ? 'AI Question Bank' : 'AI题库',
-              applicationVersion: '3.0.0 Phase 2 Test001',
+              applicationVersion: '3.0.0 Phase 2 Test002',
             ),
             icon: const Icon(Icons.description_outlined),
             label: Text(
