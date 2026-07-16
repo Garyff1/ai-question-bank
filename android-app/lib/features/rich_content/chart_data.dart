@@ -35,9 +35,19 @@ class StructuredChartData {
 
   bool get isValid {
     if (xLabels.length < 2 || series.isEmpty) return false;
-    return series.every(
-      (item) => item.values.length == xLabels.length && item.values.isNotEmpty,
+    final validSeries = series.every(
+      (item) =>
+          item.values.length == xLabels.length &&
+          item.values.isNotEmpty &&
+          item.values.every((value) => value.isFinite),
     );
+    if (!validSeries) return false;
+    if (chartType == StructuredChartType.pie) {
+      final values = series.first.values;
+      return values.every((value) => value >= 0) &&
+          values.fold<double>(0, (sum, value) => sum + value) > 0;
+    }
+    return true;
   }
 
   factory StructuredChartData.fromRichContent(Map<String, dynamic> data) {

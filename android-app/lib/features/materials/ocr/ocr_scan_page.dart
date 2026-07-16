@@ -47,7 +47,11 @@ class _OcrScanPageState extends State<OcrScanPage> {
   Future<void> _pickGallery() async {
     try {
       final images = await _picker.pickMultiImage(imageQuality: 96, limit: 20);
-      if (images.isNotEmpty) await _process(images);
+      if (images.isNotEmpty) {
+        final ordered = [...images]
+          ..sort((a, b) => compareOcrPageNames(a.name, b.name));
+        await _process(ordered);
+      }
     } catch (error) {
       _showError(_t('无法选择图片：$error', 'Unable to select images: $error'));
     }
@@ -68,7 +72,22 @@ class _OcrScanPageState extends State<OcrScanPage> {
         final original = images[i].path;
         String path = original;
         try {
-          path = await _service.cropForDocument(original) ?? original;
+          final cropped = await _service.cropForDocument(
+            original,
+            toolbarTitle: _t('裁剪与旋转', 'Crop and rotate'),
+          );
+          if (cropped == null) {
+            results.add(
+              OcrPageResult(
+                path: original,
+                text: '',
+                error: _t('已取消裁剪', 'Crop cancelled'),
+              ),
+            );
+            if (mounted) setState(() => _processed = i + 1);
+            continue;
+          }
+          path = cropped;
         } catch (error) {
           debugPrint('[OCR] crop cancelled or failed: $error');
         }
@@ -120,7 +139,7 @@ class _OcrScanPageState extends State<OcrScanPage> {
       OcrMaterialDraft(
         title: title,
         content: content,
-        pageCount: _pages.length,
+        pageCount: _pages.where((page) => page.succeeded).length,
       ),
     );
   }
@@ -163,8 +182,8 @@ class _OcrScanPageState extends State<OcrScanPage> {
                     const SizedBox(height: 6),
                     Text(
                       _t(
-                        '支持多页中英文教材、打印资料和笔记。每页可先裁剪、旋转，再在本机识别。',
-                        'Supports multi-page Chinese and English textbooks, printouts and notes. Crop and rotate before on-device recognition.',
+                        '支持多页中英文教材、打印资料和笔记。每页可先裁剪、旋转；相册多选会按文件名页码排序。',
+                        'Supports multi-page Chinese and English materials. Crop and rotate each page; gallery selections follow natural filename order.',
                       ),
                       style: TextStyle(color: colors.onSurfaceVariant),
                     ),

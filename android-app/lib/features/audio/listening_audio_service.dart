@@ -71,8 +71,11 @@ class ListeningAudioService extends ChangeNotifier {
   String _lastText = '';
   String _lastLocale = 'zh-CN';
   double rate = 0.48;
+  int _requestSerial = 0;
+  bool _disposed = false;
 
   Future<void> play(String text, {String? locale}) async {
+    final request = ++_requestSerial;
     final normalized = text.trim();
     if (normalized.isEmpty) {
       errorMessage = '听力原文为空，可继续阅读题目文字作答';
@@ -85,11 +88,15 @@ class ListeningAudioService extends ChangeNotifier {
     _setState(ListeningPlaybackState.loading);
     try {
       await _engine.stop();
+      if (!_isCurrent(request)) return;
       await _engine.setLanguage(_lastLocale);
+      if (!_isCurrent(request)) return;
       await _engine.setSpeechRate(rate);
       await _engine.setVolume(1.0);
       await _engine.setPitch(1.0);
+      if (!_isCurrent(request)) return;
       final result = await _engine.speak(normalized);
+      if (!_isCurrent(request)) return;
       if (result == 0) {
         throw StateError('设备未能启动系统语音');
       }
@@ -116,6 +123,7 @@ class ListeningAudioService extends ChangeNotifier {
   }
 
   Future<void> stop() async {
+    _requestSerial++;
     try {
       await _engine.stop();
     } finally {
@@ -138,12 +146,17 @@ class ListeningAudioService extends ChangeNotifier {
   }
 
   void _setState(ListeningPlaybackState value) {
+    if (_disposed) return;
     state = value;
     notifyListeners();
   }
 
+  bool _isCurrent(int request) => !_disposed && request == _requestSerial;
+
   @override
   void dispose() {
+    _disposed = true;
+    _requestSerial++;
     _engine.stop();
     super.dispose();
   }

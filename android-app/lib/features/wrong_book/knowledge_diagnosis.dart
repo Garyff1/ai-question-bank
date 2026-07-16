@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 enum KnowledgeMastery { needsWork, improving, mastered }
 
-enum KnowledgeDiagnosisSort { weakest, mostWrong, recent }
+enum KnowledgeDiagnosisSort { weakest, mostWrong, recentWrong, recentPractice }
 
 class KnowledgeAttempt {
   const KnowledgeAttempt({
@@ -26,6 +26,7 @@ class KnowledgeDiagnosis {
     required this.total,
     required this.wrong,
     required this.lastWrongAt,
+    required this.lastAttemptAt,
     required this.consecutiveCorrect,
     required this.wrongQuestions,
     required this.explanations,
@@ -35,6 +36,7 @@ class KnowledgeDiagnosis {
   final int total;
   final int wrong;
   final DateTime? lastWrongAt;
+  final DateTime lastAttemptAt;
   final int consecutiveCorrect;
   final List<String> wrongQuestions;
   final List<String> explanations;
@@ -79,6 +81,7 @@ List<KnowledgeDiagnosis> buildKnowledgeDiagnoses(
         total: values.length,
         wrong: wrongValues.length,
         lastWrongAt: wrongValues.last.occurredAt,
+        lastAttemptAt: values.last.occurredAt,
         consecutiveCorrect: streak,
         wrongQuestions: wrongValues
             .map((value) => value.question.trim())
@@ -93,6 +96,56 @@ List<KnowledgeDiagnosis> buildKnowledgeDiagnoses(
     );
   }
   return result;
+}
+
+List<KnowledgeDiagnosis> sortKnowledgeDiagnoses(
+  Iterable<KnowledgeDiagnosis> diagnoses,
+  KnowledgeDiagnosisSort sort,
+) {
+  final items = diagnoses.toList(growable: false);
+  switch (sort) {
+    case KnowledgeDiagnosisSort.weakest:
+      items.sort((a, b) {
+        final mastery = a.mastery.index.compareTo(b.mastery.index);
+        if (mastery != 0) return mastery;
+        final accuracy = a.accuracy.compareTo(b.accuracy);
+        return accuracy != 0 ? accuracy : b.wrong.compareTo(a.wrong);
+      });
+    case KnowledgeDiagnosisSort.mostWrong:
+      items.sort((a, b) {
+        final wrong = b.wrong.compareTo(a.wrong);
+        return wrong != 0 ? wrong : b.lastAttemptAt.compareTo(a.lastAttemptAt);
+      });
+    case KnowledgeDiagnosisSort.recentWrong:
+      items.sort(
+        (a, b) => (b.lastWrongAt ?? DateTime(1970)).compareTo(
+          a.lastWrongAt ?? DateTime(1970),
+        ),
+      );
+    case KnowledgeDiagnosisSort.recentPractice:
+      items.sort((a, b) => b.lastAttemptAt.compareTo(a.lastAttemptAt));
+  }
+  return items;
+}
+
+/// Returns a mistake-book query that also works with legacy v2 records.
+///
+/// Current records retain the full question text. Some old records copied only
+/// the knowledge-point label into `questionText`, while old WrongItem JSON had
+/// no knowledge-point field. Such labels cannot match the mistake book, so the
+/// material name is used as a compatible fallback.
+String knowledgeReinforceQuery(
+  KnowledgeDiagnosis item,
+  String materialName,
+) {
+  final knowledgeName = item.name.trim().toLowerCase();
+  for (final rawQuestion in item.wrongQuestions) {
+    final question = rawQuestion.trim();
+    if (question.isNotEmpty && question.toLowerCase() != knowledgeName) {
+      return question;
+    }
+  }
+  return materialName.trim();
 }
 
 class KnowledgeDiagnosisList extends StatefulWidget {
@@ -127,22 +180,7 @@ class _KnowledgeDiagnosisListState extends State<KnowledgeDiagnosisList> {
         ),
       );
     }
-    final items = [...widget.items];
-    switch (_sort) {
-      case KnowledgeDiagnosisSort.weakest:
-        items.sort((a, b) {
-          final mastery = a.mastery.index.compareTo(b.mastery.index);
-          return mastery != 0 ? mastery : a.accuracy.compareTo(b.accuracy);
-        });
-      case KnowledgeDiagnosisSort.mostWrong:
-        items.sort((a, b) => b.wrong.compareTo(a.wrong));
-      case KnowledgeDiagnosisSort.recent:
-        items.sort(
-          (a, b) => (b.lastWrongAt ?? DateTime(1970)).compareTo(
-            a.lastWrongAt ?? DateTime(1970),
-          ),
-        );
-    }
+    final items = sortKnowledgeDiagnoses(widget.items, _sort);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -159,8 +197,12 @@ class _KnowledgeDiagnosisListState extends State<KnowledgeDiagnosisList> {
                 label: Text(_t('错题最多', 'Most mistakes')),
               ),
               ButtonSegment(
-                value: KnowledgeDiagnosisSort.recent,
+                value: KnowledgeDiagnosisSort.recentWrong,
                 label: Text(_t('最近出错', 'Most recent')),
+              ),
+              ButtonSegment(
+                value: KnowledgeDiagnosisSort.recentPractice,
+                label: Text(_t('最近练习', 'Recent practice')),
               ),
             ],
             selected: {_sort},

@@ -10,7 +10,10 @@ import 'ocr_models.dart';
 class OcrService {
   const OcrService();
 
-  Future<String?> cropForDocument(String sourcePath) async {
+  Future<String?> cropForDocument(
+    String sourcePath, {
+    String toolbarTitle = '裁剪与旋转',
+  }) async {
     final source = File(sourcePath);
     if (!await source.exists()) return null;
     final cropped = await ImageCropper().cropImage(
@@ -19,14 +22,14 @@ class OcrService {
       compressQuality: 92,
       uiSettings: [
         AndroidUiSettings(
-          toolbarTitle: '裁剪与旋转',
+          toolbarTitle: toolbarTitle,
           toolbarColor: Color(0xFF2563EB),
           toolbarWidgetColor: Color(0xFFFFFFFF),
           activeControlsWidgetColor: Color(0xFF2563EB),
           lockAspectRatio: false,
           hideBottomControls: false,
         ),
-        IOSUiSettings(title: '裁剪与旋转'),
+        IOSUiSettings(title: toolbarTitle),
       ],
     );
     return cropped?.path;

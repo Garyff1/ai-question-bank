@@ -2169,6 +2169,8 @@ class _AppShellState extends State<AppShell> {
   XpProfile _xpProfile = const XpProfile();
   StudyMaterial? _selectedMaterial;
   int _tab = 0;
+  String _wrongBookFocusQuery = '';
+  int _wrongBookFocusRequest = 0;
   int _questionCount = 5;
   String _audience = '通用';
   bool _loading = true;
@@ -4384,6 +4386,8 @@ class _AppShellState extends State<AppShell> {
       ),
       WrongBookPage(
         wrongs: _wrongs,
+        initialQuery: _wrongBookFocusQuery,
+        focusRequest: _wrongBookFocusRequest,
         xpProfile: _xpProfile,
         onDrawCards: _startWrongCardChallenge,
         onPracticeGroup: _startWrongPractice,
@@ -4419,6 +4423,13 @@ class _AppShellState extends State<AppShell> {
         onCheckIn: _dailyCheckIn,
         onOpenConfig: _openConfigPage,
         onOpenFeedback: _openFeedback,
+        onGoWrong: (knowledgePoint) {
+          setState(() {
+            _wrongBookFocusQuery = knowledgePoint;
+            _wrongBookFocusRequest++;
+            _tab = 3;
+          });
+        },
         practiceLog: _practiceLog,
         onClearRecords: () async {
           AppHaptics.instance.mediumImpact();
@@ -6964,9 +6975,13 @@ class WrongBookPage extends StatefulWidget {
     required this.onPracticeGroup,
     required this.onDeleteWrong,
     required this.onDeleteWrongs,
+    this.initialQuery = '',
+    this.focusRequest = 0,
   });
 
   final List<WrongItem> wrongs;
+  final String initialQuery;
+  final int focusRequest;
   final XpProfile xpProfile;
   final VoidCallback onDrawCards;
 
@@ -6987,6 +7002,37 @@ class _WrongBookPageState extends State<WrongBookPage> {
   String _query = '';
   bool _searchMode = false;
   final TextEditingController _controller = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _applyInitialQuery(widget.initialQuery);
+  }
+
+  @override
+  void didUpdateWidget(covariant WrongBookPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.focusRequest != oldWidget.focusRequest &&
+        widget.initialQuery.trim().isNotEmpty) {
+      _applyInitialQuery(widget.initialQuery, notify: true);
+    }
+  }
+
+  void _applyInitialQuery(String value, {bool notify = false}) {
+    final query = value.trim();
+    if (query.isEmpty) return;
+    void apply() {
+      _query = query;
+      _controller.text = query;
+      _searchMode = true;
+    }
+
+    if (notify) {
+      setState(apply);
+    } else {
+      apply();
+    }
+  }
 
   @override
   void dispose() {
@@ -7257,7 +7303,9 @@ class _WrongBookPageState extends State<WrongBookPage> {
               ),
             ),
             IconButton(
-              tooltip: _searchMode ? '关闭检索' : '检索错题',
+              tooltip: _searchMode
+                  ? (isEnglish ? 'Close search' : '关闭检索')
+                  : (isEnglish ? 'Search mistakes' : '检索错题'),
               onPressed: () {
                 AppHaptics.instance.selectionClick();
                 setState(() {
@@ -7275,18 +7323,22 @@ class _WrongBookPageState extends State<WrongBookPage> {
             ),
             if (wrongs.isNotEmpty)
               PopupMenuButton<String>(
-                tooltip: '清理',
+                tooltip: isEnglish ? 'Clean up' : '清理',
                 icon: Icon(
                   Icons.cleaning_services_outlined,
                   color: colors.onSurface,
                 ),
                 itemBuilder: (_) => [
-                  const PopupMenuItem(
+                  PopupMenuItem(
                     value: 'batch_wrongs',
                     child: ListTile(
-                      leading: Icon(Icons.checklist_rounded, color: kRed),
-                      title: Text('批量删除错题'),
-                      subtitle: Text('勾选要删除的错题（可全选）'),
+                      leading: const Icon(Icons.checklist_rounded, color: kRed),
+                      title: Text(isEnglish ? 'Delete mistakes' : '批量删除错题'),
+                      subtitle: Text(
+                        isEnglish
+                            ? 'Select mistakes to delete'
+                            : '勾选要删除的错题（可全选）',
+                      ),
                       dense: true,
                     ),
                   ),
@@ -7311,12 +7363,14 @@ class _WrongBookPageState extends State<WrongBookPage> {
             child: TextField(
               controller: _controller,
               onChanged: (v) => setState(() => _query = v.trim()),
-              decoration: const InputDecoration(
-                hintText: '搜索资料名 / 题干 / 解析',
+              decoration: InputDecoration(
+                hintText: isEnglish
+                    ? 'Search material / question / explanation'
+                    : '搜索资料名 / 题干 / 解析',
                 border: InputBorder.none,
-                icon: Icon(Icons.search, size: 20, color: kMuted),
+                icon: const Icon(Icons.search, size: 20, color: kMuted),
                 isDense: true,
-                contentPadding: EdgeInsets.symmetric(vertical: 10),
+                contentPadding: const EdgeInsets.symmetric(vertical: 10),
               ),
             ),
           ),
@@ -7324,7 +7378,9 @@ class _WrongBookPageState extends State<WrongBookPage> {
             Padding(
               padding: const EdgeInsets.only(top: 8),
               child: Text(
-                '命中 $filteredCount / ${wrongs.length} 道错题',
+                isEnglish
+                    ? '$filteredCount of ${wrongs.length} mistakes found'
+                    : '命中 $filteredCount / ${wrongs.length} 道错题',
                 style: const TextStyle(
                   color: kMuted,
                   fontSize: 12,
@@ -7379,7 +7435,7 @@ class _WrongBookPageState extends State<WrongBookPage> {
           _CollapsibleSection(
             itemCount: groups.length,
             visibleCount: _searchMode ? groups.length : 3,
-            label: '份资料',
+            label: isEnglish ? 'materials' : '份资料',
             itemBuilder: (i) => _WrongMaterialGroup(
               group: groups[i],
               wrongVisibleCount: _searchMode ? groups[i].value.length : 3,
@@ -7494,20 +7550,25 @@ class _WrongMaterialGroup extends StatelessWidget {
 
   Future<void> _confirmDelete(BuildContext context, WrongItem item) async {
     AppHaptics.instance.mediumImpact();
+    final isEnglish = Localizations.localeOf(context).languageCode == 'en';
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('删除该错题？'),
-        content: const Text('将删除该错题，删除后无法恢复。'),
+        title: Text(isEnglish ? 'Delete this mistake?' : '删除该错题？'),
+        content: Text(
+          isEnglish
+              ? 'This mistake cannot be restored after deletion.'
+              : '将删除该错题，删除后无法恢复。',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('取消'),
+            child: Text(isEnglish ? 'Cancel' : '取消'),
           ),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: kRed),
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('删除'),
+            child: Text(isEnglish ? 'Delete' : '删除'),
           ),
         ],
       ),
@@ -7554,7 +7615,11 @@ class _WrongMaterialGroup extends StatelessWidget {
                   ),
                 ),
               ),
-              _TinyBadge(label: '${group.value.length} 道'),
+              _TinyBadge(
+                label: isEnglish
+                    ? '${group.value.length} mistakes'
+                    : '${group.value.length} 道',
+              ),
             ],
           ),
           const SizedBox(height: 12),
@@ -7581,7 +7646,7 @@ class _WrongMaterialGroup extends StatelessWidget {
           _CollapsibleSection(
             itemCount: group.value.length,
             visibleCount: wrongVisibleCount,
-            label: '道错题',
+            label: isEnglish ? 'mistakes' : '道错题',
             itemBuilder: (i) => _WrongQuestionCard(
               item: group.value[i],
               onDelete: () => _confirmDelete(context, group.value[i]),
@@ -7717,9 +7782,18 @@ class _WrongCardEntry extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final canBoost = wrongCount >= 5;
+    final english = Localizations.localeOf(context).languageCode == 'en';
     final boostText = xpProfile.isBoostActive()
-        ? '三倍经验剩余 ${_durationText(xpProfile.boostRemaining())}'
-        : (canBoost ? '5 题全对，开启 10 分钟三倍经验' : '错题不足 5 道也可练习，但不激活三倍经验');
+        ? (english
+              ? 'Triple XP: ${_durationText(xpProfile.boostRemaining())} remaining'
+              : '三倍经验剩余 ${_durationText(xpProfile.boostRemaining())}')
+        : (canBoost
+              ? (english
+                    ? 'Answer all 5 correctly to unlock 10 minutes of triple XP'
+                    : '5 题全对，开启 10 分钟三倍经验')
+              : (english
+                    ? 'Practice with fewer than 5 mistakes; triple XP stays locked'
+                    : '错题不足 5 道也可练习，但不激活三倍经验'));
     return _BouncyTap(
       onTap: onTap,
       // 无错题时仍允许点击，由上层统一给出明确提示。
@@ -7761,9 +7835,9 @@ class _WrongCardEntry extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
-                    '错题抽卡',
-                    style: TextStyle(
+                  Text(
+                    english ? 'Mistake card challenge' : '错题抽卡',
+                    style: const TextStyle(
                       color: Colors.white,
                       fontSize: 18,
                       fontWeight: FontWeight.w900,
@@ -7771,7 +7845,11 @@ class _WrongCardEntry extends StatelessWidget {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    wrongCount == 0 ? '暂无错题，先去完成一组练习吧' : boostText,
+                    wrongCount == 0
+                        ? (english
+                              ? 'No mistakes yet. Complete a practice set first.'
+                              : '暂无错题，先去完成一组练习吧')
+                        : boostText,
                     style: TextStyle(
                       color: Colors.white.withValues(alpha: 0.82),
                       height: 1.35,
@@ -8479,6 +8557,40 @@ class _PaperPageState extends State<PaperPage> {
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     final isEnglish = Localizations.localeOf(context).languageCode == 'en';
+    String subjectLabel(String value) => !isEnglish
+        ? value
+        : switch (value) {
+            '语文' => 'Chinese',
+            '数学' => 'Mathematics',
+            '英语' => 'English',
+            '物理' => 'Physics',
+            '化学' => 'Chemistry',
+            '生物' => 'Biology',
+            '政治' => 'Civics',
+            '历史' => 'History',
+            '地理' => 'Geography',
+            _ => value,
+          };
+    String stageLabel(String value) => !isEnglish
+        ? value
+        : switch (value) {
+            '小学' => 'Primary',
+            '初中' => 'Middle school',
+            '高中' => 'High school',
+            '成年人' => 'Adult',
+            _ => value,
+          };
+    String examTypeLabel(String value) => !isEnglish
+        ? value
+        : switch (value) {
+            '期末' => 'Final',
+            '期中' => 'Midterm',
+            '中考模拟' => 'High school exam mock',
+            '高考模拟' => 'College exam mock',
+            '周测' => 'Weekly quiz',
+            '小测' => 'Quick quiz',
+            _ => value,
+          };
     final activeMaterial =
         _material ?? (widget.materials.isEmpty ? null : widget.materials.first);
 
@@ -8547,9 +8659,9 @@ class _PaperPageState extends State<PaperPage> {
             ),
             child: DropdownButtonFormField<StudyMaterial>(
               initialValue: activeMaterial,
-              decoration: const InputDecoration(
-                labelText: '当前试卷资料',
-                border: OutlineInputBorder(
+              decoration: InputDecoration(
+                labelText: isEnglish ? 'Current paper material' : '当前试卷资料',
+                border: const OutlineInputBorder(
                   borderRadius: BorderRadius.all(Radius.circular(18)),
                 ),
               ),
@@ -8558,7 +8670,9 @@ class _PaperPageState extends State<PaperPage> {
                     (m) => DropdownMenuItem(
                       value: m,
                       child: Text(
-                        '${m.name} · ${m.content.length}字',
+                        isEnglish
+                            ? '${m.name} · ${m.content.length} characters'
+                            : '${m.name} · ${m.content.length}字',
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
@@ -8582,6 +8696,8 @@ class _PaperPageState extends State<PaperPage> {
           selected: _subject,
           customHint: '如：计算机、会计、行测...',
           customTitle: '自定义学科',
+          labelBuilder: subjectLabel,
+          customLabel: isEnglish ? 'Custom' : '自定义',
           onSelected: (s) {
             AppHaptics.instance.selectionClick();
             setState(() => _subject = s);
@@ -8619,6 +8735,8 @@ class _PaperPageState extends State<PaperPage> {
           selected: _stage,
           customHint: '如：专升本、研究生、自学考试...',
           customTitle: '自定义学段',
+          labelBuilder: stageLabel,
+          customLabel: isEnglish ? 'Custom' : '自定义',
           onSelected: (s) {
             AppHaptics.instance.selectionClick();
             setState(() => _stage = s);
@@ -8656,6 +8774,8 @@ class _PaperPageState extends State<PaperPage> {
           selected: _examType,
           customHint: '如：单元测、模拟考、真题演练...',
           customTitle: '自定义类型',
+          labelBuilder: examTypeLabel,
+          customLabel: isEnglish ? 'Custom' : '自定义',
           onSelected: (s) {
             AppHaptics.instance.selectionClick();
             setState(() => _examType = s);
@@ -8701,7 +8821,7 @@ class _PaperPageState extends State<PaperPage> {
               ..._pageOptions.map((p) {
                 final selected = _pageCount == p;
                 return _PresetChip(
-                  label: '$p 面',
+                  label: isEnglish ? '$p pages' : '$p 面',
                   selected: selected,
                   onTap: () {
                     AppHaptics.instance.selectionClick();
@@ -8711,8 +8831,8 @@ class _PaperPageState extends State<PaperPage> {
               }),
               _PresetChip(
                 label: _pageOptions.contains(_pageCount)
-                    ? '自定义'
-                    : '$_pageCount 面',
+                    ? (isEnglish ? 'Custom' : '自定义')
+                    : (isEnglish ? '$_pageCount pages' : '$_pageCount 面'),
                 selected: !_pageOptions.contains(_pageCount),
                 onTap: _pickCustomPage,
                 isCustom: true,
@@ -9437,6 +9557,8 @@ class _ChipGroup extends StatelessWidget {
     required this.onPickCustom,
     this.customItems = const [],
     this.onRemoveCustom,
+    this.labelBuilder,
+    this.customLabel = '自定义',
   });
   final List<String> presets;
   final List<String> customItems;
@@ -9445,6 +9567,8 @@ class _ChipGroup extends StatelessWidget {
   final String customHint;
   final ValueChanged<String> onSelected;
   final void Function(String preset) onPickCustom;
+  final String Function(String value)? labelBuilder;
+  final String customLabel;
 
   /// 长按自定义项删除回调（仅自定义项触发）
   final void Function(String customItem)? onRemoveCustom;
@@ -9468,7 +9592,7 @@ class _ChipGroup extends StatelessWidget {
         children: [
           ...allPresets.map(
             (s) => _PresetChip(
-              label: s,
+              label: labelBuilder?.call(s) ?? s,
               selected: selected == s,
               onTap: () => onSelected(s),
               onLongPress: customSet.contains(s) && onRemoveCustom != null
@@ -9478,7 +9602,9 @@ class _ChipGroup extends StatelessWidget {
             ),
           ),
           _PresetChip(
-            label: isCustomSelected ? selected : '自定义',
+            label: isCustomSelected
+                ? (labelBuilder?.call(selected) ?? selected)
+                : customLabel,
             selected: isCustomSelected,
             onTap: () => onPickCustom(isCustomSelected ? selected : ''),
             isCustom: true,
@@ -10438,6 +10564,7 @@ class MePage extends StatefulWidget {
     required this.onCheckIn,
     required this.onOpenConfig,
     required this.onOpenFeedback,
+    required this.onGoWrong,
     required this.onClearRecords,
     required this.onClearWrongs,
     required this.onDeleteRecord,
@@ -10454,6 +10581,7 @@ class MePage extends StatefulWidget {
   final VoidCallback onCheckIn;
   final VoidCallback onOpenConfig;
   final VoidCallback onOpenFeedback;
+  final ValueChanged<String> onGoWrong;
 
   /// 一键清空全部历史记录
   final VoidCallback onClearRecords;
@@ -11192,6 +11320,7 @@ class _MePageState extends State<MePage> {
             label: isEnglish ? 'records' : '次记录',
             itemBuilder: (i) => _PracticeRecordTile(
               record: filteredRecords[i],
+              onGoWrong: widget.onGoWrong,
               onDelete: () async {
                 final record = filteredRecords[i];
                 final ok = await _confirm(
@@ -11409,10 +11538,15 @@ class _WeeklyTrendCard extends StatelessWidget {
 }
 
 class _PracticeRecordTile extends StatelessWidget {
-  const _PracticeRecordTile({required this.record, this.onDelete});
+  const _PracticeRecordTile({
+    required this.record,
+    this.onDelete,
+    this.onGoWrong,
+  });
 
   final PracticeRecord record;
   final VoidCallback? onDelete;
+  final ValueChanged<String>? onGoWrong;
 
   @override
   Widget build(BuildContext context) {
@@ -11447,7 +11581,10 @@ class _PracticeRecordTile extends StatelessWidget {
           AppHaptics.instance.selectionClick();
           Navigator.of(context).push(
             MaterialPageRoute(
-              builder: (_) => PracticeHistoryDetailPage(record: record),
+              builder: (_) => PracticeHistoryDetailPage(
+                record: record,
+                onGoWrong: onGoWrong,
+              ),
             ),
           );
         },
@@ -11534,9 +11671,14 @@ class _PracticeRecordTile extends StatelessWidget {
 
 /// 练习历史详情页：直方图 + 圆饼图 + 动画
 class PracticeHistoryDetailPage extends StatefulWidget {
-  const PracticeHistoryDetailPage({super.key, required this.record});
+  const PracticeHistoryDetailPage({
+    super.key,
+    required this.record,
+    this.onGoWrong,
+  });
 
   final PracticeRecord record;
+  final ValueChanged<String>? onGoWrong;
 
   @override
   State<PracticeHistoryDetailPage> createState() =>
@@ -11639,16 +11781,20 @@ class _PracticeHistoryDetailPageState extends State<PracticeHistoryDetailPage>
             child: KnowledgeDiagnosisList(
               items: diagnoses,
               onReinforce: (item) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      isEnglish
-                          ? 'Open the mistake book to reinforce “${item.name}”.'
-                          : '已定位“${item.name}”，请前往错题本开始专项训练。',
-                    ),
-                    behavior: SnackBarBehavior.floating,
-                  ),
+                final onGoWrong = widget.onGoWrong;
+                if (onGoWrong == null) return;
+                // New records retain the full question text, which is the most
+                // precise query for the mistake book. Some v2 records only
+                // stored the knowledge-point label in `questionText`; querying
+                // that label cannot match a WrongItem because older WrongItem
+                // JSON has no knowledge-point field. Fall back to the material
+                // name so legacy users still reach the corresponding mistakes.
+                final query = knowledgeReinforceQuery(
+                  item,
+                  widget.record.materialName,
                 );
+                Navigator.of(context).pop();
+                onGoWrong(query);
               },
             ),
           ),
@@ -12199,6 +12345,7 @@ class _ConfigEntryCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
+    final english = Localizations.localeOf(context).languageCode == 'en';
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(24),
@@ -12231,7 +12378,7 @@ class _ConfigEntryCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'API 配置',
+                    english ? 'API configuration' : 'API 配置',
                     style: TextStyle(
                       color: colors.onSurface,
                       fontSize: 17,
@@ -12240,7 +12387,13 @@ class _ConfigEntryCard extends StatelessWidget {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    configReady ? '已配置模型接口，可继续生成题目。' : '首次使用前，请配置自己的 API Key。',
+                    configReady
+                        ? (english
+                              ? 'The model endpoint is ready for question generation.'
+                              : '已配置模型接口，可继续生成题目。')
+                        : (english
+                              ? 'Configure your API Key before first use.'
+                              : '首次使用前，请配置自己的 API Key。'),
                     style: TextStyle(
                       color: colors.onSurfaceVariant,
                       height: 1.35,
@@ -12266,6 +12419,7 @@ class _FeedbackEntryCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
+    final english = Localizations.localeOf(context).languageCode == 'en';
     return _BouncyTap(
       onTap: onTap,
       child: Container(
@@ -12290,28 +12444,33 @@ class _FeedbackEntryCard extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 12),
-            const Expanded(
+            Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    '问题反馈',
+                    english ? 'Feedback' : '问题反馈',
                     style: TextStyle(
-                      color: kInk,
+                      color: colors.onSurface,
                       fontSize: 17,
                       fontWeight: FontWeight.w900,
                     ),
                   ),
-                  SizedBox(height: 4),
+                  const SizedBox(height: 4),
                   Text(
-                    '遇到 bug 或有想法？写下来直接发邮件给我们。',
-                    style: TextStyle(color: kMuted, height: 1.35),
+                    english
+                        ? 'Found a bug or have an idea? Send us your feedback by email.'
+                        : '遇到 bug 或有想法？写下来直接发邮件给我们。',
+                    style: TextStyle(
+                      color: colors.onSurfaceVariant,
+                      height: 1.35,
+                    ),
                   ),
                 ],
               ),
             ),
             const SizedBox(width: 8),
-            const Icon(Icons.chevron_right_rounded, color: kMuted),
+            Icon(Icons.chevron_right_rounded, color: colors.onSurfaceVariant),
           ],
         ),
       ),
@@ -12345,6 +12504,7 @@ class _CollapsibleSectionState extends State<_CollapsibleSection> {
   Widget build(BuildContext context) {
     final total = widget.itemCount;
     final visible = widget.visibleCount;
+    final english = Localizations.localeOf(context).languageCode == 'en';
     if (total == 0) return const SizedBox.shrink();
     final showCount = _expanded ? total : visible.clamp(0, total);
     final hiddenCount = total - showCount;
@@ -12381,8 +12541,12 @@ class _CollapsibleSectionState extends State<_CollapsibleSection> {
                   const SizedBox(width: 6),
                   Text(
                     _expanded
-                        ? '收起 ${widget.label}'
-                        : '展开剩余 ${hiddenCount} ${widget.label}',
+                        ? (english
+                              ? 'Collapse ${widget.label}'
+                              : '收起 ${widget.label}')
+                        : (english
+                              ? 'Show $hiddenCount more ${widget.label}'
+                              : '展开剩余 $hiddenCount ${widget.label}'),
                     style: const TextStyle(
                       color: kMuted,
                       fontWeight: FontWeight.w800,
@@ -12426,8 +12590,8 @@ class _AboutAppCard extends StatelessWidget {
           const SizedBox(height: 8),
           Text(
             english
-                ? 'v3.0.0 Phase 2 Dev002 · A personal AI learning workspace with local materials, OCR, rich-content questions, papers, mistake review and challenge training.'
-                : 'v3.0.0 Phase 2 Dev002 · 个人 AI 学习训练台，支持本地资料、OCR 扫描、富内容题目、试卷生成、错题诊断与闯关训练。',
+                ? 'v3.0.0 Phase 2 Test001 · A personal AI learning workspace with local materials, OCR, rich-content questions, papers, mistake review and challenge training.'
+                : 'v3.0.0 Phase 2 Test001 · 个人 AI 学习训练台，支持本地资料、OCR 扫描、富内容题目、试卷生成、错题诊断与闯关训练。',
             style: TextStyle(color: colors.onSurfaceVariant, height: 1.5),
           ),
         ],
@@ -12446,7 +12610,9 @@ class _XpPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     final boostActive = profile.isBoostActive();
     final progress = profile.levelProgress / 100;
-    final title = _levelTitle(profile.level);
+    final locale = Localizations.localeOf(context);
+    final english = locale.languageCode == 'en';
+    final title = _levelTitle(profile.level, locale);
     final remainToNext = 100 - profile.levelProgress;
     final colors = Theme.of(context).colorScheme;
     return Container(
@@ -12518,7 +12684,9 @@ class _XpPanel extends StatelessWidget {
                     ),
                     const SizedBox(height: 3),
                     Text(
-                      '${profile.totalXp} XP · 连续 ${profile.checkinStreak} 天',
+                      english
+                          ? '${profile.totalXp} XP · ${profile.checkinStreak}-day streak'
+                          : '${profile.totalXp} XP · 连续 ${profile.checkinStreak} 天',
                       style: TextStyle(
                         color: colors.onSurfaceVariant,
                         fontWeight: FontWeight.w700,
@@ -12526,7 +12694,9 @@ class _XpPanel extends StatelessWidget {
                     ),
                     const SizedBox(height: 3),
                     Text(
-                      '再获 $remainToNext XP 可升级',
+                      english
+                          ? '$remainToNext XP to the next level'
+                          : '再获 $remainToNext XP 可升级',
                       style: TextStyle(
                         color: colors.primary,
                         fontSize: 11,
@@ -12536,7 +12706,10 @@ class _XpPanel extends StatelessWidget {
                   ],
                 ),
               ),
-              FilledButton.tonal(onPressed: onCheckIn, child: const Text('打卡')),
+              FilledButton.tonal(
+                onPressed: onCheckIn,
+                child: Text(english ? 'Check in' : '打卡'),
+              ),
             ],
           ),
           const SizedBox(height: 14),
@@ -12575,8 +12748,12 @@ class _XpPanel extends StatelessWidget {
                 Expanded(
                   child: Text(
                     boostActive
-                        ? '三倍经验剩余 ${_durationText(profile.boostRemaining())}'
-                        : '完成 5 道错题抽卡并全对，可开启 10 分钟三倍经验',
+                        ? (english
+                              ? 'Triple XP: ${_durationText(profile.boostRemaining())} remaining'
+                              : '三倍经验剩余 ${_durationText(profile.boostRemaining())}')
+                        : (english
+                              ? 'Clear all 5 mistake cards to unlock 10 minutes of triple XP'
+                              : '完成 5 道错题抽卡并全对，可开启 10 分钟三倍经验'),
                     style: TextStyle(
                       color: boostActive
                           ? colors.onTertiaryContainer
@@ -14800,16 +14977,25 @@ class PaperPdfService {
       );
     }
 
-    final maxValue = seriesValues
-        .expand((values) => values)
-        .reduce((a, b) => a > b ? a : b);
-    final safeMax = maxValue == 0 ? 1.0 : maxValue;
+    final allValues = seriesValues.expand((values) => values).toList();
+    if (allValues.isEmpty || allValues.any((value) => !value.isFinite)) {
+      return -1;
+    }
+    final minValue = allValues.reduce(min);
+    final maxValue = allValues.reduce(max);
+    final scaleMin = min(0.0, minValue);
+    final scaleMax = max(0.0, maxValue);
+    final valueRange = scaleMax - scaleMin == 0 ? 1.0 : scaleMax - scaleMin;
+    double yForValue(double value) =>
+        chartY + ((scaleMax - value) / valueRange) * chartH;
+    final zeroY = yForValue(0);
 
     if (chartType == 'pie') {
       // 饼图：从 12 点钟方向开始，顺时针
       final values = seriesValues.first;
+      if (values.any((value) => value < 0)) return -1;
       final total = values.fold(0.0, (a, b) => a + b);
-      if (total == 0) return -1;
+      if (total <= 0) return -1;
       final cx = x + width / 2;
       final cy = chartY + chartH / 2;
       final radius = chartW < chartH ? chartW / 2 : chartH / 2;
@@ -14858,8 +15044,8 @@ class PaperPdfService {
       );
       g.drawLine(
         PdfPen(PdfColor(51, 51, 51), width: 0.5),
-        Offset(chartX, chartY + chartH),
-        Offset(chartX + chartW, chartY + chartH),
+        Offset(chartX, zeroY),
+        Offset(chartX + chartW, zeroY),
       );
       // 数据点与折线：每个 series 使用独立颜色。
       final stepX = chartW / (labels.length - 1).clamp(1, labels.length - 1);
@@ -14870,14 +15056,14 @@ class PaperPdfService {
       ) {
         final values = seriesValues[seriesIndex];
         var prevX = chartX;
-        var prevY = chartY + chartH - (values.first / safeMax) * chartH;
+        var prevY = yForValue(values.first);
         g.drawEllipse(
           Rect.fromLTWH(prevX - 2.5, prevY - 2.5, 5, 5),
           brush: PdfSolidBrush(colors[seriesIndex % colors.length]),
         );
         for (var i = 1; i < values.length; i++) {
           final px = chartX + i * stepX;
-          final py = chartY + chartH - (values[i] / safeMax) * chartH;
+          final py = yForValue(values[i]);
           g.drawLine(
             PdfPen(colors[seriesIndex % colors.length], width: 2),
             Offset(prevX, prevY),
@@ -14910,8 +15096,8 @@ class PaperPdfService {
       );
       g.drawLine(
         PdfPen(PdfColor(51, 51, 51), width: 0.5),
-        Offset(chartX, chartY + chartH),
-        Offset(chartX + chartW, chartY + chartH),
+        Offset(chartX, zeroY),
+        Offset(chartX + chartW, zeroY),
       );
       // 柱子
       final groupWidth = chartW / labels.length;
@@ -14922,8 +15108,9 @@ class PaperPdfService {
         for (var seriesIndex = 0; seriesIndex < seriesCount; seriesIndex++) {
           final value = seriesValues[seriesIndex][i];
           final bx = groupLeft + seriesIndex * barWidth;
-          final bh = (value / safeMax) * chartH;
-          final by = chartY + chartH - bh;
+          final valueY = yForValue(value);
+          final bh = (valueY - zeroY).abs();
+          final by = min(valueY, zeroY);
           g.drawRectangle(
             bounds: Rect.fromLTWH(bx, by, barWidth, bh),
             brush: PdfSolidBrush(colors[seriesIndex % colors.length]),

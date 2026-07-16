@@ -1,5 +1,28 @@
 import '../../../app/app_settings_controller.dart';
 
+int compareOcrPageNames(String left, String right) {
+  final leftParts = RegExp(r'\d+|\D+')
+      .allMatches(left.toLowerCase())
+      .map((match) => match.group(0)!)
+      .toList(growable: false);
+  final rightParts = RegExp(r'\d+|\D+')
+      .allMatches(right.toLowerCase())
+      .map((match) => match.group(0)!)
+      .toList(growable: false);
+  final length = leftParts.length < rightParts.length
+      ? leftParts.length
+      : rightParts.length;
+  for (var i = 0; i < length; i++) {
+    final leftNumber = int.tryParse(leftParts[i]);
+    final rightNumber = int.tryParse(rightParts[i]);
+    final comparison = leftNumber != null && rightNumber != null
+        ? leftNumber.compareTo(rightNumber)
+        : leftParts[i].compareTo(rightParts[i]);
+    if (comparison != 0) return comparison;
+  }
+  return leftParts.length.compareTo(rightParts.length);
+}
+
 class OcrMaterialDraft {
   const OcrMaterialDraft({
     required this.title,
