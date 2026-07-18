@@ -5,6 +5,7 @@ import '../../app/app_settings_controller.dart';
 import '../../core/localization/localization_extensions.dart';
 import '../../core/theme/app_spacing.dart';
 import 'third_party_notices_page.dart';
+import '../official_ai/official_ai_page.dart';
 
 class SettingsCenterCard extends StatelessWidget {
   const SettingsCenterCard({super.key});
@@ -195,9 +196,21 @@ class SettingsCenterCard extends StatelessWidget {
             ),
             ListTile(
               contentPadding: EdgeInsets.zero,
-              enabled: false,
               leading: const Icon(Icons.cloud_outlined),
-              title: Text(l10n.officialAiComingSoon),
+              title: Text(
+                Localizations.localeOf(context).languageCode == 'en'
+                    ? 'Official AI service (testing)'
+                    : '官方 AI 服务（测试中）',
+              ),
+              subtitle: Text(
+                Localizations.localeOf(context).languageCode == 'en'
+                    ? 'Mock payment only. No real charge.'
+                    : '仅开放模拟支付，不会真实扣款',
+              ),
+              trailing: const Icon(Icons.chevron_right_rounded),
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(builder: (_) => const OfficialAiPage()),
+              ),
             ),
             const Divider(height: 30),
             _label(context, l10n.dataAndPrivacy),

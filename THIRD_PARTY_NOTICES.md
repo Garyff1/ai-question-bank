@@ -1,7 +1,7 @@
 # AI题库第三方软件与许可证说明
 
 更新日期：2026-07-14
-适用范围：Android v3.0.0 Phase 2 Dev002
+适用范围：Android v3.0.0 Phase 3 Dev001
 
 本文件用于说明 AI题库直接使用的主要第三方软件。应用内“设置 → 开源许可”会展示 Flutter 在构建时收集的完整许可证原文；本文件侧重列出直接依赖、用途和需要关注的商业许可边界。各软件仍以其随包许可证原文为准。
 
@@ -10,6 +10,7 @@
 | Flutter | 当前构建工具链 | 跨平台应用框架 | BSD-3-Clause | https://flutter.dev | 否 |
 | http | 1.6.0 | API 请求 | BSD-3-Clause | https://pub.dev/packages/http | 否 |
 | shared_preferences | 2.5.5 | 本地非敏感设置与业务数据 | BSD-3-Clause | https://pub.dev/packages/shared_preferences | 否 |
+| flutter_secure_storage | 9.2.4 | Android Keystore API Key 与官方服务令牌安全存储 | BSD-3-Clause | https://pub.dev/packages/flutter_secure_storage | 否 |
 | file_picker | 11.0.2 | 资料文件选择 | MIT | https://pub.dev/packages/file_picker | 否 |
 | url_launcher | 6.3.2 | 打开网页和外部链接 | BSD-3-Clause | https://pub.dev/packages/url_launcher | 否 |
 | archive | 4.0.9 | ZIP 打包 | MIT | https://pub.dev/packages/archive | 否 |

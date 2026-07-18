@@ -18,9 +18,11 @@ import 'package:xml/xml.dart';
 import 'app/app.dart';
 import 'app/app_settings_controller.dart';
 import 'core/localization/localization_extensions.dart';
+import 'core/storage/secure_api_config_storage.dart';
 import 'features/challenge/challenge_rules.dart';
 import 'features/materials/ocr/ocr_models.dart';
 import 'features/materials/ocr/ocr_scan_page.dart';
+import 'features/official_ai/official_ai_page.dart';
 import 'features/rich_content/chart_data.dart';
 import 'features/settings/settings_center_card.dart';
 import 'features/wrong_book/knowledge_diagnosis.dart';
@@ -593,6 +595,12 @@ class ApiConfig {
   Map<String, dynamic> toJson() => {
     'provider': provider,
     'apiKey': apiKey,
+    'baseUrl': baseUrl,
+    'model': model,
+  };
+
+  Map<String, dynamic> toMetadataJson() => {
+    'provider': provider,
     'baseUrl': baseUrl,
     'model': model,
   };
@@ -2147,6 +2155,7 @@ class _AppShellState extends State<AppShell> {
   static const _practiceLogKey = 'practice_log_v1';
   // v2.8.0: 闯关 RPG 进度持久化
   static const _rpgProgressKey = 'rpg_progress_v1';
+  final SecureApiConfigStorage _secureApiStorage = SecureApiConfigStorage();
 
   final Set<String> _selectedTypes = {'choice'};
   final List<String> _audiences = const [
@@ -2198,6 +2207,8 @@ class _AppShellState extends State<AppShell> {
   // 这样可避免听力播放器/小游戏页面销毁与弹窗路由 pop 同帧发生时的崩溃。
   RpgCompletionPayload? _pendingRpgCompletion;
   bool _handlingRpgCompletion = false;
+  bool _apiMigrationWarning = false;
+  String _aiServiceMode = 'byok';
 
   @override
   void initState() {
@@ -2271,12 +2282,18 @@ class _AppShellState extends State<AppShell> {
     }
     ApiConfig config;
     try {
-      final configJson = prefs.getString(_configKey);
-      config = configJson == null
-          ? const ApiConfig()
-          : ApiConfig.fromJson(jsonDecode(configJson) as Map<String, dynamic>);
+      final migrated = await _secureApiStorage.loadAndMigrate(
+        preferences: prefs,
+        legacyPreferencesKey: _configKey,
+      );
+      config = ApiConfig.fromJson({
+        ...migrated.metadata,
+        'apiKey': migrated.apiKey,
+      });
+      _apiMigrationWarning = migrated.migrationFailed;
     } catch (_) {
       config = const ApiConfig();
+      _apiMigrationWarning = true;
     }
     XpProfile xpProfile;
     try {
@@ -2297,6 +2314,9 @@ class _AppShellState extends State<AppShell> {
     if (!prefs.containsKey(_enableListeningKey)) {
       await prefs.setBool(_enableListeningKey, false);
     }
+    final aiServiceMode =
+        prefs.getString(SecureApiConfigStorage.serviceModePreferencesKey) ??
+        'byok';
     // v2.7.3: 加载每日练习趋势日志（独立于 records）
     Map<String, int> practiceLog = {};
     try {
@@ -2328,6 +2348,7 @@ class _AppShellState extends State<AppShell> {
       _xpProfile = xpProfile;
       _enableRichContent = enableRich;
       _enableListening = enableListening;
+      _aiServiceMode = aiServiceMode;
     });
     // v2.7.2: 开屏动画最小展示 2.5 秒
     final elapsed = DateTime.now().difference(splashStart).inMilliseconds;
@@ -2337,6 +2358,11 @@ class _AppShellState extends State<AppShell> {
     }
     if (!mounted) return;
     setState(() => _loading = false);
+    if (_apiMigrationWarning) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _showSnack('API Key 安全迁移未完成，旧配置已保留，请进入 API 配置重新保存');
+      });
+    }
     _syncBoostTicker();
     if (!onboardingSeen && !_onboardingQueued && mounted) {
       _onboardingQueued = true;
@@ -2412,10 +2438,37 @@ class _AppShellState extends State<AppShell> {
     await prefs.setString(_rpgProgressKey, jsonEncode(_rpgProgress.toJson()));
   }
 
-  Future<void> _saveConfig(ApiConfig config) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_configKey, jsonEncode(config.toJson()));
-    setState(() => _config = config);
+  Future<bool> _saveConfig(ApiConfig config) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await _secureApiStorage.save(
+        preferences: prefs,
+        preferencesKey: _configKey,
+        metadata: config.toMetadataJson(),
+        apiKey: config.apiKey,
+      );
+      if (!mounted) return true;
+      setState(() => _config = config);
+      return true;
+    } catch (_) {
+      _showSnack('安全保存失败，原 API 配置已保留，请稍后重试');
+      return false;
+    }
+  }
+
+  Future<bool> _deleteConfig() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await _secureApiStorage.deleteApiConfig(
+        preferences: prefs,
+        preferencesKey: _configKey,
+      );
+      if (mounted) setState(() => _config = const ApiConfig());
+      return true;
+    } catch (_) {
+      _showSnack('删除配置失败，请稍后重试');
+      return false;
+    }
   }
 
   void _showSnack(String message) {
@@ -2484,11 +2537,22 @@ class _AppShellState extends State<AppShell> {
             surfaceTintColor: Colors.transparent,
           ),
           body: SafeArea(
-            child: ConfigPage(config: _config, onSave: _saveConfig),
+            child: ConfigPage(
+              config: _config,
+              onSave: _saveConfig,
+              onDelete: _deleteConfig,
+            ),
           ),
         ),
       ),
     );
+    final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
+    setState(() {
+      _aiServiceMode =
+          prefs.getString(SecureApiConfigStorage.serviceModePreferencesKey) ??
+          'byok';
+    });
   }
 
   void _openPaperViewer(Paper paper) {
@@ -3105,6 +3169,12 @@ class _AppShellState extends State<AppShell> {
   }
 
   Future<void> _generateQuestions() async {
+    if (_aiServiceMode == 'official') {
+      await Navigator.of(
+        context,
+      ).push<void>(MaterialPageRoute(builder: (_) => const OfficialAiPage()));
+      return;
+    }
     final material = _selectedMaterial;
     if (material == null) {
       _showSnack('请先添加学习资料');
@@ -3166,6 +3236,11 @@ class _AppShellState extends State<AppShell> {
     String knowledgePointSpec = '',
     int listeningCount = 0,
   }) async {
+    if (_aiServiceMode == 'official') {
+      _showSnack('官方 AI 测试模式暂未开放试卷生成，请切换为“使用自己的 API Key”');
+      _openConfigPage();
+      return;
+    }
     if (!_config.ready) {
       _showSnack('请先配置大模型 API，正在跳转...');
       _openConfigPage();
@@ -3247,6 +3322,11 @@ class _AppShellState extends State<AppShell> {
   // v2.8.0: 打开 RPG 章节地图
   // v2.9.1: 教材选择替换学科选择，统一用「通用」学科，难度由章节(基础/进阶/综合)体现
   Future<void> _openRpgMap() async {
+    if (_aiServiceMode == 'official') {
+      _showSnack('官方 AI 测试模式暂未开放动态闯关，请切换为“使用自己的 API Key”');
+      _openConfigPage();
+      return;
+    }
     if (_materials.isEmpty) {
       _showSnack('请先导入学习资料');
       return;
@@ -4294,6 +4374,8 @@ class _AppShellState extends State<AppShell> {
         generating: _generating,
         enableRichContent: _enableRichContent,
         enableListening: _enableListening,
+        serviceMode: _aiServiceMode,
+        onOpenServiceMode: _openConfigPage,
         onMaterialChanged: (material) {
           AppHaptics.instance.selectionClick();
           setState(() => _selectedMaterial = material);
@@ -5831,6 +5913,8 @@ class GeneratePage extends StatelessWidget {
     required this.generating,
     required this.enableRichContent,
     required this.enableListening,
+    required this.serviceMode,
+    required this.onOpenServiceMode,
     required this.onMaterialChanged,
     required this.onToggleType,
     required this.onCountChanged,
@@ -5854,6 +5938,8 @@ class GeneratePage extends StatelessWidget {
   final bool generating;
   final bool enableRichContent;
   final bool enableListening;
+  final String serviceMode;
+  final VoidCallback onOpenServiceMode;
   final ValueChanged<StudyMaterial?> onMaterialChanged;
   final ValueChanged<String> onToggleType;
   final ValueChanged<int> onCountChanged;
@@ -5881,6 +5967,43 @@ class GeneratePage extends StatelessWidget {
         _PageTitle(
           title: context.l10n.generatePageTitle,
           subtitle: context.l10n.generatePageSubtitle,
+        ),
+        const SizedBox(height: 12),
+        Card(
+          child: ListTile(
+            leading: Icon(
+              serviceMode == 'official'
+                  ? Icons.cloud_outlined
+                  : Icons.key_rounded,
+              color: colors.primary,
+            ),
+            title: Text(
+              serviceMode == 'official'
+                  ? (Localizations.localeOf(context).languageCode == 'en'
+                        ? 'Official AI service'
+                        : '官方 AI 服务')
+                  : (Localizations.localeOf(context).languageCode == 'en'
+                        ? 'My API Key'
+                        : '使用自己的 API Key'),
+            ),
+            subtitle: Text(
+              serviceMode == 'official'
+                  ? (Localizations.localeOf(context).languageCode == 'en'
+                        ? 'Test mode · Mock payment only'
+                        : '测试模式 · 仅模拟支付')
+                  : (Localizations.localeOf(context).languageCode == 'en'
+                        ? 'No extra app fee'
+                        : '软件不额外收费'),
+            ),
+            trailing: TextButton(
+              onPressed: onOpenServiceMode,
+              child: Text(
+                Localizations.localeOf(context).languageCode == 'en'
+                    ? 'Change'
+                    : '更换',
+              ),
+            ),
+          ),
         ),
         const SizedBox(height: 16),
         const _FlowStepHeader(
@@ -11470,7 +11593,10 @@ class _WeeklyTrendCard extends StatelessWidget {
           ),
           const SizedBox(height: 18),
           SizedBox(
-            height: 102,
+            // Leave enough vertical room for the value label and the tallest
+            // animated bar. The old 102px constraint overflowed on devices
+            // with larger text metrics (especially in the English layout).
+            height: 126,
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: List.generate(values.length, (index) {
@@ -13819,10 +13945,16 @@ class _XpProgress extends StatelessWidget {
 }
 
 class ConfigPage extends StatefulWidget {
-  const ConfigPage({super.key, required this.config, required this.onSave});
+  const ConfigPage({
+    super.key,
+    required this.config,
+    required this.onSave,
+    required this.onDelete,
+  });
 
   final ApiConfig config;
-  final ValueChanged<ApiConfig> onSave;
+  final Future<bool> Function(ApiConfig) onSave;
+  final Future<bool> Function() onDelete;
 
   @override
   State<ConfigPage> createState() => _ConfigPageState();
@@ -13834,6 +13966,7 @@ class _ConfigPageState extends State<ConfigPage> {
   late final TextEditingController _baseCtrl;
   late final TextEditingController _modelCtrl;
   bool _testing = false;
+  String _serviceMode = 'byok';
 
   static const providers = {
     'deepseek': ('DeepSeek', 'https://api.deepseek.com', 'deepseek-v4-flash'),
@@ -13855,6 +13988,32 @@ class _ConfigPageState extends State<ConfigPage> {
     _keyCtrl = TextEditingController(text: widget.config.apiKey);
     _baseCtrl = TextEditingController(text: widget.config.baseUrl);
     _modelCtrl = TextEditingController(text: widget.config.model);
+    _loadServiceMode();
+  }
+
+  Future<void> _loadServiceMode() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
+    setState(() {
+      _serviceMode =
+          prefs.getString(SecureApiConfigStorage.serviceModePreferencesKey) ??
+          'byok';
+    });
+  }
+
+  Future<void> _selectServiceMode(String mode) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      SecureApiConfigStorage.serviceModePreferencesKey,
+      mode,
+    );
+    if (!mounted) return;
+    setState(() => _serviceMode = mode);
+    if (mode == 'official') {
+      await Navigator.of(
+        context,
+      ).push<void>(MaterialPageRoute(builder: (_) => const OfficialAiPage()));
+    }
   }
 
   @override
@@ -13916,6 +14075,45 @@ class _ConfigPageState extends State<ConfigPage> {
           subtitle: context.l10n.apiPageSubtitle,
         ),
         const SizedBox(height: 16),
+        Text(
+          Localizations.localeOf(context).languageCode == 'en'
+              ? 'AI service mode'
+              : 'AI 服务模式',
+          style: const TextStyle(fontWeight: FontWeight.w900, color: kMuted),
+        ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            Expanded(
+              child: _ServiceModeCard(
+                selected: _serviceMode == 'byok',
+                icon: Icons.key_rounded,
+                title: Localizations.localeOf(context).languageCode == 'en'
+                    ? 'My API Key'
+                    : '使用自己的 API Key',
+                subtitle: Localizations.localeOf(context).languageCode == 'en'
+                    ? 'No extra app fee'
+                    : '软件不额外收费',
+                onTap: () => _selectServiceMode('byok'),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _ServiceModeCard(
+                selected: _serviceMode == 'official',
+                icon: Icons.cloud_outlined,
+                title: Localizations.localeOf(context).languageCode == 'en'
+                    ? 'Official AI'
+                    : '官方 AI 服务',
+                subtitle: Localizations.localeOf(context).languageCode == 'en'
+                    ? 'Test mode'
+                    : '测试中 · 模拟支付',
+                onTap: () => _selectServiceMode('official'),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 18),
         const Text(
           '选择服务商',
           style: TextStyle(fontWeight: FontWeight.w900, color: kMuted),
@@ -13996,9 +14194,9 @@ class _ConfigPageState extends State<ConfigPage> {
             const SizedBox(width: 10),
             Expanded(
               child: FilledButton.icon(
-                onPressed: () {
-                  widget.onSave(_currentConfig());
-                  _snack('配置已保存到本机');
+                onPressed: () async {
+                  final saved = await widget.onSave(_currentConfig());
+                  if (saved) _snack('配置已安全保存到当前设备');
                 },
                 icon: const Icon(Icons.save),
                 label: const Text('保存配置'),
@@ -14006,14 +14204,104 @@ class _ConfigPageState extends State<ConfigPage> {
             ),
           ],
         ),
+        const SizedBox(height: 10),
+        TextButton.icon(
+          onPressed: () async {
+            final confirmed = await showDialog<bool>(
+              context: context,
+              builder: (dialogContext) => AlertDialog(
+                title: const Text('删除 API 配置？'),
+                content: const Text('将从安全存储中清除 API Key。此操作不会删除资料和练习记录。'),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(dialogContext, false),
+                    child: const Text('取消'),
+                  ),
+                  FilledButton(
+                    onPressed: () => Navigator.pop(dialogContext, true),
+                    child: const Text('确认删除'),
+                  ),
+                ],
+              ),
+            );
+            if (confirmed != true) return;
+            if (await widget.onDelete()) {
+              _keyCtrl.clear();
+              _snack('API 配置已删除');
+            }
+          },
+          icon: const Icon(Icons.delete_outline_rounded),
+          label: const Text('删除当前 API 配置'),
+        ),
         const SizedBox(height: 16),
         const _ApiGuideCard(),
         const SizedBox(height: 12),
         const _NoteCard(
           title: '本地化说明',
-          body: '本 App 不提供账号系统，资料、API Key、练习记录都保存在当前手机。卸载 App 会删除这些本地数据。',
+          body:
+              '自带 API Key 使用 Android Keystore 安全保存，不会上传到官方服务器。资料和练习记录仍保存在当前手机。',
         ),
       ],
+    );
+  }
+}
+
+class _ServiceModeCard extends StatelessWidget {
+  const _ServiceModeCard({
+    required this.selected,
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+  });
+
+  final bool selected;
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(18),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 220),
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: selected ? scheme.primaryContainer : scheme.surfaceContainer,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(
+            color: selected ? scheme.primary : scheme.outlineVariant,
+            width: selected ? 2 : 1,
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(
+              icon,
+              color: selected ? scheme.primary : scheme.onSurfaceVariant,
+            ),
+            const SizedBox(height: 10),
+            Text(
+              title,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontWeight: FontWeight.w800),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              subtitle,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

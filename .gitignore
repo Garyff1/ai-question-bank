@@ -6,6 +6,9 @@ __pycache__/
 .env
 venv/
 .venv/
+.venv-phase3/
+android-app/phase3-*.png
+backend/phase3_emulator_test.db*
 backend/build/
 backend/dist/
 src-tauri/target/

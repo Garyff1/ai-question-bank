@@ -55,5 +55,34 @@ class Settings:
 
     MAX_FILE_SIZE: int = 50 * 1024 * 1024  # 50MB
 
+    # v3 Phase 3 feature gates. Safe defaults are intentional: a release build
+    # must never become a charging build merely because client code changed.
+    OFFICIAL_AI_ENABLED: bool = _truthy(os.getenv("OFFICIAL_AI_ENABLED", "0"))
+    SHADOW_BILLING_ENABLED: bool = _truthy(os.getenv("SHADOW_BILLING_ENABLED", "1"))
+    PAYMENT_MOCK_ENABLED: bool = _truthy(os.getenv("PAYMENT_MOCK_ENABLED", "1"))
+    WECHAT_PAY_ENABLED: bool = _truthy(os.getenv("WECHAT_PAY_ENABLED", "0"))
+    ALIPAY_PAY_ENABLED: bool = _truthy(os.getenv("ALIPAY_PAY_ENABLED", "0"))
+    REAL_CHARGE_ENABLED: bool = _truthy(os.getenv("REAL_CHARGE_ENABLED", "0"))
+
+    OFFICIAL_AI_PROVIDER: str = os.getenv("OFFICIAL_AI_PROVIDER", "fake")
+    OFFICIAL_AI_BASE_URL: str = os.getenv("OFFICIAL_AI_BASE_URL", "")
+    OFFICIAL_AI_MODEL: str = os.getenv("OFFICIAL_AI_MODEL", "fake-question-model")
+    OFFICIAL_AI_API_KEY: str = os.getenv("OFFICIAL_AI_API_KEY", "")
+
+    WECHAT_APP_ID: str = os.getenv("WECHAT_APP_ID", "")
+    WECHAT_MCH_ID: str = os.getenv("WECHAT_MCH_ID", "")
+    WECHAT_API_V3_KEY: str = os.getenv("WECHAT_API_V3_KEY", "")
+    WECHAT_PRIVATE_KEY_PATH: str = os.getenv("WECHAT_PRIVATE_KEY_PATH", "")
+    WECHAT_CERT_SERIAL_NO: str = os.getenv("WECHAT_CERT_SERIAL_NO", "")
+
+    ALIPAY_APP_ID: str = os.getenv("ALIPAY_APP_ID", "")
+    ALIPAY_PRIVATE_KEY: str = os.getenv("ALIPAY_PRIVATE_KEY", "")
+    ALIPAY_PUBLIC_KEY: str = os.getenv("ALIPAY_PUBLIC_KEY", "")
+    ALIPAY_NOTIFY_URL: str = os.getenv("ALIPAY_NOTIFY_URL", "")
+
+    DATA_ENCRYPTION_KEY: str = os.getenv("DATA_ENCRYPTION_KEY", "")
+    QUOTE_TTL_SECONDS: int = int(os.getenv("QUOTE_TTL_SECONDS", "900"))
+    GENERATION_TIMEOUT_SECONDS: int = int(os.getenv("GENERATION_TIMEOUT_SECONDS", "90"))
+
 
 settings = Settings()

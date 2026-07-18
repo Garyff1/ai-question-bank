@@ -54,6 +54,11 @@ class ThirdPartyNoticesPage extends StatelessWidget {
             license: 'MIT',
           ),
           const _NoticeTile(
+            title: 'Security storage',
+            packages: 'flutter_secure_storage',
+            license: 'BSD-3-Clause',
+          ),
+          const _NoticeTile(
             title: 'PDF',
             packages: 'syncfusion_flutter_pdf',
             license: 'Syncfusion Community or Commercial License',
@@ -64,7 +69,7 @@ class ThirdPartyNoticesPage extends StatelessWidget {
             onPressed: () => showLicensePage(
               context: context,
               applicationName: english ? 'AI Question Bank' : 'AI题库',
-              applicationVersion: '3.0.0 Phase 2 Test002',
+              applicationVersion: '3.0.0 Phase 3 Dev001',
             ),
             icon: const Icon(Icons.description_outlined),
             label: Text(

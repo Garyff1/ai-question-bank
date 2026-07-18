@@ -5,9 +5,13 @@ import mimetypes
 from pathlib import Path
 
 from app.database import engine, Base
+from app.official_ai import models as official_ai_models  # noqa: F401 - register tables
+from app.official_ai import router as official_ai
+from app.official_ai.migrations import upgrade_phase3_schema
 from app.routers import auth, materials, questions, practice, stats, api_config
 
 Base.metadata.create_all(bind=engine)
+upgrade_phase3_schema(engine)
 
 mimetypes.add_type("application/vnd.android.package-archive", ".apk")
 
@@ -31,6 +35,7 @@ app.include_router(questions.router, prefix="/api/questions", tags=["出题"])
 app.include_router(practice.router, prefix="/api/practice", tags=["答题练习"])
 app.include_router(stats.router, prefix="/api/stats", tags=["学习统计"])
 app.include_router(api_config.router, prefix="/api/config", tags=["API配置"])
+app.include_router(official_ai.router, prefix="/api/official-ai", tags=["官方AI与模拟计费"])
 
 # 设置 web 文件夹的绝对路径（项目根目录的 web/）
 web_path = Path(__file__).resolve().parent.parent.parent / "web"
