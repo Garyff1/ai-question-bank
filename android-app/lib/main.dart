@@ -24,7 +24,7 @@ import 'features/materials/ocr/ocr_models.dart';
 import 'features/materials/ocr/ocr_scan_page.dart';
 import 'features/official_ai/official_ai_page.dart';
 import 'features/rich_content/chart_data.dart';
-import 'features/settings/settings_center_card.dart';
+import 'features/settings/settings_page.dart';
 import 'features/wrong_book/knowledge_diagnosis.dart';
 import 'rich_content.dart';
 import 'dart:io';
@@ -2529,11 +2529,9 @@ class _AppShellState extends State<AppShell> {
     AppHaptics.instance.selectionClick();
     await Navigator.of(context).push<void>(
       MaterialPageRoute(
-        builder: (_) => Scaffold(
-          backgroundColor: kBg,
+        builder: (routeContext) => Scaffold(
           appBar: AppBar(
-            title: const Text('API 配置'),
-            backgroundColor: kBg,
+            title: Text(routeContext.l10n.apiPageTitle),
             surfaceTintColor: Colors.transparent,
           ),
           body: SafeArea(
@@ -10739,6 +10737,13 @@ class _MePageState extends State<MePage> {
   bool get _english => Localizations.localeOf(context).languageCode == 'en';
   String _t(String zh, String en) => _english ? en : zh;
 
+  void _openSettings() {
+    AppHaptics.instance.selectionClick();
+    Navigator.of(
+      context,
+    ).push<void>(MaterialPageRoute(builder: (_) => const SettingsPage()));
+  }
+
   @override
   void dispose() {
     _controller.dispose();
@@ -11252,6 +11257,11 @@ class _MePageState extends State<MePage> {
               ),
             ),
             IconButton(
+              tooltip: _t('偏好设置', 'Preferences'),
+              onPressed: _openSettings,
+              icon: Icon(Icons.settings_rounded, color: colors.onSurface),
+            ),
+            IconButton(
               tooltip: _searchMode
                   ? _t('关闭检索', 'Close search')
                   : _t('检索历史/错题', 'Search history and mistakes'),
@@ -11366,10 +11376,6 @@ class _MePageState extends State<MePage> {
           onTap: widget.onOpenConfig,
         ),
         const SizedBox(height: 16),
-        const SettingsCenterCard(),
-        const SizedBox(height: 16),
-        _FeedbackEntryCard(onTap: widget.onOpenFeedback),
-        const SizedBox(height: 16),
         GridView.count(
           crossAxisCount: 2,
           crossAxisSpacing: 12,
@@ -11458,6 +11464,8 @@ class _MePageState extends State<MePage> {
               },
             ),
           ),
+        const SizedBox(height: 18),
+        _FeedbackEntryCard(onTap: widget.onOpenFeedback),
         const SizedBox(height: 18),
         const _AboutAppCard(),
       ],
@@ -14067,6 +14075,8 @@ class _ConfigPageState extends State<ConfigPage> {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final isEnglish = Localizations.localeOf(context).languageCode == 'en';
     return ListView(
       padding: const EdgeInsets.all(18),
       children: [
@@ -14076,10 +14086,11 @@ class _ConfigPageState extends State<ConfigPage> {
         ),
         const SizedBox(height: 16),
         Text(
-          Localizations.localeOf(context).languageCode == 'en'
-              ? 'AI service mode'
-              : 'AI 服务模式',
-          style: const TextStyle(fontWeight: FontWeight.w900, color: kMuted),
+          isEnglish ? 'AI service mode' : 'AI 服务模式',
+          style: TextStyle(
+            fontWeight: FontWeight.w900,
+            color: scheme.onSurfaceVariant,
+          ),
         ),
         const SizedBox(height: 10),
         Row(
@@ -14088,12 +14099,8 @@ class _ConfigPageState extends State<ConfigPage> {
               child: _ServiceModeCard(
                 selected: _serviceMode == 'byok',
                 icon: Icons.key_rounded,
-                title: Localizations.localeOf(context).languageCode == 'en'
-                    ? 'My API Key'
-                    : '使用自己的 API Key',
-                subtitle: Localizations.localeOf(context).languageCode == 'en'
-                    ? 'No extra app fee'
-                    : '软件不额外收费',
+                title: isEnglish ? 'My API Key' : '使用自己的 API Key',
+                subtitle: isEnglish ? 'No extra app fee' : '软件不额外收费',
                 onTap: () => _selectServiceMode('byok'),
               ),
             ),
@@ -14102,21 +14109,20 @@ class _ConfigPageState extends State<ConfigPage> {
               child: _ServiceModeCard(
                 selected: _serviceMode == 'official',
                 icon: Icons.cloud_outlined,
-                title: Localizations.localeOf(context).languageCode == 'en'
-                    ? 'Official AI'
-                    : '官方 AI 服务',
-                subtitle: Localizations.localeOf(context).languageCode == 'en'
-                    ? 'Test mode'
-                    : '测试中 · 模拟支付',
+                title: isEnglish ? 'Official AI' : '官方 AI 服务',
+                subtitle: isEnglish ? 'Test mode' : '测试中 · 模拟支付',
                 onTap: () => _selectServiceMode('official'),
               ),
             ),
           ],
         ),
         const SizedBox(height: 18),
-        const Text(
-          '选择服务商',
-          style: TextStyle(fontWeight: FontWeight.w900, color: kMuted),
+        Text(
+          isEnglish ? 'Choose provider' : '选择服务商',
+          style: TextStyle(
+            fontWeight: FontWeight.w900,
+            color: scheme.onSurfaceVariant,
+          ),
         ),
         const SizedBox(height: 10),
         GridView.count(
@@ -14133,17 +14139,24 @@ class _ConfigPageState extends State<ConfigPage> {
               borderRadius: BorderRadius.circular(16),
               child: Container(
                 decoration: BoxDecoration(
-                  color: selected ? const Color(0xFFEFF6FF) : Colors.white,
+                  color: selected
+                      ? scheme.primaryContainer
+                      : scheme.surfaceContainer,
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(
-                    color: selected ? kBlue : kLine,
+                    color: selected ? scheme.primary : scheme.outlineVariant,
                     width: selected ? 2 : 1.2,
                   ),
                 ),
                 child: Center(
                   child: Text(
                     entry.value.$1,
-                    style: const TextStyle(fontWeight: FontWeight.w900),
+                    style: TextStyle(
+                      color: selected
+                          ? scheme.onPrimaryContainer
+                          : scheme.onSurface,
+                      fontWeight: FontWeight.w900,
+                    ),
                   ),
                 ),
               ),
@@ -14154,25 +14167,28 @@ class _ConfigPageState extends State<ConfigPage> {
         TextField(
           controller: _keyCtrl,
           obscureText: true,
-          decoration: const InputDecoration(
+          style: TextStyle(color: scheme.onSurface),
+          decoration: InputDecoration(
             labelText: 'API Key',
-            border: OutlineInputBorder(),
+            labelStyle: TextStyle(color: scheme.onSurfaceVariant),
           ),
         ),
         const SizedBox(height: 12),
         TextField(
           controller: _baseCtrl,
-          decoration: const InputDecoration(
+          style: TextStyle(color: scheme.onSurface),
+          decoration: InputDecoration(
             labelText: 'API Base URL',
-            border: OutlineInputBorder(),
+            labelStyle: TextStyle(color: scheme.onSurfaceVariant),
           ),
         ),
         const SizedBox(height: 12),
         TextField(
           controller: _modelCtrl,
-          decoration: const InputDecoration(
-            labelText: '模型名称',
-            border: OutlineInputBorder(),
+          style: TextStyle(color: scheme.onSurface),
+          decoration: InputDecoration(
+            labelText: isEnglish ? 'Model name' : '模型名称',
+            labelStyle: TextStyle(color: scheme.onSurfaceVariant),
           ),
         ),
         const SizedBox(height: 18),
@@ -14319,11 +14335,15 @@ class _ApiGuideCardState extends State<_ApiGuideCard> {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final warning = Theme.of(context).brightness == Brightness.dark
+        ? const Color(0xFFFBBF24)
+        : const Color(0xFFD97706);
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: scheme.surface,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: kLine),
+        border: Border.all(color: scheme.outlineVariant),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -14339,17 +14359,17 @@ class _ApiGuideCardState extends State<_ApiGuideCard> {
                     width: 40,
                     height: 40,
                     decoration: BoxDecoration(
-                      color: const Color(0xFFEFF6FF),
+                      color: scheme.primaryContainer,
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    child: const Icon(
+                    child: Icon(
                       Icons.school_rounded,
-                      color: kBlue,
+                      color: scheme.primary,
                       size: 22,
                     ),
                   ),
                   const SizedBox(width: 12),
-                  const Expanded(
+                  Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -14358,13 +14378,16 @@ class _ApiGuideCardState extends State<_ApiGuideCard> {
                           style: TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.w900,
-                            color: kInk,
+                            color: scheme.onSurface,
                           ),
                         ),
-                        SizedBox(height: 3),
+                        const SizedBox(height: 3),
                         Text(
                           '第一次使用？点这里看完整图文教程',
-                          style: TextStyle(color: kMuted, fontSize: 12),
+                          style: TextStyle(
+                            color: scheme.onSurfaceVariant,
+                            fontSize: 12,
+                          ),
                         ),
                       ],
                     ),
@@ -14372,9 +14395,9 @@ class _ApiGuideCardState extends State<_ApiGuideCard> {
                   AnimatedRotation(
                     turns: _expanded ? 0.25 : 0,
                     duration: const Duration(milliseconds: 200),
-                    child: const Icon(
+                    child: Icon(
                       Icons.chevron_right_rounded,
-                      color: kMuted,
+                      color: scheme.onSurfaceVariant,
                     ),
                   ),
                 ],
@@ -14394,9 +14417,9 @@ class _ApiGuideCardState extends State<_ApiGuideCard> {
                 children: [
                   const Divider(height: 1),
                   const SizedBox(height: 12),
-                  const Text(
+                  Text(
                     '本 App 支持 DeepSeek、通义千问、智谱 GLM、小米 MiMo、Kimi 等主流大模型 API。下面以 DeepSeek 为例（最常用且便宜），其他服务商步骤类似。',
-                    style: TextStyle(color: kInk, height: 1.55),
+                    style: TextStyle(color: scheme.onSurface, height: 1.55),
                   ),
                   const SizedBox(height: 14),
                   _guideStep(
@@ -14436,38 +14459,36 @@ class _ApiGuideCardState extends State<_ApiGuideCard> {
                     width: double.infinity,
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: const Color(0xFFFFFBEB),
+                      color: warning.withValues(alpha: 0.12),
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: const Color(0xFFFCD34D)),
+                      border: Border.all(
+                        color: warning.withValues(alpha: 0.52),
+                      ),
                     ),
-                    child: const Column(
+                    child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Row(
                           children: [
-                            Icon(
-                              Icons.info_rounded,
-                              color: Color(0xFFD97706),
-                              size: 18,
-                            ),
-                            SizedBox(width: 6),
+                            Icon(Icons.info_rounded, color: warning, size: 18),
+                            const SizedBox(width: 6),
                             Text(
                               '其他服务商入口',
                               style: TextStyle(
-                                color: Color(0xFF92400E),
+                                color: warning,
                                 fontWeight: FontWeight.w900,
                               ),
                             ),
                           ],
                         ),
-                        SizedBox(height: 8),
+                        const SizedBox(height: 8),
                         Text(
                           '• 通义千问：dashscope.console.aliyun.com\n'
                           '• 智谱 GLM：open.bigmodel.cn\n'
                           '• 小米 MiMo：mimo.xiaomi.com（提交申请）\n'
                           '• Kimi：platform.moonshot.cn',
                           style: TextStyle(
-                            color: Color(0xFF92400E),
+                            color: scheme.onSurface,
                             height: 1.7,
                           ),
                         ),
@@ -14484,6 +14505,7 @@ class _ApiGuideCardState extends State<_ApiGuideCard> {
   }
 
   Widget _guideStep(String num, String title, String body) {
+    final scheme = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Row(
@@ -14515,13 +14537,19 @@ class _ApiGuideCardState extends State<_ApiGuideCard> {
               children: [
                 Text(
                   title,
-                  style: const TextStyle(
-                    color: kInk,
+                  style: TextStyle(
+                    color: scheme.onSurface,
                     fontWeight: FontWeight.w900,
                   ),
                 ),
                 const SizedBox(height: 3),
-                Text(body, style: const TextStyle(color: kMuted, height: 1.55)),
+                Text(
+                  body,
+                  style: TextStyle(
+                    color: scheme.onSurfaceVariant,
+                    height: 1.55,
+                  ),
+                ),
               ],
             ),
           ),
@@ -16780,28 +16808,26 @@ class _NoteCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final warning = Theme.of(context).brightness == Brightness.dark
+        ? const Color(0xFFFBBF24)
+        : const Color(0xFFD97706);
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFFFFFBEB),
+        color: warning.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFFFDE68A)),
+        border: Border.all(color: warning.withValues(alpha: 0.50)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
             title,
-            style: const TextStyle(
-              fontWeight: FontWeight.w900,
-              color: Color(0xFF92400E),
-            ),
+            style: TextStyle(fontWeight: FontWeight.w900, color: warning),
           ),
           const SizedBox(height: 6),
-          Text(
-            body,
-            style: const TextStyle(color: Color(0xFF92400E), height: 1.55),
-          ),
+          Text(body, style: TextStyle(color: scheme.onSurface, height: 1.55)),
         ],
       ),
     );
@@ -17491,20 +17517,21 @@ class _SplashLoadingViewState extends State<_SplashLoadingView>
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final backgroundGradient = dark
+        ? const [Color(0xFF07111F), Color(0xFF0B1728), Color(0xFF0D1B2B)]
+        : const [Color(0xFFEFF6FF), Color(0xFFFFFFFF), Color(0xFFF0FDF4)];
     return Stack(
       children: [
         // 渐变背景
-        const Positioned.fill(
+        Positioned.fill(
           child: DecoratedBox(
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
-                colors: [
-                  Color(0xFFEFF6FF),
-                  Color(0xFFFFFFFF),
-                  Color(0xFFF0FDF4),
-                ],
+                colors: backgroundGradient,
               ),
             ),
           ),
@@ -17590,8 +17617,8 @@ class _SplashLoadingViewState extends State<_SplashLoadingView>
               // 打字机副标题
               Text(
                 _subFull.substring(0, _subShown),
-                style: const TextStyle(
-                  color: kMuted,
+                style: TextStyle(
+                  color: scheme.onSurfaceVariant,
                   fontSize: 13,
                   fontWeight: FontWeight.w700,
                   letterSpacing: 1,
@@ -17605,8 +17632,8 @@ class _SplashLoadingViewState extends State<_SplashLoadingView>
                   borderRadius: BorderRadius.circular(999),
                   child: LinearProgressIndicator(
                     value: null,
-                    backgroundColor: const Color(0xFFE2E8F0),
-                    color: const Color(0xFF3B82F6),
+                    backgroundColor: scheme.surfaceContainerHighest,
+                    color: scheme.primary,
                     minHeight: 4,
                   ),
                 ),
@@ -17619,23 +17646,19 @@ class _SplashLoadingViewState extends State<_SplashLoadingView>
                   vertical: 6,
                 ),
                 decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.88),
+                  color: scheme.surface.withValues(alpha: 0.92),
                   borderRadius: BorderRadius.circular(999),
-                  border: Border.all(color: kLine),
+                  border: Border.all(color: scheme.outlineVariant),
                 ),
-                child: const Row(
+                child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(
-                      Icons.auto_awesome,
-                      size: 14,
-                      color: Color(0xFF3B82F6),
-                    ),
-                    SizedBox(width: 6),
+                    Icon(Icons.auto_awesome, size: 14, color: scheme.primary),
+                    const SizedBox(width: 6),
                     Text(
                       '正在加载中…',
                       style: TextStyle(
-                        color: kInk,
+                        color: scheme.onSurface,
                         fontSize: 12,
                         fontWeight: FontWeight.w800,
                       ),
