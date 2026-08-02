@@ -5,7 +5,7 @@ import 'dart:math';
 import 'package:archive/archive.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:flutter/foundation.dart' show compute;
+import 'package:flutter/foundation.dart' show compute, kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_edge_tts/flutter_edge_tts.dart';
@@ -18,12 +18,25 @@ import 'package:xml/xml.dart';
 import 'app/app.dart';
 import 'app/app_settings_controller.dart';
 import 'core/localization/localization_extensions.dart';
+import 'core/security/secure_log_filter.dart';
+import 'core/security/secret_visibility_controller.dart';
+import 'core/security/api_key_masking.dart';
+import 'core/security/api_key_security_audit.dart';
+import 'core/security/secure_screen.dart';
 import 'core/storage/secure_api_config_storage.dart';
 import 'features/challenge/challenge_rules.dart';
 import 'features/materials/ocr/ocr_models.dart';
 import 'features/materials/ocr/ocr_scan_page.dart';
 import 'features/official_ai/official_ai_page.dart';
+import 'features/paper_builder/models/paper_builder_models.dart';
+import 'features/paper_builder/paper_draft_storage.dart';
+import 'features/paper_builder/paper_editor_page.dart';
+import 'features/paper_builder/paper_generation_progress.dart';
+import 'features/paper_builder/paper_template_service.dart';
 import 'features/rich_content/chart_data.dart';
+import 'features/service_mode/service_mode_controller.dart';
+import 'features/service_mode/service_mode_selector.dart';
+import 'features/service_mode/service_mode_sheet.dart';
 import 'features/settings/settings_page.dart';
 import 'features/wrong_book/knowledge_diagnosis.dart';
 import 'rich_content.dart';
@@ -59,7 +72,9 @@ bool isTransientApiError(Object error) {
 
 /// 将底层网络错误统一转换为用户可理解的中文提示。
 String apiErrorMessage(Object error) {
-  final message = error.toString().replaceFirst('Exception: ', '');
+  final message = redactSensitiveText(
+    error.toString().replaceFirst('Exception: ', ''),
+  );
   final lower = message.toLowerCase();
   if (error is HandshakeException ||
       lower.contains('handshake') ||
@@ -78,7 +93,7 @@ String apiErrorMessage(Object error) {
       lower.contains('socketexception')) {
     return '网络连接中断，已自动重试，请检查网络后再试';
   }
-  return message;
+  return safeApiErrorMessage(message);
 }
 
 /// 反馈邮箱：用户在"我的 → 问题反馈"里提交的内容会发到这里。
@@ -1131,6 +1146,8 @@ class Paper {
     required this.questions,
     required this.createdAt,
     this.scoreConfig = const PaperScoreConfig(),
+    this.name = '',
+    this.durationMinutes = 0,
   });
 
   final String id;
@@ -1141,6 +1158,8 @@ class Paper {
   final List<PaperQuestion> questions;
   final DateTime createdAt;
   final PaperScoreConfig scoreConfig;
+  final String name;
+  final int durationMinutes;
 
   /// 按题型自动计算总分
   int get totalScore {
@@ -1171,6 +1190,8 @@ class Paper {
     'questions': questions.map((q) => q.toJson()).toList(),
     'createdAt': createdAt.toIso8601String(),
     'scoreConfig': scoreConfig.toJson(),
+    if (name.isNotEmpty) 'name': name,
+    if (durationMinutes > 0) 'durationMinutes': durationMinutes,
   };
 
   factory Paper.fromJson(Map<String, dynamic> json) => Paper(
@@ -1192,6 +1213,8 @@ class Paper {
             Map<String, dynamic>.from(json['scoreConfig'] as Map),
           )
         : const PaperScoreConfig(),
+    name: json['name'] as String? ?? '',
+    durationMinutes: json['durationMinutes'] as int? ?? 0,
   );
 }
 
@@ -1254,17 +1277,20 @@ class PaperScoreConfig {
 class PaperTemplate {
   const PaperTemplate({
     this.choiceCount = 0,
+    this.multiChoiceCount = 0,
     this.fillCount = 0,
     this.judgeCount = 0,
     this.subjectiveCount = 0,
   });
 
   final int choiceCount;
+  final int multiChoiceCount;
   final int fillCount;
   final int judgeCount;
   final int subjectiveCount;
 
-  int get totalCount => choiceCount + fillCount + judgeCount + subjectiveCount;
+  int get totalCount =>
+      choiceCount + multiChoiceCount + fillCount + judgeCount + subjectiveCount;
 
   /// 默认模板：根据学段+类型+学科+页数推算题量
   /// 参考国内中考/高考/期末/周测真实结构
@@ -1361,6 +1387,7 @@ class PaperTemplate {
 
   Map<String, dynamic> toJson() => {
     'choiceCount': choiceCount,
+    'multiChoiceCount': multiChoiceCount,
     'fillCount': fillCount,
     'judgeCount': judgeCount,
     'subjectiveCount': subjectiveCount,
@@ -1368,6 +1395,7 @@ class PaperTemplate {
 
   factory PaperTemplate.fromJson(Map<String, dynamic> json) => PaperTemplate(
     choiceCount: json['choiceCount'] as int? ?? 0,
+    multiChoiceCount: json['multiChoiceCount'] as int? ?? 0,
     fillCount: json['fillCount'] as int? ?? 0,
     judgeCount: json['judgeCount'] as int? ?? 0,
     subjectiveCount: json['subjectiveCount'] as int? ?? 0,
@@ -1375,7 +1403,7 @@ class PaperTemplate {
 
   @override
   String toString() =>
-      'PaperTemplate(choice=$choiceCount, fill=$fillCount, judge=$judgeCount, subjective=$subjectiveCount, total=$totalCount)';
+      'PaperTemplate(choice=$choiceCount, multi=$multiChoiceCount, fill=$fillCount, judge=$judgeCount, subjective=$subjectiveCount, total=$totalCount)';
 }
 
 class PracticeRecord {
@@ -2156,6 +2184,8 @@ class _AppShellState extends State<AppShell> {
   // v2.8.0: 闯关 RPG 进度持久化
   static const _rpgProgressKey = 'rpg_progress_v1';
   final SecureApiConfigStorage _secureApiStorage = SecureApiConfigStorage();
+  final ServiceModeController _serviceModeController =
+      const ServiceModeController();
 
   final Set<String> _selectedTypes = {'choice'};
   final List<String> _audiences = const [
@@ -2537,6 +2567,8 @@ class _AppShellState extends State<AppShell> {
           body: SafeArea(
             child: ConfigPage(
               config: _config,
+              serviceMode: AiServiceModeValue.parse(_aiServiceMode),
+              onServiceModeChanged: _setServiceMode,
               onSave: _saveConfig,
               onDelete: _deleteConfig,
             ),
@@ -2553,6 +2585,79 @@ class _AppShellState extends State<AppShell> {
     });
   }
 
+  Future<void> _setServiceMode(AiServiceMode mode) async {
+    if (_generating || _paperGenerating) {
+      _showSnack('当前请求仍在进行，请完成或取消后再切换 AI 服务模式');
+      return;
+    }
+    await _serviceModeController.save(mode);
+    if (!mounted) return;
+    setState(() => _aiServiceMode = mode.storageValue);
+    _showSnack(
+      mode == AiServiceMode.byok ? '已切换为“使用自己的 API Key”' : '已切换为“官方 AI 服务”',
+    );
+
+    if (mode == AiServiceMode.byok && !_config.ready) {
+      final configure = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('尚未配置 API Key'),
+          content: const Text('使用自己的 API Key 前，需要先填写服务商、Key、Base URL 和模型名称。'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('稍后配置'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('立即配置'),
+            ),
+          ],
+        ),
+      );
+      if (configure == true && mounted) await _openConfigPage();
+    } else if (mode == AiServiceMode.official) {
+      final token = await _secureApiStorage.readOfficialToken();
+      if ((token ?? '').isEmpty && mounted) {
+        final login = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('使用官方 AI 服务需要登录'),
+            content: const Text('当前仍为内部测试环境，仅支持模拟订单和模拟支付，不会真实扣款。'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('使用自己的 API Key'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('登录'),
+              ),
+            ],
+          ),
+        );
+        if (login == true && mounted) {
+          await Navigator.of(context).push<void>(
+            MaterialPageRoute(builder: (_) => const OfficialAiPage()),
+          );
+        } else if (login == false) {
+          await _serviceModeController.save(AiServiceMode.byok);
+          if (mounted) setState(() => _aiServiceMode = 'byok');
+        }
+      }
+    }
+  }
+
+  Future<void> _openServiceModeSelector() async {
+    final selected = await showServiceModeSheet(
+      context,
+      currentMode: AiServiceModeValue.parse(_aiServiceMode),
+      officialServiceEnabled: false,
+    );
+    if (selected == null || selected.storageValue == _aiServiceMode) return;
+    await _setServiceMode(selected);
+  }
+
   void _openPaperViewer(Paper paper) {
     AppHaptics.instance.selectionClick();
     Navigator.of(context).push<void>(
@@ -2562,9 +2667,187 @@ class _AppShellState extends State<AppShell> {
           onDownload: () => _downloadPaper(paper),
           onDownloadAnswer: () => _downloadPaperAnswer(paper),
           onDownloadAudio: () => _downloadPaperAudio(paper),
+          onEdit: () {
+            Navigator.pop(context);
+            final material = _materials.cast<StudyMaterial?>().firstWhere(
+              (item) => item?.name == paper.materialName,
+              orElse: () => _materials.isEmpty ? null : _materials.first,
+            );
+            _openPaperEditor(paper, material);
+          },
         ),
       ),
     );
+  }
+
+  int _scoreForPaperQuestion(Paper paper, PaperQuestion item) {
+    return switch (item.question.type) {
+      'choice' || 'multi_choice' => paper.scoreConfig.choiceScore,
+      'fill' => paper.scoreConfig.fillScore,
+      'true_false' => paper.scoreConfig.judgeScore,
+      _ => paper.scoreConfig.subjectiveScore,
+    };
+  }
+
+  PaperEditorDocument _paperToEditorDocument(Paper paper) =>
+      PaperEditorDocument(
+        id: paper.id,
+        name: paper.name.isEmpty ? '${paper.subject}试卷' : paper.name,
+        durationMinutes: paper.durationMinutes > 0
+            ? paper.durationMinutes
+            : paper.pageCount * 15,
+        totalScore: paper.totalScore,
+        materialName: paper.materialName,
+        questions: [
+          for (var i = 0; i < paper.questions.length; i++)
+            PaperEditorQuestion(
+              id: '${paper.id}-$i',
+              type: paper.questions[i].question.type,
+              prompt: paper.questions[i].question.question,
+              options: paper.questions[i].question.options,
+              answer: paper.questions[i].question.answer,
+              explanation: paper.questions[i].question.explanation,
+              knowledgePoint: paper.questions[i].knowledgePoint,
+              score: _scoreForPaperQuestion(paper, paper.questions[i]),
+              section: paper.questions[i].section,
+              richContent: paper.questions[i].question.richContent,
+            ),
+        ],
+        updatedAt: DateTime.now(),
+      );
+
+  Paper _editorDocumentToPaper(Paper original, PaperEditorDocument document) {
+    final sectionIndexes = <String, int>{};
+    final questions = document.questions.map((item) {
+      final section = item.section.isEmpty ? '题目' : item.section;
+      final index = (sectionIndexes[section] ?? 0) + 1;
+      sectionIndexes[section] = index;
+      return PaperQuestion(
+        section: section,
+        indexInSection: index,
+        knowledgePoint: item.knowledgePoint,
+        question: AiQuestion(
+          type: item.type,
+          question: item.prompt,
+          options: item.options,
+          answer: item.answer,
+          explanation: item.explanation,
+          richContent: item.richContent,
+        ),
+      );
+    }).toList();
+    return Paper(
+      id: original.id,
+      subject: original.subject,
+      gradeLevel: original.gradeLevel,
+      pageCount: original.pageCount,
+      materialName: original.materialName,
+      questions: questions,
+      createdAt: original.createdAt,
+      scoreConfig: original.scoreConfig,
+      name: document.name,
+      durationMinutes: document.durationMinutes,
+    );
+  }
+
+  Future<void> _openPaperEditor(
+    Paper paper,
+    StudyMaterial? sourceMaterial,
+  ) async {
+    final result = await Navigator.of(context).push<PaperEditorDocument>(
+      MaterialPageRoute(
+        builder: (_) => PaperEditorPage(
+          document: _paperToEditorDocument(paper),
+          onPreview: (document, teacher) async {
+            final previewPaper = _editorDocumentToPaper(paper, document);
+            await Navigator.of(context).push<void>(
+              MaterialPageRoute(
+                builder: (_) => PaperViewer(
+                  paper: previewPaper,
+                  initialShowAnswer: teacher,
+                  onDownload: () => _downloadPaper(previewPaper),
+                  onDownloadAnswer: () => _downloadPaperAnswer(previewPaper),
+                  onDownloadAudio: () => _downloadPaperAudio(previewPaper),
+                ),
+              ),
+            );
+          },
+          onStartPractice: (document) async {
+            final practicePaper = _editorDocumentToPaper(paper, document);
+            setState(() {
+              final index = _papers.indexWhere(
+                (item) => item.id == practicePaper.id,
+              );
+              if (index >= 0) {
+                _papers[index] = practicePaper;
+              } else {
+                _papers.insert(0, practicePaper);
+              }
+            });
+            await _savePapers();
+            await PaperDraftStorage().clearEditor();
+            if (!mounted) return;
+            Navigator.of(context).pop();
+            setState(() {
+              _session = PracticeSession(
+                materialName: practicePaper.materialName,
+                questions: practicePaper.questions
+                    .map((item) => item.question)
+                    .toList(),
+                xpMultiplier: _xpProfile.activeMultiplier(),
+              );
+            });
+          },
+          onRegenerate: (current, instruction) async {
+            if (_aiServiceMode == 'official') {
+              _showSnack('官方 AI 内部测试模式暂不支持单题重新生成');
+              return null;
+            }
+            if (!_config.ready || sourceMaterial == null) {
+              _showSnack('请先配置 API Key，并确保原资料仍然存在');
+              return null;
+            }
+            try {
+              final generated = await AiService.generateQuestions(
+                config: _config,
+                material:
+                    '${sourceMaterial.content}\n\n【仅重新生成一道题】\n原题：${current.prompt}\n用户要求：${instruction.isEmpty ? '更换表达和考查角度，避免与原题重复' : instruction}',
+                types: [current.type],
+                count: 1,
+                audience: '通用',
+                enableRichContent: current.richContent.isNotEmpty,
+                enableListening: current.richContent.any(
+                  (item) => item['type'] == 'listening',
+                ),
+                outputLanguage: '跟随资料主要语言',
+              );
+              if (generated.isEmpty) return null;
+              final replacement = generated.first;
+              return current.copyWith(
+                prompt: replacement.question,
+                options: replacement.options,
+                answer: replacement.answer,
+                explanation: replacement.explanation,
+                richContent: replacement.richContent,
+                needsReview: true,
+              );
+            } catch (error) {
+              _showSnack(apiErrorMessage(error));
+              return null;
+            }
+          },
+        ),
+      ),
+    );
+    if (result == null || !mounted) return;
+    final updated = _editorDocumentToPaper(paper, result);
+    setState(() {
+      final index = _papers.indexWhere((item) => item.id == paper.id);
+      if (index >= 0) _papers[index] = updated;
+    });
+    await _savePapers();
+    await PaperDraftStorage().clearEditor();
+    _showSnack('试卷修改已保存');
   }
 
   Future<void> _deletePaper(String id, {String? name}) async {
@@ -3233,10 +3516,12 @@ class _AppShellState extends State<AppShell> {
     String chapterRange = '',
     String knowledgePointSpec = '',
     int listeningCount = 0,
+    String paperName = '',
+    int durationMinutes = 0,
   }) async {
     if (_aiServiceMode == 'official') {
       _showSnack('官方 AI 测试模式暂未开放试卷生成，请切换为“使用自己的 API Key”');
-      _openConfigPage();
+      _openServiceModeSelector();
       return;
     }
     if (!_config.ready) {
@@ -3245,7 +3530,28 @@ class _AppShellState extends State<AppShell> {
       return;
     }
     setState(() => _paperGenerating = true);
+    final progressStage = ValueNotifier<int>(0);
+    var progressOpen = true;
+    final progressDialog = showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => ValueListenableBuilder<int>(
+        valueListenable: progressStage,
+        builder: (context, stage, _) => PaperGenerationProgress(stage: stage),
+      ),
+    );
+    await Future<void>.delayed(Duration.zero);
+
+    void closeProgress() {
+      if (!progressOpen || !mounted) return;
+      progressOpen = false;
+      Navigator.of(context, rootNavigator: true).pop();
+    }
+
     try {
+      progressStage.value = 1;
+      await Future<void>.delayed(const Duration(milliseconds: 120));
+      progressStage.value = 2;
       final questions = await AiService.generatePaper(
         config: _config,
         material: material.content,
@@ -3261,8 +3567,10 @@ class _AppShellState extends State<AppShell> {
         listeningCount: listeningCount,
       );
       if (questions.isEmpty) {
+        closeProgress();
         _showSnack('AI 没有返回有效试题，请换个模型或缩短资料');
       } else {
+        progressStage.value = 3;
         final paper = Paper(
           id: DateTime.now().millisecondsSinceEpoch.toString(),
           subject: subject,
@@ -3272,18 +3580,28 @@ class _AppShellState extends State<AppShell> {
           questions: questions,
           createdAt: DateTime.now(),
           scoreConfig: scoreConfig,
+          name: paperName,
+          durationMinutes: durationMinutes,
         );
         setState(() {
           _papers.insert(0, paper);
         });
         await _savePapers();
         if (mounted) {
+          progressStage.value = 4;
+          await Future<void>.delayed(const Duration(milliseconds: 260));
+          closeProgress();
           _showSnack('试卷生成成功（共 ${questions.length} 题）');
+          await _openPaperEditor(paper, material);
         }
       }
     } catch (error) {
-      _showSnack(error.toString().replaceFirst('Exception: ', ''));
+      closeProgress();
+      _showSnack(safeApiErrorMessage(error));
     } finally {
+      closeProgress();
+      await progressDialog;
+      progressStage.dispose();
       if (mounted) setState(() => _paperGenerating = false);
     }
   }
@@ -4373,7 +4691,7 @@ class _AppShellState extends State<AppShell> {
         enableRichContent: _enableRichContent,
         enableListening: _enableListening,
         serviceMode: _aiServiceMode,
-        onOpenServiceMode: _openConfigPage,
+        onOpenServiceMode: _openServiceModeSelector,
         onMaterialChanged: (material) {
           AppHaptics.instance.selectionClick();
           setState(() => _selectedMaterial = material);
@@ -4426,6 +4744,23 @@ class _AppShellState extends State<AppShell> {
         configReady: _config.ready,
         enableRichContent: _enableRichContent,
         enableListening: _enableListening,
+        serviceMode: _aiServiceMode,
+        onOpenServiceMode: _openServiceModeSelector,
+        onResumeDraft: (draft) {
+          final original = _papers.cast<Paper?>().firstWhere(
+            (paper) => paper?.id == draft.id,
+            orElse: () => null,
+          );
+          if (original == null) {
+            _showSnack('草稿对应的历史试卷已不存在，请删除草稿后重新生成');
+            return;
+          }
+          final material = _materials.cast<StudyMaterial?>().firstWhere(
+            (item) => item?.name == original.materialName,
+            orElse: () => _materials.isEmpty ? null : _materials.first,
+          );
+          _openPaperEditor(_editorDocumentToPaper(original, draft), material);
+        },
         onToggleRichContent: (v) async {
           AppHaptics.instance.selectionClick();
           setState(() => _enableRichContent = v);
@@ -5955,10 +6290,10 @@ class GeneratePage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
     final material = selectedMaterial;
     final activeMaterial =
         material ?? (materials.isEmpty ? null : materials.first);
+    final colors = Theme.of(context).colorScheme;
     return ListView(
       padding: const EdgeInsets.all(18),
       children: [
@@ -5967,41 +6302,9 @@ class GeneratePage extends StatelessWidget {
           subtitle: context.l10n.generatePageSubtitle,
         ),
         const SizedBox(height: 12),
-        Card(
-          child: ListTile(
-            leading: Icon(
-              serviceMode == 'official'
-                  ? Icons.cloud_outlined
-                  : Icons.key_rounded,
-              color: colors.primary,
-            ),
-            title: Text(
-              serviceMode == 'official'
-                  ? (Localizations.localeOf(context).languageCode == 'en'
-                        ? 'Official AI service'
-                        : '官方 AI 服务')
-                  : (Localizations.localeOf(context).languageCode == 'en'
-                        ? 'My API Key'
-                        : '使用自己的 API Key'),
-            ),
-            subtitle: Text(
-              serviceMode == 'official'
-                  ? (Localizations.localeOf(context).languageCode == 'en'
-                        ? 'Test mode · Mock payment only'
-                        : '测试模式 · 仅模拟支付')
-                  : (Localizations.localeOf(context).languageCode == 'en'
-                        ? 'No extra app fee'
-                        : '软件不额外收费'),
-            ),
-            trailing: TextButton(
-              onPressed: onOpenServiceMode,
-              child: Text(
-                Localizations.localeOf(context).languageCode == 'en'
-                    ? 'Change'
-                    : '更换',
-              ),
-            ),
-          ),
+        CurrentServiceModeCard(
+          mode: AiServiceModeValue.parse(serviceMode),
+          onTap: onOpenServiceMode,
         ),
         const SizedBox(height: 16),
         const _FlowStepHeader(
@@ -7998,6 +8301,9 @@ class PaperPage extends StatefulWidget {
     required this.configReady,
     required this.enableRichContent,
     required this.enableListening,
+    required this.serviceMode,
+    required this.onOpenServiceMode,
+    required this.onResumeDraft,
     required this.onToggleRichContent,
     required this.onToggleListening,
     required this.onGenerate,
@@ -8016,6 +8322,9 @@ class PaperPage extends StatefulWidget {
   final bool configReady;
   final bool enableRichContent;
   final bool enableListening;
+  final String serviceMode;
+  final VoidCallback onOpenServiceMode;
+  final ValueChanged<PaperEditorDocument> onResumeDraft;
   final ValueChanged<bool> onToggleRichContent;
   final ValueChanged<bool> onToggleListening;
   final void Function({
@@ -8028,6 +8337,8 @@ class PaperPage extends StatefulWidget {
     String chapterRange,
     String knowledgePointSpec,
     int listeningCount,
+    String paperName,
+    int durationMinutes,
   })
   onGenerate;
   final ValueChanged<Paper> onView;
@@ -8068,6 +8379,7 @@ class _PaperPageState extends State<PaperPage> {
   // 题量模板：0=默认（按学段+学科+类型自动）, 1=自定义题量
   int _templateMode = 0;
   int _customChoiceCount = 8;
+  int _customMultiChoiceCount = 2;
   int _customFillCount = 5;
   int _customJudgeCount = 4;
   int _customSubjectiveCount = 3;
@@ -8087,6 +8399,17 @@ class _PaperPageState extends State<PaperPage> {
 
   // 试卷听力题数量设定（0=自动按25%占比，手动值也会限制在20%-30%）
   int _listeningCount = 0;
+  late final TextEditingController _paperNameController;
+  int _durationMinutes = 30;
+  int _targetQuestionCount = 20;
+  int _basicPercent = 40;
+  int _normalPercent = 40;
+  int _hardPercent = 20;
+  final Set<String> _selectedMaterialIds = <String>{};
+  List<PaperPreset> _customPresets = const [];
+  final PaperTemplateService _paperTemplateService = PaperTemplateService();
+  final PaperDraftStorage _paperDraftStorage = PaperDraftStorage();
+  int _draftRevision = 0;
 
   static const _subjects = <String>[
     '语文',
@@ -8106,7 +8429,14 @@ class _PaperPageState extends State<PaperPage> {
   @override
   void initState() {
     super.initState();
+    _paperNameController = TextEditingController(text: '自定义试卷');
     _loadLastSelection();
+  }
+
+  @override
+  void dispose() {
+    _paperNameController.dispose();
+    super.dispose();
   }
 
   /// 从 SharedPreferences 读取上次选择（含自定义项）
@@ -8124,6 +8454,7 @@ class _PaperPageState extends State<PaperPage> {
     final ss = prefs.getInt('paper.subjectiveScore');
     final tplMode = prefs.getInt('paper.templateMode');
     final cChoice = prefs.getInt('paper.customChoiceCount');
+    final cMulti = prefs.getInt('paper.customMultiChoiceCount');
     final cFill = prefs.getInt('paper.customFillCount');
     final cJudge = prefs.getInt('paper.customJudgeCount');
     final cSubj = prefs.getInt('paper.customSubjectiveCount');
@@ -8140,6 +8471,15 @@ class _PaperPageState extends State<PaperPage> {
     final subjSub = prefs.getString('paper.subjectiveSubQ') ?? '';
     // v2.7.4 试卷听力题数量设定
     final listeningCount = prefs.getInt('paper.listeningCount') ?? 0;
+    final paperName = prefs.getString('paper.name') ?? '自定义试卷';
+    final durationMinutes = prefs.getInt('paper.durationMinutes') ?? 30;
+    final targetQuestionCount = prefs.getInt('paper.targetQuestionCount') ?? 20;
+    final basicPercent = prefs.getInt('paper.basicPercent') ?? 40;
+    final normalPercent = prefs.getInt('paper.normalPercent') ?? 40;
+    final hardPercent = prefs.getInt('paper.hardPercent') ?? 20;
+    final selectedMaterialIds =
+        prefs.getStringList('paper.selectedMaterialIds') ?? const [];
+    final customPresets = await _paperTemplateService.loadCustom();
     if (!mounted) return;
     setState(() {
       if (sj != null && sj.isNotEmpty) _subject = sj;
@@ -8154,6 +8494,7 @@ class _PaperPageState extends State<PaperPage> {
       if (ss != null) _subjectiveScore = ss;
       if (tplMode != null) _templateMode = tplMode;
       if (cChoice != null) _customChoiceCount = cChoice;
+      if (cMulti != null) _customMultiChoiceCount = cMulti;
       if (cFill != null) _customFillCount = cFill;
       if (cJudge != null) _customJudgeCount = cJudge;
       if (cSubj != null) _customSubjectiveCount = cSubj;
@@ -8165,6 +8506,16 @@ class _PaperPageState extends State<PaperPage> {
       _perQuestionKp = perQKp;
       _subjectiveSubQuestions = subjSub;
       _listeningCount = listeningCount;
+      _paperNameController.text = paperName;
+      _durationMinutes = durationMinutes;
+      _targetQuestionCount = targetQuestionCount;
+      _basicPercent = basicPercent;
+      _normalPercent = normalPercent;
+      _hardPercent = hardPercent;
+      _selectedMaterialIds
+        ..clear()
+        ..addAll(selectedMaterialIds);
+      _customPresets = customPresets;
       _customSubjects
         ..clear()
         ..addAll(customSj.whereType<String>());
@@ -8202,6 +8553,317 @@ class _PaperPageState extends State<PaperPage> {
       ),
     );
     return result ?? false;
+  }
+
+  PaperBuilderSettings _currentBuilderSettings() => PaperBuilderSettings(
+    paperName: _paperNameController.text.trim().isEmpty
+        ? '自定义试卷'
+        : _paperNameController.text.trim(),
+    totalQuestions: _targetQuestionCount,
+    durationMinutes: _durationMinutes,
+    totalScore: _targetScore,
+    questionCounts: {
+      'choice': _customChoiceCount,
+      'multi_choice': _customMultiChoiceCount,
+      'true_false': _customJudgeCount,
+      'fill': _customFillCount,
+      'subjective': _customSubjectiveCount,
+    },
+    questionScores: {
+      'choice': _choiceScore,
+      'multi_choice': _choiceScore,
+      'true_false': _judgeScore,
+      'fill': _fillScore,
+      'subjective': _subjectiveScore,
+    },
+    basicPercent: _basicPercent,
+    normalPercent: _normalPercent,
+    hardPercent: _hardPercent,
+    includeCharts: widget.enableRichContent,
+    includeListening: widget.enableListening,
+    serviceMode: widget.serviceMode,
+    selectedMaterialIds: _selectedMaterialIds.toList(),
+  );
+
+  int get _currentQuestionSum =>
+      _customChoiceCount +
+      _customMultiChoiceCount +
+      _customFillCount +
+      _customJudgeCount +
+      _customSubjectiveCount;
+
+  int get _currentScoreSum =>
+      (_customChoiceCount + _customMultiChoiceCount) * _choiceScore +
+      _customFillCount * _fillScore +
+      _customJudgeCount * _judgeScore +
+      _customSubjectiveCount * _subjectiveScore;
+
+  int get _targetScore => _buildScoreConfig().effectiveTotal > 0
+      ? _buildScoreConfig().effectiveTotal
+      : _customTotal;
+
+  void _autoFillCounts() {
+    final adjusted = _currentBuilderSettings()
+        .copyWith(totalQuestions: _targetQuestionCount)
+        .autoFillQuestionCounts();
+    setState(() {
+      _customChoiceCount = adjusted.questionCounts['choice'] ?? 0;
+      _customMultiChoiceCount = adjusted.questionCounts['multi_choice'] ?? 0;
+      _customFillCount = adjusted.questionCounts['fill'] ?? 0;
+      _customJudgeCount = adjusted.questionCounts['true_false'] ?? 0;
+      _customSubjectiveCount = adjusted.questionCounts['subjective'] ?? 0;
+      _templateMode = 1;
+    });
+    _saveLastSelection();
+  }
+
+  void _autoAdjustScores() {
+    final adjusted = _currentBuilderSettings()
+        .copyWith(totalScore: _targetScore)
+        .autoAdjustScores();
+    setState(() {
+      _choiceScore = adjusted.questionScores['choice'] ?? _choiceScore;
+      _fillScore = adjusted.questionScores['fill'] ?? _fillScore;
+      _judgeScore = adjusted.questionScores['true_false'] ?? _judgeScore;
+      _subjectiveScore =
+          adjusted.questionScores['subjective'] ?? _subjectiveScore;
+    });
+    _saveLastSelection();
+  }
+
+  List<StudyMaterial> get _selectedMaterials {
+    final selected = widget.materials
+        .where((item) => _selectedMaterialIds.contains(item.id))
+        .toList();
+    if (selected.isNotEmpty) return selected;
+    if (_material != null) return [_material!];
+    return widget.materials.isEmpty ? const [] : [widget.materials.first];
+  }
+
+  StudyMaterial? get _combinedMaterial {
+    final selected = _selectedMaterials;
+    if (selected.isEmpty) return null;
+    if (selected.length == 1) return selected.first;
+    return StudyMaterial(
+      id: selected.map((e) => e.id).join('+'),
+      name: selected.map((e) => e.name).join('、'),
+      content: selected.map((e) => '【资料：${e.name}】\n${e.content}').join('\n\n'),
+      createdAt: DateTime.now(),
+    );
+  }
+
+  void _applyPreset(PaperPreset preset) {
+    final settings = preset.settings;
+    setState(() {
+      _paperNameController.text = settings.paperName;
+      _targetQuestionCount = settings.totalQuestions;
+      _durationMinutes = settings.durationMinutes;
+      _customChoiceCount = settings.questionCounts['choice'] ?? 0;
+      _customMultiChoiceCount = settings.questionCounts['multi_choice'] ?? 0;
+      _customFillCount = settings.questionCounts['fill'] ?? 0;
+      _customJudgeCount = settings.questionCounts['true_false'] ?? 0;
+      _customSubjectiveCount = settings.questionCounts['subjective'] ?? 0;
+      _basicPercent = settings.basicPercent;
+      _normalPercent = settings.normalPercent;
+      _hardPercent = settings.hardPercent;
+      _templateMode = 1;
+    });
+    _saveLastSelection();
+  }
+
+  Future<void> _saveCurrentPreset() async {
+    final controller = TextEditingController(
+      text: _paperNameController.text.trim(),
+    );
+    final name = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('保存为我的模板'),
+        content: TextField(
+          controller: controller,
+          decoration: const InputDecoration(labelText: '模板名称'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, controller.text.trim()),
+            child: const Text('保存'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (name == null || name.isEmpty || !mounted) return;
+    final preset = PaperPreset(
+      id: 'custom-${DateTime.now().millisecondsSinceEpoch}',
+      name: name,
+      settings: _currentBuilderSettings().copyWith(paperName: name),
+      system: false,
+    );
+    setState(() => _customPresets = [..._customPresets, preset]);
+    await _paperTemplateService.saveCustom(_customPresets);
+  }
+
+  Future<void> _renameCustomPreset(PaperPreset preset) async {
+    if (preset.system) return;
+    final controller = TextEditingController(text: preset.name);
+    final name = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('重命名模板'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(labelText: '模板名称'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, controller.text.trim()),
+            child: const Text('保存'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (name == null || name.isEmpty || !mounted) return;
+    setState(() {
+      _customPresets = _customPresets
+          .map(
+            (item) => item.id == preset.id
+                ? PaperPreset(
+                    id: item.id,
+                    name: name,
+                    settings: item.settings.copyWith(paperName: name),
+                    system: false,
+                  )
+                : item,
+          )
+          .toList();
+    });
+    await _paperTemplateService.saveCustom(_customPresets);
+  }
+
+  Future<void> _deleteCustomPreset(PaperPreset preset) async {
+    final confirmed = await _confirm(
+      title: '删除自定义模板？',
+      message: '将删除“${preset.name}”，系统模板和已生成试卷不会受影响。',
+      confirmText: '删除',
+    );
+    if (!confirmed || !mounted) return;
+    setState(
+      () => _customPresets = _customPresets
+          .where((item) => item.id != preset.id)
+          .toList(),
+    );
+    await _paperTemplateService.saveCustom(_customPresets);
+  }
+
+  Future<void> _chooseMaterials() async {
+    final selected = Set<String>.from(
+      _selectedMaterialIds.isEmpty && widget.materials.isNotEmpty
+          ? [widget.materials.first.id]
+          : _selectedMaterialIds,
+    );
+    final result = await showModalBottomSheet<Set<String>>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setSheetState) => SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(
+                    '选择一份或多份资料',
+                    style: TextStyle(fontWeight: FontWeight.w900),
+                  ),
+                  subtitle: Text('多份资料会按顺序合并，试卷将综合这些内容出题。'),
+                ),
+                Flexible(
+                  child: ListView(
+                    shrinkWrap: true,
+                    children: widget.materials
+                        .map(
+                          (material) => CheckboxListTile(
+                            value: selected.contains(material.id),
+                            title: Text(material.name),
+                            subtitle: Text('${material.content.length} 字'),
+                            onChanged: (checked) => setSheetState(() {
+                              if (checked == true) {
+                                selected.add(material.id);
+                              } else {
+                                selected.remove(material.id);
+                              }
+                            }),
+                          ),
+                        )
+                        .toList(),
+                  ),
+                ),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton(
+                    onPressed: selected.isEmpty
+                        ? null
+                        : () => Navigator.pop(context, selected),
+                    child: Text('使用已选 ${selected.length} 份资料'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    if (result == null || !mounted) return;
+    setState(() {
+      _selectedMaterialIds
+        ..clear()
+        ..addAll(result);
+      _material = null;
+    });
+    await _saveLastSelection();
+  }
+
+  Future<void> _clearEditorDraft() async {
+    final confirmed = await _confirm(
+      title: '删除未完成草稿？',
+      message: '删除后无法恢复，但已保存的试卷不会受影响。',
+      confirmText: '删除草稿',
+    );
+    if (!confirmed) return;
+    await _paperDraftStorage.clearEditor();
+    if (!mounted) return;
+    setState(() => _draftRevision++);
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('未完成草稿已删除')));
+  }
+
+  Future<void> _restartEditorDraft() async {
+    final confirmed = await _confirm(
+      title: '重新开始组卷？',
+      message: '当前未完成的试卷草稿将被清除，已经保存的试卷和组卷设置不会受影响。',
+      confirmText: '重新开始',
+    );
+    if (!confirmed) return;
+    await _paperDraftStorage.clearEditor();
+    if (!mounted) return;
+    setState(() => _draftRevision++);
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('已清除草稿，可以重新开始组卷')));
   }
 
   /// v2.7.3: 批量删除试卷弹窗（与 MePage 统一风格，支持全选）
@@ -8419,6 +9081,7 @@ class _PaperPageState extends State<PaperPage> {
     await prefs.setInt('paper.subjectiveScore', _subjectiveScore);
     await prefs.setInt('paper.templateMode', _templateMode);
     await prefs.setInt('paper.customChoiceCount', _customChoiceCount);
+    await prefs.setInt('paper.customMultiChoiceCount', _customMultiChoiceCount);
     await prefs.setInt('paper.customFillCount', _customFillCount);
     await prefs.setInt('paper.customJudgeCount', _customJudgeCount);
     await prefs.setInt('paper.customSubjectiveCount', _customSubjectiveCount);
@@ -8433,6 +9096,17 @@ class _PaperPageState extends State<PaperPage> {
     await prefs.setString('paper.perQuestionKp', _perQuestionKp);
     await prefs.setString('paper.subjectiveSubQ', _subjectiveSubQuestions);
     await prefs.setInt('paper.listeningCount', _listeningCount);
+    await prefs.setString('paper.name', _paperNameController.text.trim());
+    await prefs.setInt('paper.durationMinutes', _durationMinutes);
+    await prefs.setInt('paper.targetQuestionCount', _targetQuestionCount);
+    await prefs.setInt('paper.basicPercent', _basicPercent);
+    await prefs.setInt('paper.normalPercent', _normalPercent);
+    await prefs.setInt('paper.hardPercent', _hardPercent);
+    await prefs.setStringList(
+      'paper.selectedMaterialIds',
+      _selectedMaterialIds.toList(),
+    );
+    await _paperDraftStorage.saveSettings(_currentBuilderSettings());
   }
 
   PaperScoreConfig _buildScoreConfig() => PaperScoreConfig(
@@ -8452,6 +9126,7 @@ class _PaperPageState extends State<PaperPage> {
     }
     return PaperTemplate(
       choiceCount: _customChoiceCount,
+      multiChoiceCount: _customMultiChoiceCount,
       fillCount: _customFillCount,
       judgeCount: _customJudgeCount,
       subjectiveCount: _customSubjectiveCount,
@@ -8712,8 +9387,7 @@ class _PaperPageState extends State<PaperPage> {
             '小测' => 'Quick quiz',
             _ => value,
           };
-    final activeMaterial =
-        _material ?? (widget.materials.isEmpty ? null : widget.materials.first);
+    final activeMaterial = _combinedMaterial;
 
     // 历史试卷按资料分组（保留插入顺序）
     final grouped = <String, List<Paper>>{};
@@ -8753,6 +9427,154 @@ class _PaperPageState extends State<PaperPage> {
           title: context.l10n.paperPageTitle,
           subtitle: context.l10n.paperPageSubtitle,
         ),
+        const SizedBox(height: 12),
+        CurrentServiceModeCard(
+          mode: AiServiceModeValue.parse(widget.serviceMode),
+          onTap: widget.onOpenServiceMode,
+        ),
+        FutureBuilder<PaperEditorDocument?>(
+          key: ValueKey(_draftRevision),
+          future: _paperDraftStorage.loadEditor(),
+          builder: (context, snapshot) {
+            final draft = snapshot.data;
+            if (draft == null) return const SizedBox.shrink();
+            return Padding(
+              padding: const EdgeInsets.only(top: 10),
+              child: Card(
+                color: colors.tertiaryContainer,
+                child: ListTile(
+                  leading: Icon(
+                    Icons.restore_rounded,
+                    color: colors.onTertiaryContainer,
+                  ),
+                  title: Text(
+                    isEnglish ? 'Unfinished paper draft found' : '发现未完成的试卷草稿',
+                  ),
+                  subtitle: Text(
+                    '${draft.name} · ${draft.questions.length} ${isEnglish ? 'questions' : '题'}',
+                  ),
+                  trailing: Wrap(
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      TextButton(
+                        onPressed: () => widget.onResumeDraft(draft),
+                        child: Text(isEnglish ? 'Continue' : '继续编辑'),
+                      ),
+                      TextButton(
+                        onPressed: _restartEditorDraft,
+                        child: Text(isEnglish ? 'Restart' : '重新开始'),
+                      ),
+                      IconButton(
+                        tooltip: isEnglish ? 'Delete draft' : '删除草稿',
+                        onPressed: _clearEditorDraft,
+                        icon: const Icon(Icons.delete_outline_rounded),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        ),
+        const SizedBox(height: 14),
+        Text(
+          isEnglish ? 'Paper templates' : '常用试卷模板',
+          style: TextStyle(
+            color: colors.onSurface,
+            fontSize: 16,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+        const SizedBox(height: 8),
+        SizedBox(
+          height: 42,
+          child: ListView(
+            scrollDirection: Axis.horizontal,
+            children: [...PaperTemplateService.systemPresets, ..._customPresets]
+                .map(
+                  (preset) => Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: GestureDetector(
+                      onLongPress: preset.system
+                          ? null
+                          : () => _renameCustomPreset(preset),
+                      child: InputChip(
+                        avatar: Icon(
+                          preset.system
+                              ? Icons.bolt_rounded
+                              : Icons.bookmark_outline_rounded,
+                          size: 17,
+                        ),
+                        label: Text(
+                          isEnglish
+                              ? switch (preset.id) {
+                                  'quick' => 'Quick quiz',
+                                  'classroom' => 'Class practice',
+                                  'unit' => 'Unit test',
+                                  'wrong' => 'Wrong-answer focus',
+                                  _ => preset.name,
+                                }
+                              : preset.name,
+                        ),
+                        tooltip: preset.system ? null : '长按重命名，点 × 删除',
+                        onPressed: () => _applyPreset(preset),
+                        onDeleted: preset.system
+                            ? null
+                            : () => _deleteCustomPreset(preset),
+                      ),
+                    ),
+                  ),
+                )
+                .toList(),
+          ),
+        ),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton.icon(
+            onPressed: _saveCurrentPreset,
+            icon: const Icon(Icons.add_rounded),
+            label: Text(isEnglish ? 'Save as my template' : '保存为我的模板'),
+          ),
+        ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            Expanded(
+              flex: 3,
+              child: TextField(
+                controller: _paperNameController,
+                decoration: InputDecoration(
+                  labelText: isEnglish ? 'Paper name' : '试卷名称',
+                  prefixIcon: const Icon(Icons.description_outlined),
+                ),
+                onChanged: (_) => _saveLastSelection(),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              flex: 2,
+              child: DropdownButtonFormField<int>(
+                initialValue: _durationMinutes,
+                decoration: InputDecoration(
+                  labelText: isEnglish ? 'Duration' : '考试时间',
+                ),
+                items: const [15, 30, 45, 60, 90, 120]
+                    .map(
+                      (value) => DropdownMenuItem(
+                        value: value,
+                        child: Text('$value ${isEnglish ? 'min' : '分钟'}'),
+                      ),
+                    )
+                    .toList(),
+                onChanged: (value) {
+                  if (value == null) return;
+                  setState(() => _durationMinutes = value);
+                  _saveLastSelection();
+                },
+              ),
+            ),
+          ],
+        ),
         const SizedBox(height: 16),
         _FlowStepHeader(
           step: '01',
@@ -8778,28 +9600,45 @@ class _PaperPageState extends State<PaperPage> {
               borderRadius: BorderRadius.circular(24),
               border: Border.all(color: colors.outlineVariant),
             ),
-            child: DropdownButtonFormField<StudyMaterial>(
-              initialValue: activeMaterial,
-              decoration: InputDecoration(
-                labelText: isEnglish ? 'Current paper material' : '当前试卷资料',
-                border: const OutlineInputBorder(
-                  borderRadius: BorderRadius.all(Radius.circular(18)),
-                ),
-              ),
-              items: widget.materials
-                  .map(
-                    (m) => DropdownMenuItem(
-                      value: m,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.library_books_outlined, color: colors.primary),
+                    const SizedBox(width: 10),
+                    Expanded(
                       child: Text(
                         isEnglish
-                            ? '${m.name} · ${m.content.length} characters'
-                            : '${m.name} · ${m.content.length}字',
-                        overflow: TextOverflow.ellipsis,
+                            ? '${_selectedMaterials.length} material(s) · ${activeMaterial?.content.length ?? 0} characters'
+                            : '已选 ${_selectedMaterials.length} 份资料 · 约 ${activeMaterial?.content.length ?? 0} 字',
+                        style: const TextStyle(fontWeight: FontWeight.w900),
                       ),
                     ),
-                  )
-                  .toList(),
-              onChanged: (v) => setState(() => _material = v),
+                    TextButton.icon(
+                      onPressed: _chooseMaterials,
+                      icon: const Icon(Icons.add_rounded),
+                      label: Text(isEnglish ? 'Choose' : '选择'),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  _selectedMaterials.map((item) => item.name).join('、'),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(color: colors.onSurfaceVariant),
+                ),
+                if ((activeMaterial?.content.length ?? 0) > 12000) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    widget.serviceMode == 'official'
+                        ? '资料内容较多，生成时间可能增加；正式报价以服务器返回为准。'
+                        : '资料内容较多，生成时间和模型费用可能增加；费用由模型服务商收取。',
+                    style: TextStyle(color: colors.tertiary, fontSize: 12),
+                  ),
+                ],
+              ],
             ),
           ),
         const SizedBox(height: 18),
@@ -9064,10 +9903,23 @@ class _PaperPageState extends State<PaperPage> {
                       ),
                       const SizedBox(height: 8),
                       _ScoreNumberField(
-                        label: '选择题数',
+                        label: '试卷题目总数',
+                        value: _targetQuestionCount,
+                        onChanged: (v) => setState(
+                          () => _targetQuestionCount = v.clamp(1, 60),
+                        ),
+                      ),
+                      _ScoreNumberField(
+                        label: '单选题数',
                         value: _customChoiceCount,
                         onChanged: (v) =>
                             setState(() => _customChoiceCount = v),
+                      ),
+                      _ScoreNumberField(
+                        label: '多选题数',
+                        value: _customMultiChoiceCount,
+                        onChanged: (v) =>
+                            setState(() => _customMultiChoiceCount = v),
                       ),
                       _ScoreNumberField(
                         label: '填空题数',
@@ -9085,6 +9937,13 @@ class _PaperPageState extends State<PaperPage> {
                         onChanged: (v) =>
                             setState(() => _customSubjectiveCount = v),
                       ),
+                      if (_currentQuestionSum != _targetQuestionCount)
+                        _PaperValidationBanner(
+                          message:
+                              '当前题型合计 $_currentQuestionSum 题，试卷总数为 $_targetQuestionCount 题。',
+                          actionLabel: '自动补齐',
+                          onAction: _autoFillCounts,
+                        ),
                     ],
                     const Divider(height: 32),
                     const Text(
@@ -9173,6 +10032,53 @@ class _PaperPageState extends State<PaperPage> {
                       value: _subjectiveScore,
                       onChanged: (v) => setState(() => _subjectiveScore = v),
                     ),
+                    if (_templateMode == 1 && _currentScoreSum != _targetScore)
+                      _PaperValidationBanner(
+                        message:
+                            '当前分值合计 $_currentScoreSum 分，目标总分 $_targetScore 分。',
+                        actionLabel: '自动调整分值',
+                        onAction: _autoAdjustScores,
+                      ),
+                    const Divider(height: 32),
+                    const Text(
+                      '难度比例',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      '基础 $_basicPercent% · 一般 $_normalPercent% · 较难 $_hardPercent%',
+                      style: const TextStyle(fontSize: 12, color: kMuted),
+                    ),
+                    Slider(
+                      value: _basicPercent.toDouble(),
+                      min: 10,
+                      max: 70,
+                      divisions: 12,
+                      label: '基础 $_basicPercent%',
+                      onChanged: (value) {
+                        final basic = value.round();
+                        final remaining = 100 - basic;
+                        setState(() {
+                          _basicPercent = basic;
+                          _normalPercent = (remaining * 2 / 3).round();
+                          _hardPercent = 100 - _basicPercent - _normalPercent;
+                        });
+                      },
+                    ),
+                    if (_basicPercent + _normalPercent + _hardPercent != 100)
+                      _PaperValidationBanner(
+                        message:
+                            '当前难度比例合计 ${_basicPercent + _normalPercent + _hardPercent}%，必须等于 100%。',
+                        actionLabel: '恢复 40/40/20',
+                        onAction: () => setState(() {
+                          _basicPercent = 40;
+                          _normalPercent = 40;
+                          _hardPercent = 20;
+                        }),
+                      ),
                     const Divider(height: 32),
                     // v2.7.1 按章节/知识点出题
                     const Text(
@@ -9539,10 +10445,38 @@ class _PaperPageState extends State<PaperPage> {
           child: FilledButton.icon(
             onPressed: widget.generating || activeMaterial == null
                 ? null
-                : () {
+                : () async {
                     AppHaptics.instance.mediumImpact();
+                    if (_templateMode == 1 &&
+                        _currentQuestionSum != _targetQuestionCount) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            '请先修正题型数量：当前 $_currentQuestionSum 题，目标 $_targetQuestionCount 题',
+                          ),
+                        ),
+                      );
+                      return;
+                    }
+                    if (_templateMode == 1 &&
+                        _currentScoreSum != _targetScore) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            '请先修正试卷分值：当前 $_currentScoreSum 分，目标 $_targetScore 分',
+                          ),
+                        ),
+                      );
+                      return;
+                    }
+                    if (_basicPercent + _normalPercent + _hardPercent != 100) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('难度比例必须合计 100%')),
+                      );
+                      return;
+                    }
                     final gradeLevel = '$_stage·$_examType';
-                    _saveLastSelection();
+                    await _saveLastSelection();
                     widget.onGenerate(
                       subject: _subject,
                       gradeLevel: gradeLevel,
@@ -9551,8 +10485,14 @@ class _PaperPageState extends State<PaperPage> {
                       scoreConfig: _buildScoreConfig(),
                       template: _buildTemplate(),
                       chapterRange: _chapterRange,
-                      knowledgePointSpec: _buildKnowledgePointSpec(),
+                      knowledgePointSpec:
+                          '${_buildKnowledgePointSpec()}\n- 难度比例：基础 $_basicPercent%，一般 $_normalPercent%，较难 $_hardPercent%'
+                              .trim(),
                       listeningCount: _listeningCount,
+                      paperName: _paperNameController.text.trim().isEmpty
+                          ? '$_subject$_examType试卷'
+                          : _paperNameController.text.trim(),
+                      durationMinutes: _durationMinutes,
                     );
                   },
             icon: widget.generating
@@ -9571,7 +10511,7 @@ class _PaperPageState extends State<PaperPage> {
             ),
           ),
         ),
-        if (!widget.configReady) ...[
+        if (!widget.configReady && widget.serviceMode == 'byok') ...[
           const SizedBox(height: 10),
           TextButton.icon(
             onPressed: widget.onOpenConfig,
@@ -9854,6 +10794,48 @@ class _ScoreOptionChip extends StatelessWidget {
 }
 
 /// 数字输入行（用于"小题分值"）
+class _PaperValidationBanner extends StatelessWidget {
+  const _PaperValidationBanner({
+    required this.message,
+    required this.actionLabel,
+    required this.onAction,
+  });
+
+  final String message;
+  final String actionLabel;
+  final VoidCallback onAction;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      margin: const EdgeInsets.only(top: 10),
+      padding: const EdgeInsets.fromLTRB(12, 8, 6, 8),
+      decoration: BoxDecoration(
+        color: scheme.errorContainer,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            Icons.info_outline_rounded,
+            color: scheme.onErrorContainer,
+            size: 18,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              message,
+              style: TextStyle(color: scheme.onErrorContainer, fontSize: 12),
+            ),
+          ),
+          TextButton(onPressed: onAction, child: Text(actionLabel)),
+        ],
+      ),
+    );
+  }
+}
+
 class _ScoreNumberField extends StatelessWidget {
   const _ScoreNumberField({
     required this.label,
@@ -10250,18 +11232,28 @@ class PaperViewer extends StatefulWidget {
     this.onDownload,
     this.onDownloadAnswer,
     this.onDownloadAudio,
+    this.onEdit,
+    this.initialShowAnswer = false,
   });
   final Paper paper;
   final VoidCallback? onDownload;
   final VoidCallback? onDownloadAnswer;
   final VoidCallback? onDownloadAudio;
+  final VoidCallback? onEdit;
+  final bool initialShowAnswer;
 
   @override
   State<PaperViewer> createState() => _PaperViewerState();
 }
 
 class _PaperViewerState extends State<PaperViewer> {
-  bool _showAnswer = false;
+  late bool _showAnswer;
+
+  @override
+  void initState() {
+    super.initState();
+    _showAnswer = widget.initialShowAnswer;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -10285,6 +11277,12 @@ class _PaperViewerState extends State<PaperViewer> {
         backgroundColor: kBg,
         surfaceTintColor: Colors.transparent,
         actions: [
+          if (widget.onEdit != null)
+            IconButton(
+              icon: const Icon(Icons.edit_note_rounded),
+              tooltip: '编辑试卷',
+              onPressed: widget.onEdit,
+            ),
           IconButton(
             icon: Icon(_showAnswer ? Icons.visibility_off : Icons.visibility),
             tooltip: _showAnswer ? '隐藏答案' : '查看答案',
@@ -12724,8 +13722,8 @@ class _AboutAppCard extends StatelessWidget {
           const SizedBox(height: 8),
           Text(
             english
-                ? 'v3.0.0 Phase 2 Test002 · A personal AI learning workspace with local materials, OCR, rich-content questions, papers, mistake review and challenge training.'
-                : 'v3.0.0 Phase 2 Test002 · 个人 AI 学习训练台，支持本地资料、OCR 扫描、富内容题目、试卷生成、错题诊断与闯关训练。',
+                ? 'v3.0.0 RC003 · Internal test build with secure API mode switching and an editable paper workflow.'
+                : 'v3.0.0 RC003 · 内部测试版，新增安全的 AI 服务模式切换与可编辑组卷流程。',
             style: TextStyle(color: colors.onSurfaceVariant, height: 1.5),
           ),
         ],
@@ -13956,11 +14954,15 @@ class ConfigPage extends StatefulWidget {
   const ConfigPage({
     super.key,
     required this.config,
+    required this.serviceMode,
+    required this.onServiceModeChanged,
     required this.onSave,
     required this.onDelete,
   });
 
   final ApiConfig config;
+  final AiServiceMode serviceMode;
+  final Future<void> Function(AiServiceMode mode) onServiceModeChanged;
   final Future<bool> Function(ApiConfig) onSave;
   final Future<bool> Function() onDelete;
 
@@ -13973,8 +14975,9 @@ class _ConfigPageState extends State<ConfigPage> {
   late final TextEditingController _keyCtrl;
   late final TextEditingController _baseCtrl;
   late final TextEditingController _modelCtrl;
+  late final SecretVisibilityController _secretVisibility;
   bool _testing = false;
-  String _serviceMode = 'byok';
+  late AiServiceMode _serviceMode;
 
   static const providers = {
     'deepseek': ('DeepSeek', 'https://api.deepseek.com', 'deepseek-v4-flash'),
@@ -13996,32 +14999,20 @@ class _ConfigPageState extends State<ConfigPage> {
     _keyCtrl = TextEditingController(text: widget.config.apiKey);
     _baseCtrl = TextEditingController(text: widget.config.baseUrl);
     _modelCtrl = TextEditingController(text: widget.config.model);
-    _loadServiceMode();
+    _secretVisibility = SecretVisibilityController();
+    SecureScreen.enable();
+    _serviceMode = widget.serviceMode;
   }
 
-  Future<void> _loadServiceMode() async {
-    final prefs = await SharedPreferences.getInstance();
-    if (!mounted) return;
-    setState(() {
-      _serviceMode =
-          prefs.getString(SecureApiConfigStorage.serviceModePreferencesKey) ??
-          'byok';
-    });
-  }
-
-  Future<void> _selectServiceMode(String mode) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(
-      SecureApiConfigStorage.serviceModePreferencesKey,
-      mode,
+  Future<void> _chooseServiceMode() async {
+    final selected = await showServiceModeSheet(
+      context,
+      currentMode: _serviceMode,
+      officialServiceEnabled: false,
     );
-    if (!mounted) return;
-    setState(() => _serviceMode = mode);
-    if (mode == 'official') {
-      await Navigator.of(
-        context,
-      ).push<void>(MaterialPageRoute(builder: (_) => const OfficialAiPage()));
-    }
+    if (selected == null || selected == _serviceMode) return;
+    await widget.onServiceModeChanged(selected);
+    if (mounted) setState(() => _serviceMode = selected);
   }
 
   @override
@@ -14029,7 +15020,43 @@ class _ConfigPageState extends State<ConfigPage> {
     _keyCtrl.dispose();
     _baseCtrl.dispose();
     _modelCtrl.dispose();
+    _secretVisibility.dispose();
+    SecureScreen.disable();
     super.dispose();
+  }
+
+  Future<void> _showSecurityAudit() async {
+    final result = await ApiKeySecurityAudit(
+      SecureApiConfigStorage(),
+    ).run(legacyPreferencesKey: 'api_config_v1');
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('API Key 安全自检'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('安全存储：${result.secureStorageAvailable ? '可用' : '不可用'}'),
+            Text(
+              'API Key：${result.apiKeyConfigured ? '已配置 ${result.maskedKey}' : '未配置'}',
+            ),
+            Text(
+              '旧版明文字段：${result.plaintextLegacyFieldFound ? '发现，需重新打开应用完成迁移' : '未发现'}',
+            ),
+            const SizedBox(height: 8),
+            const Text('本页不会显示完整 API Key。', style: TextStyle(fontSize: 12)),
+          ],
+        ),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('完成'),
+          ),
+        ],
+      ),
+    );
   }
 
   void _selectProvider(String key) {
@@ -14054,7 +15081,7 @@ class _ConfigPageState extends State<ConfigPage> {
       await AiService.test(config);
       _snack('连接成功');
     } catch (error) {
-      _snack(error.toString().replaceFirst('Exception: ', ''));
+      _snack(safeApiErrorMessage(error));
     } finally {
       if (mounted) setState(() => _testing = false);
     }
@@ -14085,37 +15112,7 @@ class _ConfigPageState extends State<ConfigPage> {
           subtitle: context.l10n.apiPageSubtitle,
         ),
         const SizedBox(height: 16),
-        Text(
-          isEnglish ? 'AI service mode' : 'AI 服务模式',
-          style: TextStyle(
-            fontWeight: FontWeight.w900,
-            color: scheme.onSurfaceVariant,
-          ),
-        ),
-        const SizedBox(height: 10),
-        Row(
-          children: [
-            Expanded(
-              child: _ServiceModeCard(
-                selected: _serviceMode == 'byok',
-                icon: Icons.key_rounded,
-                title: isEnglish ? 'My API Key' : '使用自己的 API Key',
-                subtitle: isEnglish ? 'No extra app fee' : '软件不额外收费',
-                onTap: () => _selectServiceMode('byok'),
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: _ServiceModeCard(
-                selected: _serviceMode == 'official',
-                icon: Icons.cloud_outlined,
-                title: isEnglish ? 'Official AI' : '官方 AI 服务',
-                subtitle: isEnglish ? 'Test mode' : '测试中 · 模拟支付',
-                onTap: () => _selectServiceMode('official'),
-              ),
-            ),
-          ],
-        ),
+        CurrentServiceModeCard(mode: _serviceMode, onTap: _chooseServiceMode),
         const SizedBox(height: 18),
         Text(
           isEnglish ? 'Choose provider' : '选择服务商',
@@ -14164,14 +15161,45 @@ class _ConfigPageState extends State<ConfigPage> {
           }).toList(),
         ),
         const SizedBox(height: 18),
-        TextField(
-          controller: _keyCtrl,
-          obscureText: true,
-          style: TextStyle(color: scheme.onSurface),
-          decoration: InputDecoration(
-            labelText: 'API Key',
-            labelStyle: TextStyle(color: scheme.onSurfaceVariant),
+        AnimatedBuilder(
+          animation: _secretVisibility,
+          builder: (context, _) => TextField(
+            controller: _keyCtrl,
+            obscureText: !_secretVisibility.visible,
+            autocorrect: false,
+            enableSuggestions: false,
+            style: TextStyle(color: scheme.onSurface),
+            decoration: InputDecoration(
+              labelText: 'API Key',
+              labelStyle: TextStyle(color: scheme.onSurfaceVariant),
+              helperText: _keyCtrl.text.trim().isEmpty
+                  ? (isEnglish
+                        ? 'Stored securely with Android Keystore'
+                        : '使用 Android Keystore 安全保存')
+                  : '${isEnglish ? 'Saved key' : '已保存'}：${maskApiKey(_keyCtrl.text)}',
+              suffixIcon: IconButton(
+                tooltip: _secretVisibility.visible
+                    ? (isEnglish ? 'Hide now' : '立即隐藏')
+                    : (isEnglish ? 'Show for 8 seconds' : '临时显示 8 秒'),
+                onPressed: _secretVisibility.visible
+                    ? _secretVisibility.hide
+                    : _secretVisibility.revealTemporarily,
+                icon: Icon(
+                  _secretVisibility.visible
+                      ? Icons.visibility_off_outlined
+                      : Icons.visibility_outlined,
+                ),
+              ),
+            ),
+            onChanged: (_) => setState(() {}),
           ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          isEnglish
+              ? 'Never share your API Key in screenshots, chats, logs or public repositories.'
+              : '请勿将 API Key 发送给他人，或放入截图、聊天、日志和公开仓库。',
+          style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
         ),
         const SizedBox(height: 12),
         TextField(
@@ -14249,6 +15277,14 @@ class _ConfigPageState extends State<ConfigPage> {
           icon: const Icon(Icons.delete_outline_rounded),
           label: const Text('删除当前 API 配置'),
         ),
+        if (kDebugMode) ...[
+          const SizedBox(height: 10),
+          OutlinedButton.icon(
+            onPressed: _showSecurityAudit,
+            icon: const Icon(Icons.security_rounded),
+            label: const Text('内部安全自检（不显示完整 Key）'),
+          ),
+        ],
         const SizedBox(height: 16),
         const _ApiGuideCard(),
         const SizedBox(height: 12),
@@ -14258,66 +15294,6 @@ class _ConfigPageState extends State<ConfigPage> {
               '自带 API Key 使用 Android Keystore 安全保存，不会上传到官方服务器。资料和练习记录仍保存在当前手机。',
         ),
       ],
-    );
-  }
-}
-
-class _ServiceModeCard extends StatelessWidget {
-  const _ServiceModeCard({
-    required this.selected,
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    required this.onTap,
-  });
-
-  final bool selected;
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(18),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 220),
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: selected ? scheme.primaryContainer : scheme.surfaceContainer,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(
-            color: selected ? scheme.primary : scheme.outlineVariant,
-            width: selected ? 2 : 1,
-          ),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(
-              icon,
-              color: selected ? scheme.primary : scheme.onSurfaceVariant,
-            ),
-            const SizedBox(height: 10),
-            Text(
-              title,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontWeight: FontWeight.w800),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              subtitle,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
-          ],
-        ),
-      ),
     );
   }
 }
@@ -16177,14 +17153,17 @@ $materialText
     if (tpl.choiceCount > 0) {
       sections.add('一、单项选择题（共 ${tpl.choiceCount} 题，每题 $cs 分）');
     }
+    if (tpl.multiChoiceCount > 0) {
+      sections.add('二、多项选择题（共 ${tpl.multiChoiceCount} 题，每题 $cs 分）');
+    }
     if (tpl.fillCount > 0) {
-      sections.add('二、填空题（共 ${tpl.fillCount} 题，每空 $fs 分）');
+      sections.add('三、填空题（共 ${tpl.fillCount} 题，每空 $fs 分）');
     }
     if (tpl.judgeCount > 0) {
-      sections.add('三、判断题（共 ${tpl.judgeCount} 题，每题 $js 分）');
+      sections.add('四、判断题（共 ${tpl.judgeCount} 题，每题 $js 分）');
     }
     if (tpl.subjectiveCount > 0) {
-      sections.add('四、解答题（共 ${tpl.subjectiveCount} 题，每题 $ss 分）');
+      sections.add('五、解答题（共 ${tpl.subjectiveCount} 题，每题 $ss 分）');
     }
     final totalQ = tpl.totalCount;
     final allowRichContent = enableRichContent || enableListening;

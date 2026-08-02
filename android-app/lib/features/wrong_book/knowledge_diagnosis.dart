@@ -134,10 +134,7 @@ List<KnowledgeDiagnosis> sortKnowledgeDiagnoses(
 /// the knowledge-point label into `questionText`, while old WrongItem JSON had
 /// no knowledge-point field. Such labels cannot match the mistake book, so the
 /// material name is used as a compatible fallback.
-String knowledgeReinforceQuery(
-  KnowledgeDiagnosis item,
-  String materialName,
-) {
+String knowledgeReinforceQuery(KnowledgeDiagnosis item, String materialName) {
   final knowledgeName = item.name.trim().toLowerCase();
   for (final rawQuestion in item.wrongQuestions) {
     final question = rawQuestion.trim();

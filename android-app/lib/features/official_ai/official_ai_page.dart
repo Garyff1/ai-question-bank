@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../core/security/secure_log_filter.dart';
 import 'legal_draft_page.dart';
 import 'official_ai_client.dart';
 import 'official_ai_models.dart';
@@ -60,7 +61,7 @@ class _OfficialAiPageState extends State<OfficialAiPage> {
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _error = error.toString();
+        _error = redactSensitiveText(error);
       });
     }
   }
@@ -101,7 +102,7 @@ class _OfficialAiPageState extends State<OfficialAiPage> {
         ),
       );
     } catch (error) {
-      _snack(error.toString());
+      _snack(redactSensitiveText(error));
     } finally {
       if (mounted) setState(() => _working = false);
     }
@@ -118,7 +119,7 @@ class _OfficialAiPageState extends State<OfficialAiPage> {
         _usage = results[1] as List<OfficialUsage>;
       });
     } catch (error) {
-      if (mounted) _snack(error.toString());
+      if (mounted) _snack(redactSensitiveText(error));
     }
   }
 
@@ -140,7 +141,7 @@ class _OfficialAiPageState extends State<OfficialAiPage> {
       if (!mounted) return;
       await _showQuote(quote);
     } catch (error) {
-      _snack(error.toString());
+      _snack(redactSensitiveText(error));
     } finally {
       if (mounted) setState(() => _working = false);
     }
@@ -274,7 +275,7 @@ class _OfficialAiPageState extends State<OfficialAiPage> {
       if (!mounted) return;
       _snack(_statusLabel(latest.status));
     } catch (error) {
-      _snack(error.toString());
+      _snack(redactSensitiveText(error));
     } finally {
       if (mounted) setState(() => _working = false);
     }
@@ -318,7 +319,7 @@ class _OfficialAiPageState extends State<OfficialAiPage> {
       await _refreshAccountData();
       _snack(t('官方服务数据已删除', 'Official-service data deleted'));
     } catch (error) {
-      _snack(error.toString());
+      _snack(redactSensitiveText(error));
     }
   }
 
@@ -368,7 +369,7 @@ class _OfficialAiPageState extends State<OfficialAiPage> {
       });
       _snack(t('官方服务账户已注销', 'Official-service account deleted'));
     } catch (error) {
-      _snack(error.toString());
+      _snack(redactSensitiveText(error));
     }
   }
 

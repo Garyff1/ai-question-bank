@@ -162,6 +162,8 @@ class SecureApiConfigStorage {
     await preferences.remove(preferencesKey);
   }
 
+  Future<String?> readApiKey() => _secure.read(apiKeyStorageKey);
+
   Future<String?> readOfficialToken() => _secure.read(officialTokenStorageKey);
 
   Future<void> saveOfficialToken(String token) async {
