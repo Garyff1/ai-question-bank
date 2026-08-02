@@ -4,6 +4,7 @@ import 'package:image_picker/image_picker.dart';
 import '../../../app/app_settings_controller.dart';
 import 'ocr_models.dart';
 import 'ocr_service.dart';
+import 'motion/ocr_scan_lens.dart';
 
 class OcrScanPage extends StatefulWidget {
   const OcrScanPage({super.key});
@@ -266,6 +267,16 @@ class _OcrScanPageState extends State<OcrScanPage> {
                 final page = entry.value;
                 return ListTile(
                   contentPadding: EdgeInsets.zero,
+                  onTap: page.succeeded
+                      ? () => Navigator.of(context).push<void>(
+                          MaterialPageRoute<void>(
+                            builder: (_) => OcrScanLensPage(
+                              imagePath: page.path,
+                              recognizedText: page.text,
+                            ),
+                          ),
+                        )
+                      : null,
                   leading: Icon(
                     page.succeeded
                         ? Icons.check_circle_rounded
@@ -283,6 +294,9 @@ class _OcrScanPageState extends State<OcrScanPage> {
                           )
                         : (page.error ?? _t('识别失败', 'Recognition failed')),
                   ),
+                  trailing: page.succeeded
+                      ? const Icon(Icons.compare_rounded)
+                      : null,
                 );
               }),
             ],

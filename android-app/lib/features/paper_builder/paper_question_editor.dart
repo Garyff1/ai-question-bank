@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../app/app_settings_controller.dart';
 import 'models/paper_builder_models.dart';
 
 Future<PaperEditorQuestion?> showPaperQuestionEditor(
@@ -18,9 +19,39 @@ Future<PaperEditorQuestion?> showPaperQuestionEditor(
   final score = TextEditingController(text: question.score.toString());
   var type = question.type;
   final english = Localizations.localeOf(context).languageCode == 'en';
-  final result = await showDialog<PaperEditorQuestion>(
+  final reduceMotion =
+      AppSettingsScope.maybeOf(context)?.reduceMotion ??
+      (MediaQuery.maybeOf(context)?.disableAnimations ?? false);
+  final result = await showGeneralDialog<PaperEditorQuestion>(
     context: context,
-    builder: (context) => StatefulBuilder(
+    barrierDismissible: true,
+    barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
+    barrierColor: Colors.black.withValues(alpha: .58),
+    transitionDuration: reduceMotion
+        ? const Duration(milliseconds: 140)
+        : const Duration(milliseconds: 420),
+    transitionBuilder: (context, animation, secondaryAnimation, child) {
+      final curved = CurvedAnimation(
+        parent: animation,
+        curve: Curves.easeOutCubic,
+        reverseCurve: Curves.easeInCubic,
+      );
+      if (reduceMotion) return FadeTransition(opacity: curved, child: child);
+      return FadeTransition(
+        opacity: curved,
+        child: SlideTransition(
+          position: Tween<Offset>(
+            begin: const Offset(0, .08),
+            end: Offset.zero,
+          ).animate(curved),
+          child: ScaleTransition(
+            scale: Tween<double>(begin: .9, end: 1).animate(curved),
+            child: child,
+          ),
+        ),
+      );
+    },
+    pageBuilder: (context, _, _) => StatefulBuilder(
       builder: (context, setDialogState) => AlertDialog(
         title: Text(english ? 'Edit question' : '编辑题目'),
         content: SizedBox(

@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../../app/app_settings_controller.dart';
 import '../../core/localization/localization_extensions.dart';
 import '../../core/theme/app_spacing.dart';
+import '../motion_lab/motion_lab_page.dart';
 import 'third_party_notices_page.dart';
 import '../official_ai/official_ai_page.dart';
 
@@ -225,6 +226,22 @@ class SettingsCenterCard extends StatelessWidget {
                 ),
               ),
             ),
+            if (kMotionLabEnabled) ...[
+              const Divider(height: 30),
+              _label(context, 'Internal'),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.science_outlined),
+                title: const Text('Motion Lab · 动效实验室'),
+                subtitle: const Text('本地模拟数据，不调用 API 或支付'),
+                trailing: const Icon(Icons.chevron_right_rounded),
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const MotionLabPage(),
+                  ),
+                ),
+              ),
+            ],
           ],
         ),
       ),

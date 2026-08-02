@@ -1,9 +1,13 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
+import '../../app/app_settings_controller.dart';
+import '../../core/motion/shared_element_route.dart';
 import 'duplicate_question_detector.dart';
 import 'models/paper_builder_models.dart';
+import 'motion/paper_binding_transition.dart';
 import 'paper_draft_storage.dart';
 import 'paper_question_editor.dart';
 
@@ -120,6 +124,22 @@ class _PaperEditorPageState extends State<PaperEditorPage>
     _changed(questions);
   }
 
+  Future<void> _preview(bool teacher) async {
+    if (_document.questions.isEmpty) return;
+    await Navigator.of(context).push<void>(
+      SharedElementRoute<void>(
+        opaque: false,
+        barrierLabel: 'Paper binding preview',
+        builder: (overlayContext) => PaperBindingPreviewRoute(
+          questionCount: _document.questions.length,
+          onReady: () => Navigator.of(overlayContext).pop(),
+        ),
+      ),
+    );
+    if (!mounted) return;
+    await widget.onPreview(_document, teacher);
+  }
+
   Future<void> _regenerate(int index) async {
     final callback = widget.onRegenerate;
     if (callback == null || _document.questions[index].locked) return;
@@ -171,6 +191,11 @@ class _PaperEditorPageState extends State<PaperEditorPage>
         instruction,
       );
       if (replacement == null || !mounted) return;
+      final useReplacement = await _compareReplacement(
+        _document.questions[index],
+        replacement,
+      );
+      if (useReplacement != true || !mounted) return;
       final questions = [..._document.questions]
         ..[index] = replacement.copyWith(
           id: _document.questions[index].id,
@@ -181,6 +206,49 @@ class _PaperEditorPageState extends State<PaperEditorPage>
     } finally {
       if (mounted) setState(() => _regenerating = false);
     }
+  }
+
+  Future<bool?> _compareReplacement(
+    PaperEditorQuestion original,
+    PaperEditorQuestion replacement,
+  ) {
+    final english = Localizations.localeOf(context).languageCode == 'en';
+    return showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(english ? 'Compare questions' : '对比新旧题目'),
+        content: SizedBox(
+          width: 620,
+          child: SingleChildScrollView(
+            child: Column(
+              children: [
+                _ComparisonCard(
+                  title: english ? 'Original question' : '原题',
+                  question: original,
+                  accent: Theme.of(context).colorScheme.outline,
+                ),
+                const SizedBox(height: 12),
+                _ComparisonCard(
+                  title: english ? 'New question' : '新题',
+                  question: replacement,
+                  accent: Theme.of(context).colorScheme.primary,
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text(english ? 'Keep original' : '保留原题'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(english ? 'Use new question' : '使用新题'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -266,7 +334,7 @@ class _PaperEditorPageState extends State<PaperEditorPage>
                     children: [
                       Expanded(
                         child: OutlinedButton.icon(
-                          onPressed: () => widget.onPreview(_document, false),
+                          onPressed: () => _preview(false),
                           icon: const Icon(Icons.school_outlined),
                           label: Text(english ? 'Student' : '学生版预览'),
                         ),
@@ -274,7 +342,7 @@ class _PaperEditorPageState extends State<PaperEditorPage>
                       const SizedBox(width: 8),
                       Expanded(
                         child: OutlinedButton.icon(
-                          onPressed: () => widget.onPreview(_document, true),
+                          onPressed: () => _preview(true),
                           icon: const Icon(Icons.co_present_outlined),
                           label: Text(english ? 'Teacher' : '教师版预览'),
                         ),
@@ -311,6 +379,26 @@ class _PaperEditorPageState extends State<PaperEditorPage>
                   final item = questions.removeAt(oldIndex);
                   questions.insert(newIndex, item);
                   _changed(questions);
+                  final settings = AppSettingsScope.maybeOf(context);
+                  if (settings?.hapticsEnabled ?? true) {
+                    HapticFeedback.selectionClick();
+                  }
+                },
+                proxyDecorator: (child, index, animation) {
+                  final settings = AppSettingsScope.maybeOf(context);
+                  final reduceMotion = settings?.reduceMotion ?? false;
+                  return AnimatedBuilder(
+                    animation: animation,
+                    child: child,
+                    builder: (context, child) => Transform.rotate(
+                      angle: reduceMotion ? 0 : .018 * animation.value,
+                      child: Material(
+                        elevation: reduceMotion ? 1 : 10 * animation.value,
+                        borderRadius: BorderRadius.circular(22),
+                        child: child,
+                      ),
+                    ),
+                  );
                 },
                 itemBuilder: (context, index) {
                   final question = _document.questions[index];
@@ -498,6 +586,52 @@ class _Stat extends StatelessWidget {
             color: Theme.of(context).colorScheme.onSurfaceVariant,
           ),
         ),
+      ],
+    ),
+  );
+}
+
+class _ComparisonCard extends StatelessWidget {
+  const _ComparisonCard({
+    required this.title,
+    required this.question,
+    required this.accent,
+  });
+
+  final String title;
+  final PaperEditorQuestion question;
+  final Color accent;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    width: double.infinity,
+    padding: const EdgeInsets.all(14),
+    decoration: BoxDecoration(
+      color: Theme.of(context).colorScheme.surfaceContainer,
+      borderRadius: BorderRadius.circular(18),
+      border: Border.all(color: accent),
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: TextStyle(color: accent, fontWeight: FontWeight.w900),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          question.prompt,
+          style: const TextStyle(fontWeight: FontWeight.w700),
+        ),
+        if (question.options.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          ...question.options.map(
+            (option) => Padding(
+              padding: const EdgeInsets.only(bottom: 3),
+              child: Text(option),
+            ),
+          ),
+        ],
       ],
     ),
   );

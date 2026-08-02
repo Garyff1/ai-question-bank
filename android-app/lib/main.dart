@@ -18,6 +18,7 @@ import 'package:xml/xml.dart';
 import 'app/app.dart';
 import 'app/app_settings_controller.dart';
 import 'core/localization/localization_extensions.dart';
+import 'core/motion/motion_states.dart';
 import 'core/security/secure_log_filter.dart';
 import 'core/security/secret_visibility_controller.dart';
 import 'core/security/api_key_masking.dart';
@@ -27,12 +28,14 @@ import 'core/storage/secure_api_config_storage.dart';
 import 'features/challenge/challenge_rules.dart';
 import 'features/materials/ocr/ocr_models.dart';
 import 'features/materials/ocr/ocr_scan_page.dart';
+import 'features/generation/motion/knowledge_forge_view.dart';
 import 'features/official_ai/official_ai_page.dart';
 import 'features/paper_builder/models/paper_builder_models.dart';
 import 'features/paper_builder/paper_draft_storage.dart';
 import 'features/paper_builder/paper_editor_page.dart';
 import 'features/paper_builder/paper_generation_progress.dart';
 import 'features/paper_builder/paper_template_service.dart';
+import 'features/paper_builder/motion/answer_layer_reveal.dart';
 import 'features/rich_content/chart_data.dart';
 import 'features/service_mode/service_mode_controller.dart';
 import 'features/service_mode/service_mode_selector.dart';
@@ -2214,6 +2217,7 @@ class _AppShellState extends State<AppShell> {
   String _audience = '通用';
   bool _loading = true;
   bool _generating = false;
+  GenerateMotionState _generateMotionState = GenerateMotionState.idle;
   bool _parsing = false;
   bool _paperGenerating = false;
   bool _enableRichContent = false;
@@ -3470,7 +3474,10 @@ class _AppShellState extends State<AppShell> {
       _openConfigPage();
       return;
     }
-    setState(() => _generating = true);
+    setState(() {
+      _generating = true;
+      _generateMotionState = GenerateMotionState.readingMaterial;
+    });
     try {
       final language = AppSettingsScope.of(context).generationLanguage;
       final outputLanguage = switch (language) {
@@ -3478,6 +3485,16 @@ class _AppShellState extends State<AppShell> {
         GenerationLanguage.zh => '简体中文',
         GenerationLanguage.en => 'English',
       };
+      if (mounted) {
+        setState(
+          () => _generateMotionState = GenerateMotionState.planningTypes,
+        );
+      }
+      if (mounted) {
+        setState(
+          () => _generateMotionState = GenerateMotionState.generatingQuestions,
+        );
+      }
       final questions = await AiService.generateQuestions(
         config: _config,
         material: material.content,
@@ -3488,6 +3505,9 @@ class _AppShellState extends State<AppShell> {
         enableListening: _enableListening,
         outputLanguage: outputLanguage,
       );
+      if (mounted) {
+        setState(() => _generateMotionState = GenerateMotionState.validating);
+      }
       if (questions.isEmpty) {
         _showSnack('AI 没有返回有效题目，请换个模型或缩短资料');
       } else {
@@ -3502,7 +3522,12 @@ class _AppShellState extends State<AppShell> {
     } catch (error) {
       _showSnack(apiErrorMessage(error));
     } finally {
-      if (mounted) setState(() => _generating = false);
+      if (mounted) {
+        setState(() {
+          _generating = false;
+          _generateMotionState = GenerateMotionState.idle;
+        });
+      }
     }
   }
 
@@ -4688,6 +4713,7 @@ class _AppShellState extends State<AppShell> {
         audience: _audience,
         audiences: _audiences,
         generating: _generating,
+        motionState: _generateMotionState,
         enableRichContent: _enableRichContent,
         enableListening: _enableListening,
         serviceMode: _aiServiceMode,
@@ -4961,7 +4987,13 @@ class _AppShellState extends State<AppShell> {
           const Positioned.fill(child: _FloatingQuestionsBackground()),
           SafeArea(
             // v2.7.2: 改用 IndexedStack 保持所有页面常驻，避免切换时重建卡顿
-            child: IndexedStack(index: _tab, children: pages),
+            child: IndexedStack(
+              index: _tab,
+              children: [
+                for (var i = 0; i < pages.length; i++)
+                  HeroMode(enabled: i == _tab, child: pages[i]),
+              ],
+            ),
           ),
           if (_parsing) _buildParsingOverlay(),
         ],
@@ -6244,6 +6276,7 @@ class GeneratePage extends StatelessWidget {
     required this.audience,
     required this.audiences,
     required this.generating,
+    required this.motionState,
     required this.enableRichContent,
     required this.enableListening,
     required this.serviceMode,
@@ -6269,6 +6302,7 @@ class GeneratePage extends StatelessWidget {
   final String audience;
   final List<String> audiences;
   final bool generating;
+  final GenerateMotionState motionState;
   final bool enableRichContent;
   final bool enableListening;
   final String serviceMode;
@@ -6294,7 +6328,7 @@ class GeneratePage extends StatelessWidget {
     final activeMaterial =
         material ?? (materials.isEmpty ? null : materials.first);
     final colors = Theme.of(context).colorScheme;
-    return ListView(
+    final content = ListView(
       padding: const EdgeInsets.all(18),
       children: [
         _PageTitle(
@@ -6813,6 +6847,30 @@ class GeneratePage extends StatelessWidget {
             ),
           ),
         ],
+      ],
+    );
+    if (!generating) return content;
+    return Stack(
+      children: [
+        content,
+        Positioned.fill(
+          child: Material(
+            color: colors.surface.withValues(alpha: .92),
+            child: SafeArea(
+              child: Center(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(24),
+                  child: KnowledgeForgeView(
+                    state: motionState,
+                    materialName: activeMaterial?.name,
+                    enabledTypes: selectedTypes.toList(growable: false),
+                    totalQuestions: questionCount,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
       ],
     );
   }
@@ -11625,48 +11683,56 @@ class _PaperQuestionTile extends StatelessWidget {
               ),
             ),
           ],
-          if (showAnswer) ...[
-            const SizedBox(height: 10),
-            const Divider(height: 1),
-            const SizedBox(height: 8),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
+          AnswerLayerReveal(
+            visible: showAnswer,
+            child: Column(
               children: [
-                const Text(
-                  '答案：',
-                  style: TextStyle(
-                    fontWeight: FontWeight.w900,
-                    color: Color(0xFF16A34A),
-                  ),
-                ),
-                Expanded(
-                  child: Text(
-                    q.answer.toString(),
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w800,
-                      color: Color(0xFF16A34A),
+                const SizedBox(height: 10),
+                const Divider(height: 1),
+                const SizedBox(height: 8),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      '答案：',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w900,
+                        color: Color(0xFF16A34A),
+                      ),
                     ),
-                  ),
+                    Expanded(
+                      child: Text(
+                        q.answer.toString(),
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w800,
+                          color: Color(0xFF16A34A),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      '解析：',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w900,
+                        color: kMuted,
+                      ),
+                    ),
+                    Expanded(
+                      child: Text(
+                        q.explanation,
+                        style: const TextStyle(color: kMuted, height: 1.5),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
-            const SizedBox(height: 6),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  '解析：',
-                  style: TextStyle(fontWeight: FontWeight.w900, color: kMuted),
-                ),
-                Expanded(
-                  child: Text(
-                    q.explanation,
-                    style: const TextStyle(color: kMuted, height: 1.5),
-                  ),
-                ),
-              ],
-            ),
-          ],
+          ),
         ],
       ),
     );
