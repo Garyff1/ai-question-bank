@@ -13,6 +13,7 @@ permissions:
 
 jobs:
   build:
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -53,5 +54,55 @@ jobs:
           generate_release_notes: true
           draft: false
           prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build-rc004-test001:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        working-directory: android-app
+        run: flutter pub get
+
+      - name: Build standard RC APK
+        working-directory: android-app
+        run: |
+          flutter build apk --release --no-pub --no-tree-shake-icons
+          mkdir -p dist
+          cp build/app/outputs/flutter-apk/app-release.apk dist/ai-question-bank-android-v3.0.0-rc004-test001.apk
+
+      - name: Build Internal Motion Lab APK
+        working-directory: android-app
+        run: |
+          flutter build apk --release --no-pub --no-tree-shake-icons --dart-define=INTERNAL_BUILD=true
+          cp build/app/outputs/flutter-apk/app-release.apk dist/ai-question-bank-android-v3.0.0-rc004-test001-internal.apk
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-question-bank-android-v3.0.0-rc004-test001
+          path: android-app/dist/*.apk
+          if-no-files-found: error
+
+      - name: Publish GitHub pre-release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: android-v3.0.0-rc004-test001
+          target_commitish: ${{ github.ref_name }}
+          name: AI题库 Android v3.0.0 RC004 Test001（内部测试）
+          body_path: docs/v3.0.0-rc004-test001.md
+          files: android-app/dist/*.apk
+          draft: false
+          prerelease: true
+          fail_on_unmatched_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
