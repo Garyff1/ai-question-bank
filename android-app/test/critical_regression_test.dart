@@ -1,8 +1,10 @@
 import 'package:ai_question_bank_android/main.dart';
+import 'package:ai_question_bank_android/app/app_settings_controller.dart';
 import 'package:ai_question_bank_android/features/challenge/challenge_rules.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:syncfusion_flutter_pdf/pdf.dart';
 
 const _rpgResult = RpgLevelResult(
@@ -193,6 +195,42 @@ void main() {
       calls.map((call) => call.method),
       contains('HapticFeedback.vibrate'),
     );
+  });
+
+  testWidgets('five RPG nodes including Boss stay inside a narrow screen', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(320, 720);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    SharedPreferences.setMockInitialValues(const {});
+    final settings = await AppSettingsController.load();
+    await settings.setReduceMotion(true);
+
+    await tester.pumpWidget(
+      AppSettingsScope(
+        controller: settings,
+        child: MaterialApp(
+          home: RpgMapPage(
+            material: StudyMaterial(
+              id: 'narrow-map',
+              name: '窄屏闯关资料',
+              content: '测试资料',
+              createdAt: DateTime(2026, 8, 5),
+            ),
+            subject: '通用',
+            progress: const RpgProgress(currentLevel: 5),
+            onStartLevel: (_, _) {},
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.textContaining('BOSS'), findsWidgets);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
   });
 
   test('rich content target stays between twenty and thirty percent', () {

@@ -36,5 +36,12 @@ String safeApiErrorMessage(Object error) {
   if (lower.contains('timeout') || lower.contains('timed out')) {
     return '连接超时，请检查网络后重试。';
   }
+  if (lower.contains('formatexception') ||
+      lower.contains('unexpected end of input') ||
+      lower.contains('unterminated string') ||
+      lower.contains('invalid json') ||
+      lower.contains('json decode')) {
+    return '模型返回的题目格式不完整，已自动尝试补齐。请再次生成，或减少单次生成的题目数量。';
+  }
   return redacted.isEmpty ? '连接失败，请检查服务商配置后重试。' : redacted;
 }

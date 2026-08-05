@@ -35,6 +35,16 @@ void main() {
     expect(output, isNot(contains(secret)));
   });
 
+  test('truncated model JSON is translated into a friendly message', () {
+    final output = safeApiErrorMessage(
+      const FormatException('Unexpected end of input at character 57'),
+    );
+
+    expect(output, contains('模型返回的题目格式不完整'));
+    expect(output, isNot(contains('FormatException')));
+    expect(output, isNot(contains('character 57')));
+  });
+
   testWidgets('temporary reveal hides immediately when app leaves foreground', (
     tester,
   ) async {

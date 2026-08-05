@@ -95,6 +95,27 @@ void main() {
     expect(find.text('7 / 10'), findsOneWidget);
   });
 
+  testWidgets('active forge keeps a visible continuous loading state', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        locale: Locale('zh'),
+        home: Scaffold(
+          body: KnowledgeForgeView(
+            state: GenerateMotionState.generatingQuestions,
+            materialName: '机器人学导论.pdf',
+          ),
+        ),
+      ),
+    );
+
+    expect(find.byType(LinearProgressIndicator), findsOneWidget);
+    expect(find.textContaining('screen stays awake'), findsOneWidget);
+    await tester.pump(const Duration(milliseconds: 900));
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('paper binding and answer layer have safe reduced motion', (
     tester,
   ) async {

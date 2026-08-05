@@ -37,8 +37,9 @@ class KnowledgeForgeView extends StatefulWidget {
 }
 
 class _KnowledgeForgeViewState extends State<KnowledgeForgeView>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   late final AnimationController _breath;
+  late final AnimationController _orbit;
 
   @override
   void initState() {
@@ -46,6 +47,10 @@ class _KnowledgeForgeViewState extends State<KnowledgeForgeView>
     _breath = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1800),
+    );
+    _orbit = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 2600),
     );
   }
 
@@ -69,9 +74,12 @@ class _KnowledgeForgeViewState extends State<KnowledgeForgeView>
     final reduce = widget.reduceMotionOverride ?? prefs.reduceMotion;
     if (!reduce && !widget.lowPerformance && _active(widget.state)) {
       if (!_breath.isAnimating) _breath.repeat(reverse: true);
+      if (!_orbit.isAnimating) _orbit.repeat();
     } else {
       _breath.stop();
       _breath.value = 0;
+      _orbit.stop();
+      _orbit.value = 0;
     }
   }
 
@@ -82,6 +90,7 @@ class _KnowledgeForgeViewState extends State<KnowledgeForgeView>
   @override
   void dispose() {
     _breath.dispose();
+    _orbit.dispose();
     super.dispose();
   }
 
@@ -140,7 +149,7 @@ class _KnowledgeForgeViewState extends State<KnowledgeForgeView>
               const SizedBox(height: 14),
             ],
             AnimatedBuilder(
-              animation: _breath,
+              animation: Listenable.merge([_breath, _orbit]),
               builder: (context, _) {
                 final pulse = 1 + _breath.value * .05;
                 return SizedBox(
@@ -162,6 +171,62 @@ class _KnowledgeForgeViewState extends State<KnowledgeForgeView>
                                   motion.forgeCore.withValues(alpha: 0),
                                 ],
                               ),
+                            ),
+                          ),
+                        ),
+                      if (_active(widget.state) &&
+                          !reduce &&
+                          !widget.lowPerformance)
+                        Transform.rotate(
+                          angle: _orbit.value * math.pi * 2,
+                          child: SizedBox(
+                            width: widget.compact ? 84 : 104,
+                            height: widget.compact ? 84 : 104,
+                            child: Stack(
+                              alignment: Alignment.center,
+                              children: [
+                                Container(
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    border: Border.all(
+                                      color: scheme.primary.withValues(
+                                        alpha: .34,
+                                      ),
+                                      width: 1.4,
+                                    ),
+                                  ),
+                                ),
+                                Align(
+                                  alignment: Alignment.topCenter,
+                                  child: Container(
+                                    width: widget.compact ? 8 : 10,
+                                    height: widget.compact ? 8 : 10,
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      color: motion.forgeCore,
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: motion.forgeCore.withValues(
+                                            alpha: .7,
+                                          ),
+                                          blurRadius: 10,
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                                Align(
+                                  alignment: Alignment.bottomCenter,
+                                  child: Container(
+                                    width: widget.compact ? 5 : 7,
+                                    height: widget.compact ? 5 : 7,
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      color: scheme.tertiary,
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         ),
@@ -237,6 +302,57 @@ class _KnowledgeForgeViewState extends State<KnowledgeForgeView>
               textAlign: TextAlign.center,
               style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12),
             ),
+            if (_active(widget.state)) ...[
+              const SizedBox(height: 14),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(999),
+                child: LinearProgressIndicator(
+                  value: reduce || widget.lowPerformance ? .55 : null,
+                  minHeight: 5,
+                  backgroundColor: scheme.surfaceContainerHighest,
+                  color: scheme.primary,
+                ),
+              ),
+              const SizedBox(height: 9),
+              AnimatedBuilder(
+                animation: _orbit,
+                builder: (context, _) {
+                  final activeDot = reduce || widget.lowPerformance
+                      ? 0
+                      : (_orbit.value * 4).floor() % 4;
+                  return Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: List.generate(4, (index) {
+                      final selected = index == activeDot;
+                      return AnimatedContainer(
+                        duration: const Duration(milliseconds: 180),
+                        width: selected ? 22 : 7,
+                        height: 7,
+                        margin: const EdgeInsets.symmetric(horizontal: 3),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(999),
+                          color: selected
+                              ? scheme.primary
+                              : scheme.outlineVariant,
+                        ),
+                      );
+                    }),
+                  );
+                },
+              ),
+              const SizedBox(height: 7),
+              Text(
+                english
+                    ? 'Processing continues · screen stays awake'
+                    : '持续动态处理中 · 生成期间保持屏幕常亮',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: scheme.onSurfaceVariant,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
             if (count != null && count > 0) ...[
               const SizedBox(height: 12),
               QuestionCardStack(count: count, color: scheme.primary),
