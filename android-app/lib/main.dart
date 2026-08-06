@@ -3184,6 +3184,7 @@ class _AppShellState extends State<AppShell> {
       builder: (sheetContext) {
         return StatefulBuilder(
           builder: (context, setSheetState) {
+            final colors = Theme.of(context).colorScheme;
             Future<void> sendEmail() async {
               final content = contentCtrl.text.trim();
               if (content.isEmpty) {
@@ -3247,27 +3248,34 @@ class _AppShellState extends State<AppShell> {
                           height: 4,
                           margin: const EdgeInsets.only(bottom: 14),
                           decoration: BoxDecoration(
-                            color: kLine,
+                            color: colors.outlineVariant,
                             borderRadius: BorderRadius.circular(2),
                           ),
                         ),
                       ),
-                      const Text(
+                      Text(
                         '问题反馈',
                         style: TextStyle(
                           fontSize: 20,
                           fontWeight: FontWeight.w900,
+                          color: colors.onSurface,
                         ),
                       ),
                       const SizedBox(height: 4),
-                      const Text(
+                      Text(
                         '描述你遇到的 bug 或想法，点发送会调起邮件 App，自动带上内容发到我们的邮箱。',
-                        style: TextStyle(color: kMuted, height: 1.45),
+                        style: TextStyle(
+                          color: colors.onSurfaceVariant,
+                          height: 1.45,
+                        ),
                       ),
                       const SizedBox(height: 16),
-                      const Text(
+                      Text(
                         '反馈类型',
-                        style: TextStyle(fontWeight: FontWeight.w800),
+                        style: TextStyle(
+                          color: colors.onSurface,
+                          fontWeight: FontWeight.w800,
+                        ),
                       ),
                       const SizedBox(height: 8),
                       Wrap(
@@ -3279,14 +3287,21 @@ class _AppShellState extends State<AppShell> {
                             label: Text(t),
                             selected: selected,
                             onSelected: (_) => setSheetState(() => type = t),
-                            selectedColor: const Color(0xFFEFF6FF),
+                            backgroundColor: colors.surfaceContainerHighest,
+                            selectedColor: colors.primaryContainer,
                             labelStyle: TextStyle(
-                              color: selected ? kBlue : kInk,
+                              color: selected
+                                  ? colors.onPrimaryContainer
+                                  : colors.onSurface,
                               fontWeight: FontWeight.w800,
                             ),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12),
-                              side: BorderSide(color: selected ? kBlue : kLine),
+                              side: BorderSide(
+                                color: selected
+                                    ? colors.primary
+                                    : colors.outlineVariant,
+                              ),
                             ),
                           );
                         }).toList(),
@@ -3296,11 +3311,21 @@ class _AppShellState extends State<AppShell> {
                         controller: contentCtrl,
                         minLines: 5,
                         maxLines: 10,
-                        decoration: const InputDecoration(
+                        cursorColor: colors.primary,
+                        style: TextStyle(color: colors.onSurface),
+                        decoration: InputDecoration(
                           labelText: '反馈内容',
                           hintText: '例如：在某页面点了某按钮后出现什么现象……',
                           alignLabelWithHint: true,
-                          border: OutlineInputBorder(),
+                          filled: true,
+                          fillColor: colors.surfaceContainerHighest,
+                          labelStyle: TextStyle(color: colors.onSurfaceVariant),
+                          hintStyle: TextStyle(
+                            color: colors.onSurfaceVariant.withValues(
+                              alpha: 0.75,
+                            ),
+                          ),
+                          border: const OutlineInputBorder(),
                         ),
                       ),
                       const SizedBox(height: 16),
@@ -3318,7 +3343,10 @@ class _AppShellState extends State<AppShell> {
                       const SizedBox(height: 8),
                       Text(
                         '收件邮箱：$kFeedbackEmail',
-                        style: const TextStyle(color: kMuted, fontSize: 12),
+                        style: TextStyle(
+                          color: colors.onSurfaceVariant,
+                          fontSize: 12,
+                        ),
                         textAlign: TextAlign.center,
                       ),
                     ],
@@ -7248,6 +7276,7 @@ class _PracticeScreenState extends State<PracticeScreen> {
   Widget build(BuildContext context) {
     final question = _question;
     final progress = (_index + 1) / widget.session.questions.length;
+    final scheme = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(
         title: Text(
@@ -7273,9 +7302,10 @@ class _PracticeScreenState extends State<PracticeScreen> {
                 const SizedBox(height: 18),
                 Card(
                   elevation: 0,
+                  color: scheme.surface,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(24),
-                    side: const BorderSide(color: kLine),
+                    side: BorderSide(color: scheme.outlineVariant),
                   ),
                   child: Padding(
                     padding: const EdgeInsets.all(20),
@@ -7284,7 +7314,11 @@ class _PracticeScreenState extends State<PracticeScreen> {
                       children: [
                         Chip(
                           label: Text(question.label),
-                          backgroundColor: const Color(0xFFEFF6FF),
+                          backgroundColor: scheme.primaryContainer,
+                          labelStyle: TextStyle(
+                            color: scheme.onPrimaryContainer,
+                            fontWeight: FontWeight.w800,
+                          ),
                           side: BorderSide.none,
                         ),
                         const SizedBox(height: 10),
@@ -7338,10 +7372,11 @@ class _PracticeScreenState extends State<PracticeScreen> {
                         const SizedBox(height: 10),
                         Text(
                           question.question,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 20,
                             height: 1.55,
                             fontWeight: FontWeight.w900,
+                            color: scheme.onSurface,
                           ),
                         ),
                         if (question.richContent.isNotEmpty) ...[
@@ -7368,6 +7403,8 @@ class _PracticeScreenState extends State<PracticeScreen> {
                             enabled: !_answered,
                             minLines: question.type == 'subjective' ? 4 : 1,
                             maxLines: question.type == 'subjective' ? 6 : 1,
+                            cursorColor: scheme.primary,
+                            style: TextStyle(color: scheme.onSurface),
                             decoration: InputDecoration(
                               labelText: question.type == 'subjective'
                                   ? '输入你的简答'
@@ -7634,6 +7671,12 @@ class _ResultBoxState extends State<_ResultBox>
   @override
   Widget build(BuildContext context) {
     final correct = widget.correct;
+    final scheme = Theme.of(context).colorScheme;
+    final accent = correct ? kGreen : kRed;
+    final background = Color.alphaBlend(
+      accent.withValues(alpha: 0.14),
+      scheme.surface,
+    );
     return FadeTransition(
       opacity: _opacity,
       child: SlideTransition(
@@ -7644,10 +7687,9 @@ class _ResultBoxState extends State<_ResultBox>
             width: double.infinity,
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
-              color: correct
-                  ? const Color(0xFFECFDF5)
-                  : const Color(0xFFFEF2F2),
+              color: background,
               borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: accent.withValues(alpha: 0.42)),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -7673,12 +7715,18 @@ class _ResultBoxState extends State<_ResultBox>
                   ],
                 ),
                 const SizedBox(height: 8),
-                Text('你的答案：${widget.userAnswer}'),
-                Text('参考答案：${widget.answer}'),
+                Text(
+                  '你的答案：${widget.userAnswer}',
+                  style: TextStyle(color: scheme.onSurface),
+                ),
+                Text(
+                  '参考答案：${widget.answer}',
+                  style: TextStyle(color: scheme.onSurface),
+                ),
                 const SizedBox(height: 8),
                 Text(
                   '解析：${widget.explanation}',
-                  style: const TextStyle(height: 1.5),
+                  style: TextStyle(color: scheme.onSurface, height: 1.5),
                 ),
                 if (widget.richContent.isNotEmpty) ...[
                   const SizedBox(height: 10),
@@ -14085,8 +14133,8 @@ class _AboutAppCard extends StatelessWidget {
           const SizedBox(height: 8),
           Text(
             english
-                ? 'v3.0.0 RC003 · Internal test build with secure API mode switching and an editable paper workflow.'
-                : 'v3.0.0 RC003 · 内部测试版，新增安全的 AI 服务模式切换与可编辑组卷流程。',
+                ? 'v3.0.0 RC004 Test002 · Generation reliability and dark-theme readability fixes.'
+                : 'v3.0.0 RC004 Test002 · 修复题量不足、生成截断与深色模式可读性。',
             style: TextStyle(color: colors.onSurfaceVariant, height: 1.5),
           ),
         ],
@@ -16893,60 +16941,78 @@ class AiService {
     required int maxTokens,
     required int expectedCount,
     List<String> rootKeys = const ['questions', 'games', 'items'],
+    bool Function(Map<String, dynamic> value)? isValid,
+    bool requireExact = true,
   }) async {
-    final firstContent = await _chat(config, messages, maxTokens: maxTokens);
-    final collected = <Map<String, dynamic>>[];
-    final identities = <String>{};
-
-    void appendUnique(Iterable<Map<String, dynamic>> values) {
-      for (final value in values) {
-        final identity = [
-          value['question'],
-          value['prompt'],
-          value['game_type'],
-          value['answer'],
-        ].where((part) => part != null).join('|').trim();
-        final fallbackIdentity = jsonEncode(value);
-        final key = identity.isEmpty ? fallbackIdentity : identity;
-        if (identities.add(key)) collected.add(value);
-      }
-    }
-
-    appendUnique(
-      AiJsonParser.decodeObjectList(firstContent, rootKeys: rootKeys),
-    );
-    final missing = expectedCount - collected.length;
-    if (missing > 0) {
-      debugPrint(
-        '[AI JSON] 首批完整对象 ${collected.length}/$expectedCount，补充 $missing 个',
+    late final List<Map<String, dynamic>> collected;
+    try {
+      collected = await AiJsonBatchCollector.collect(
+        expectedCount: expectedCount,
+        rootKeys: rootKeys,
+        maxBatchSize: 5,
+        isValid: isValid,
+        requireExact: requireExact,
+        identityOf: (value) {
+          final identity = [
+            value['question'],
+            value['title'],
+            value['prompt'],
+            value['game_type'],
+            value['answer'],
+            value['correct_answer'],
+          ].where((part) => part != null).join('|').trim();
+          return identity.isEmpty ? jsonEncode(value) : identity;
+        },
+        request: (requestedCount, requestNumber, existing) async {
+          final previousTitles = existing
+              .map(
+                (item) =>
+                    (item['question'] ?? item['title'] ?? item['prompt'] ?? '')
+                        .toString()
+                        .replaceAll(RegExp(r'\s+'), ' ')
+                        .trim(),
+              )
+              .where((item) => item.isNotEmpty)
+              .take(10)
+              .toList(growable: false);
+          final batchInstruction = StringBuffer()
+            ..writeln()
+            ..writeln('【分批输出指令（优先级最高）】')
+            ..writeln('整个任务目标为 $expectedCount 个对象，客户端会分批收集。')
+            ..writeln('这是第 $requestNumber 批，本批严格只返回 $requestedCount 个完整对象。')
+            ..writeln('必须从 [ 开始、以 ] 结束；不要 Markdown，不要前后说明，不要省略号。')
+            ..writeln('每个对象必须包含完整题干、答案和所需字段，解析请简洁，避免输出被截断。');
+          if (previousTitles.isNotEmpty) {
+            batchInstruction
+              ..writeln('以下题目已经收集，本批不得重复：')
+              ..writeln(previousTitles.map((item) => '- $item').join('\n'));
+          }
+          final batchMessages = messages
+              .map((message) => Map<String, String>.from(message))
+              .toList(growable: true);
+          final userIndex = batchMessages.lastIndexWhere(
+            (message) => message['role'] == 'user',
+          );
+          if (userIndex >= 0) {
+            batchMessages[userIndex]['content'] =
+                '${batchMessages[userIndex]['content'] ?? ''}\n$batchInstruction';
+          } else {
+            batchMessages.add({'role': 'user', 'content': '$batchInstruction'});
+          }
+          final batchMaxTokens = (requestedCount * 850).clamp(2400, maxTokens);
+          debugPrint(
+            '[AI JSON] 请求第 $requestNumber 批：$requestedCount 个，已收集 ${existing.length}/$expectedCount',
+          );
+          return _chat(config, batchMessages, maxTokens: batchMaxTokens);
+        },
       );
-      try {
-        final retryMessages = <Map<String, String>>[
-          ...messages,
-          {
-            'role': 'user',
-            'content':
-                '上一批响应未完整返回。现在只补充缺少的 $missing 个对象，不要重复之前内容。'
-                '严格返回一个完整、可解析的 JSON 数组，缩短解析文字，不要 Markdown。',
-          },
-        ];
-        final retryContent = await _chat(
-          config,
-          retryMessages,
-          maxTokens: (missing * 500).clamp(2200, maxTokens),
-        );
-        appendUnique(
-          AiJsonParser.decodeObjectList(retryContent, rootKeys: rootKeys),
-        );
-      } catch (error) {
-        debugPrint('[AI JSON] 补充请求未完成：${error.runtimeType}');
-      }
+    } on AiJsonIncompleteException catch (error) {
+      throw Exception(
+        '模型未能完整生成 $expectedCount 道有效题目（已收到 ${error.actualCount} 道），'
+        '系统已自动分批补全。请重试，或检查模型输出上限。',
+      );
     }
-
-    if (collected.isEmpty) {
-      throw Exception('模型返回内容不完整，已自动重试。请再次生成，或减少单次题目数量');
-    }
-    return collected.take(expectedCount).toList(growable: false);
+    return collected;
   }
 
   static Future<List<AiQuestion>> generateQuestions({
@@ -17058,6 +17124,15 @@ $materialText
       maxTokens: (count * 500).clamp(4500, 12000),
       expectedCount: count,
       rootKeys: const ['questions', 'items'],
+      isValid: (item) {
+        final question = (item['question'] ?? item['title'] ?? '')
+            .toString()
+            .trim();
+        final answer = (item['answer'] ?? item['correct_answer'] ?? '')
+            .toString()
+            .trim();
+        return question.isNotEmpty && answer.isNotEmpty;
+      },
     );
     final questions = list
         .map(
@@ -17065,6 +17140,11 @@ $materialText
         )
         .where((q) => q.question.trim().isNotEmpty)
         .toList();
+    if (questions.length != count) {
+      throw Exception(
+        '模型返回的有效题目数量不足：需要 $count 道，实际 ${questions.length} 道。请重试。',
+      );
+    }
     // v2.7.1 听力题兜底：若 enableListening=true 且资料含较多英文，
     // 但 AI 未生成任何 listening 题，强制改造第一道题为听力题
     if (enableListening && questions.isNotEmpty) {
@@ -17299,6 +17379,9 @@ $materialText
       maxTokens: isBoss ? 8000 : 6000,
       expectedCount: gameCount,
       rootKeys: const ['games', 'items'],
+      // Mini-Game 仍保留既有的本地安全题目补齐逻辑，避免模型偶发少返回
+      // 时阻断整段闯关；普通练习与试卷继续要求精确题量。
+      requireExact: false,
     );
     final games = list
         .map(

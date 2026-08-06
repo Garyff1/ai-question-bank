@@ -34,4 +34,62 @@ void main() {
 
     expect(result.single['question'], '根对象题目');
   });
+
+  test('accepts a single generated object for later batch completion', () {
+    final result = AiJsonParser.decodeObjectList(
+      '{"question":"单对象题目","answer":"A"}',
+    );
+
+    expect(result, hasLength(1));
+    expect(result.single['question'], '单对象题目');
+  });
+
+  test(
+    'batch collector completes ten questions without returning a partial set',
+    () async {
+      var serial = 0;
+      var requests = 0;
+      final result = await AiJsonBatchCollector.collect(
+        expectedCount: 10,
+        maxBatchSize: 5,
+        isValid: (item) => (item['question'] ?? '').toString().isNotEmpty,
+        identityOf: (item) => item['question'].toString(),
+        request: (requestedCount, requestNumber, collected) async {
+          requests++;
+          // 首批模拟长 JSON 被截断：只返回 4 个完整对象；收集器应继续补齐，
+          // 而不是把 4 个（更不能把 1 个）当作 10 个交给答题页。
+          final count = requestNumber == 1
+              ? requestedCount - 1
+              : requestedCount;
+          final items = List.generate(count, (_) {
+            serial++;
+            return '{"question":"第$serial题","answer":"A"}';
+          });
+          return '[${items.join(',')}]';
+        },
+      );
+
+      expect(result, hasLength(10));
+      expect(result.map((item) => item['question']).toSet(), hasLength(10));
+      expect(requests, 3);
+    },
+  );
+
+  test(
+    'batch collector rejects a partial result instead of opening practice',
+    () async {
+      await expectLater(
+        AiJsonBatchCollector.collect(
+          expectedCount: 10,
+          maxBatchSize: 5,
+          request: (_, _, _) async => '[{"question":"始终只有一道","answer":"A"}]',
+        ),
+        throwsA(
+          isA<AiJsonIncompleteException>()
+              .having((error) => error.expectedCount, 'expectedCount', 10)
+              .having((error) => error.actualCount, 'actualCount', 1),
+        ),
+      );
+    },
+  );
 }

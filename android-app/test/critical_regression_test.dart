@@ -1,5 +1,6 @@
 import 'package:ai_question_bank_android/main.dart';
 import 'package:ai_question_bank_android/app/app_settings_controller.dart';
+import 'package:ai_question_bank_android/core/theme/app_theme.dart';
 import 'package:ai_question_bank_android/features/challenge/challenge_rules.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -286,6 +287,47 @@ void main() {
     expect(isTransientApiError(error), isTrue);
     expect(apiErrorMessage(error), contains('安全连接握手失败'));
     expect(apiErrorMessage(error), isNot(contains('HandshakeConnection')));
+  });
+
+  testWidgets('practice question and answer field stay readable in dark mode', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(360, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    const questionText = '深色模式下应清晰显示的题干';
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light,
+        darkTheme: AppTheme.dark,
+        themeMode: ThemeMode.dark,
+        home: PracticeScreen(
+          session: PracticeSession(
+            materialName: '主题测试',
+            questions: [
+              AiQuestion(
+                type: 'fill',
+                question: questionText,
+                options: const [],
+                answer: '可见',
+                explanation: '测试解析',
+              ),
+            ],
+          ),
+          onExit: () {},
+          onComplete: (_) {},
+        ),
+      ),
+    );
+    await tester.pump();
+
+    final text = tester.widget<Text>(find.text(questionText));
+    final element = tester.element(find.text(questionText));
+    final scheme = Theme.of(element).colorScheme;
+    expect(text.style?.color, scheme.onSurface);
+    expect(find.byType(TextField), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 
   test(

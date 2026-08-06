@@ -54,12 +54,19 @@ class AiJsonParser {
   ) {
     Object? value = decoded;
     if (decoded is Map) {
+      var foundRootList = false;
       for (final key in rootKeys) {
         final candidate = decoded[key];
         if (candidate is List) {
           value = candidate;
+          foundRootList = true;
           break;
         }
+      }
+      // 部分 OpenAI 兼容模型在被要求返回数组时，偶尔只返回一个完整对象。
+      // 把它视为一条有效结果，交由上层分批补齐，而不是直接判定为格式错误。
+      if (!foundRootList && _looksLikeGeneratedItem(decoded)) {
+        value = [decoded];
       }
     }
     if (value is! List) return const [];
@@ -67,6 +74,15 @@ class AiJsonParser {
         .whereType<Map>()
         .map((item) => Map<String, dynamic>.from(item))
         .toList(growable: false);
+  }
+
+  static bool _looksLikeGeneratedItem(Map<dynamic, dynamic> value) {
+    return const [
+      'question',
+      'title',
+      'prompt',
+      'game_type',
+    ].any((key) => (value[key] ?? '').toString().trim().isNotEmpty);
   }
 
   /// 从第一个数组中提取已经完整闭合的直接子对象。嵌套的 rich_content / data
@@ -126,4 +142,94 @@ class AiJsonParser {
     text = text.replaceFirst(RegExp(r'\s*```\s*$'), '');
     return text.trim();
   }
+}
+
+/// 将长题目生成任务拆成多个短 JSON 批次，并合并为指定数量。
+///
+/// 许多兼容 OpenAI 的模型会在一次返回 10—30 个复杂对象时截断 JSON。
+/// 收集器限制单批数量、过滤无效对象并去重；是否接受不足数量的结果由调用方
+/// 决定。这样 UI 不会再把“成功解析到 1 道”误当成“10 道生成完成”。
+class AiJsonBatchCollector {
+  const AiJsonBatchCollector._();
+
+  static Future<List<Map<String, dynamic>>> collect({
+    required int expectedCount,
+    required Future<String> Function(
+      int requestedCount,
+      int requestNumber,
+      List<Map<String, dynamic>> collected,
+    )
+    request,
+    List<String> rootKeys = const ['questions', 'games', 'items'],
+    int maxBatchSize = 5,
+    int? maxRequests,
+    bool Function(Map<String, dynamic> value)? isValid,
+    String Function(Map<String, dynamic> value)? identityOf,
+    bool requireExact = true,
+  }) async {
+    if (expectedCount <= 0) return const [];
+    if (maxBatchSize <= 0) {
+      throw ArgumentError.value(maxBatchSize, 'maxBatchSize');
+    }
+
+    final collected = <Map<String, dynamic>>[];
+    final identities = <String>{};
+    final minimumRequests = (expectedCount + maxBatchSize - 1) ~/ maxBatchSize;
+    final requestLimit = maxRequests ?? (minimumRequests + 2);
+    var requestNumber = 0;
+    var consecutiveEmptyResponses = 0;
+
+    while (collected.length < expectedCount &&
+        requestNumber < requestLimit &&
+        consecutiveEmptyResponses < 2) {
+      requestNumber++;
+      final remaining = expectedCount - collected.length;
+      final requestedCount = remaining < maxBatchSize
+          ? remaining
+          : maxBatchSize;
+      final raw = await request(
+        requestedCount,
+        requestNumber,
+        List<Map<String, dynamic>>.unmodifiable(collected),
+      );
+      final decoded = AiJsonParser.decodeObjectList(raw, rootKeys: rootKeys);
+      final before = collected.length;
+
+      for (final value in decoded) {
+        if (isValid != null && !isValid(value)) continue;
+        final identity = identityOf?.call(value) ?? jsonEncode(value);
+        if (identities.add(identity)) collected.add(value);
+        if (collected.length >= expectedCount) break;
+      }
+
+      if (collected.length == before) {
+        consecutiveEmptyResponses++;
+      } else {
+        consecutiveEmptyResponses = 0;
+      }
+    }
+
+    final result = collected.take(expectedCount).toList(growable: false);
+    if (requireExact && result.length < expectedCount) {
+      throw AiJsonIncompleteException(
+        expectedCount: expectedCount,
+        actualCount: result.length,
+      );
+    }
+    return result;
+  }
+}
+
+class AiJsonIncompleteException implements Exception {
+  const AiJsonIncompleteException({
+    required this.expectedCount,
+    required this.actualCount,
+  });
+
+  final int expectedCount;
+  final int actualCount;
+
+  @override
+  String toString() =>
+      'AiJsonIncompleteException(expected: $expectedCount, actual: $actualCount)';
 }
