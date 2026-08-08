@@ -174,19 +174,23 @@ class AiJsonBatchCollector {
 
     final collected = <Map<String, dynamic>>[];
     final identities = <String>{};
-    final minimumRequests = (expectedCount + maxBatchSize - 1) ~/ maxBatchSize;
-    final requestLimit = maxRequests ?? (minimumRequests + 2);
+    // Some OpenAI-compatible providers silently return only one complete
+    // object even when asked for five. Keep enough headroom to finish one
+    // object per request, while the empty/duplicate guard below prevents an
+    // unproductive provider from looping forever.
+    final requestLimit = maxRequests ?? (expectedCount + 3);
     var requestNumber = 0;
     var consecutiveEmptyResponses = 0;
+    var effectiveBatchSize = maxBatchSize;
 
     while (collected.length < expectedCount &&
         requestNumber < requestLimit &&
-        consecutiveEmptyResponses < 2) {
+        consecutiveEmptyResponses < 3) {
       requestNumber++;
       final remaining = expectedCount - collected.length;
-      final requestedCount = remaining < maxBatchSize
+      final requestedCount = remaining < effectiveBatchSize
           ? remaining
-          : maxBatchSize;
+          : effectiveBatchSize;
       final raw = await request(
         requestedCount,
         requestNumber,
@@ -194,6 +198,15 @@ class AiJsonBatchCollector {
       );
       final decoded = AiJsonParser.decodeObjectList(raw, rootKeys: rootKeys);
       final before = collected.length;
+
+      // Adapt future requests to what this provider can reliably fit in one
+      // response. This is what allows a 20-question paper to finish even when
+      // the model repeatedly emits just one complete question per response.
+      if (decoded.isNotEmpty && decoded.length < requestedCount) {
+        effectiveBatchSize = decoded.length
+            .clamp(1, effectiveBatchSize)
+            .toInt();
+      }
 
       for (final value in decoded) {
         if (isValid != null && !isValid(value)) continue;

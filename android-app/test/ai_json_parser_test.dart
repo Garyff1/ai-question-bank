@@ -92,4 +92,26 @@ void main() {
       );
     },
   );
+
+  test(
+    'batch collector adapts when provider returns one unique item per request',
+    () async {
+      var serial = 0;
+      final requestedCounts = <int>[];
+      final result = await AiJsonBatchCollector.collect(
+        expectedCount: 10,
+        maxBatchSize: 5,
+        identityOf: (item) => item['question'].toString(),
+        request: (requestedCount, _, _) async {
+          requestedCounts.add(requestedCount);
+          serial++;
+          return '[{"question":"自适应第$serial题","answer":"A"}]';
+        },
+      );
+
+      expect(result, hasLength(10));
+      expect(requestedCounts.first, 5);
+      expect(requestedCounts.skip(1), everyElement(1));
+    },
+  );
 }

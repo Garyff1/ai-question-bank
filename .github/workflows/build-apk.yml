@@ -57,7 +57,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  build-rc004-test002:
+  build-rc004-test003:
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
 
@@ -78,28 +78,28 @@ jobs:
         run: |
           flutter build apk --release --no-pub
           mkdir -p dist
-          cp build/app/outputs/flutter-apk/app-release.apk dist/ai-question-bank-android-v3.0.0-rc004-test002.apk
+          cp build/app/outputs/flutter-apk/app-release.apk dist/ai-question-bank-android-v3.0.0-rc004-test003.apk
 
       - name: Build Internal Motion Lab APK
         working-directory: android-app
         run: |
           flutter build apk --release --no-pub --no-tree-shake-icons --dart-define=INTERNAL_BUILD=true
-          cp build/app/outputs/flutter-apk/app-release.apk dist/ai-question-bank-android-v3.0.0-rc004-test002-internal.apk
+          cp build/app/outputs/flutter-apk/app-release.apk dist/ai-question-bank-android-v3.0.0-rc004-test003-internal.apk
 
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ai-question-bank-android-v3.0.0-rc004-test002
+          name: ai-question-bank-android-v3.0.0-rc004-test003
           path: android-app/dist/*.apk
           if-no-files-found: error
 
       - name: Publish GitHub pre-release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: android-v3.0.0-rc004-test002
+          tag_name: android-v3.0.0-rc004-test003
           target_commitish: ${{ github.ref_name }}
-          name: AI题库 Android v3.0.0 RC004 Test002（内部测试）
-          body_path: docs/v3.0.0-rc004-test002.md
+          name: AI题库 Android v3.0.0 RC004 Test003（内部测试）
+          body_path: docs/v3.0.0-rc004-test003.md
           files: android-app/dist/*.apk
           draft: false
           prerelease: true

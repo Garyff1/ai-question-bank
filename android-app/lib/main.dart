@@ -19,6 +19,7 @@ import 'app/app.dart';
 import 'app/app_settings_controller.dart';
 import 'core/localization/localization_extensions.dart';
 import 'core/ai/ai_json_parser.dart';
+import 'core/ai/question_generation_policy.dart';
 import 'core/motion/motion_states.dart';
 import 'core/platform/generation_wake_lock.dart';
 import 'core/security/secure_log_filter.dart';
@@ -13317,11 +13318,11 @@ class _PracticeHistoryDetailPageState extends State<PracticeHistoryDetailPage>
           const SizedBox(height: 16),
           // 知识点诊断使用可操作列表，不再用柱状图表达掌握情况。
           _ChartCard(
-            title: isEnglish ? 'Knowledge diagnosis' : '错题知识点诊断',
+            title: isEnglish ? 'Mistake priorities' : '本次错题核心知识点',
             subtitle: isEnglish
-                ? 'Sort, review and reinforce weak concepts'
-                : '按薄弱程度排序、查看并巩固知识点',
-            child: KnowledgeDiagnosisList(
+                ? 'Ranked by mistakes in this practice session'
+                : '仅总结本次练习，按错题数量标出巩固优先级',
+            child: _SessionKnowledgeSummary(
               items: diagnoses,
               onReinforce: (item) {
                 final onGoWrong = widget.onGoWrong;
@@ -13533,6 +13534,138 @@ class _ChartCard extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+/// A concise, session-scoped summary. The full interactive diagnosis remains
+/// available in the mistake book; a single practice record should only answer
+/// “what did I miss and what should I review first?”.
+class _SessionKnowledgeSummary extends StatelessWidget {
+  const _SessionKnowledgeSummary({required this.items, this.onReinforce});
+
+  final List<KnowledgeDiagnosis> items;
+  final ValueChanged<KnowledgeDiagnosis>? onReinforce;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final english = Localizations.localeOf(context).languageCode == 'en';
+    if (items.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 18),
+        child: Center(
+          child: Text(
+            english
+                ? 'No mistakes in this session. Keep it up!'
+                : '本次练习没有错题，继续保持！',
+            style: TextStyle(color: colors.onSurfaceVariant),
+          ),
+        ),
+      );
+    }
+
+    final ranked = sortKnowledgeDiagnoses(
+      items,
+      KnowledgeDiagnosisSort.mostWrong,
+    ).take(5).toList(growable: false);
+    return Column(
+      children: List.generate(ranked.length, (index) {
+        final item = ranked[index];
+        final focus = _focusText(item, english: english);
+        return Container(
+          margin: EdgeInsets.only(bottom: index == ranked.length - 1 ? 0 : 10),
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: colors.surfaceContainerHigh,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: Theme.of(context).dividerColor),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 34,
+                    height: 34,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: colors.error.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(11),
+                    ),
+                    child: Text(
+                      '${index + 1}',
+                      style: TextStyle(
+                        color: colors.error,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 11),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          item.name,
+                          style: TextStyle(
+                            color: colors.onSurface,
+                            fontSize: 15,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          english
+                              ? '${item.wrong} mistake(s) · ${item.accuracy}% accuracy'
+                              : '错 ${item.wrong} 题 · 本次正确率 ${item.accuracy}%',
+                          style: TextStyle(
+                            color: colors.onSurfaceVariant,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (onReinforce != null)
+                    TextButton(
+                      onPressed: () => onReinforce!(item),
+                      child: Text(english ? 'Review' : '巩固'),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 9),
+              Text(
+                english ? 'Main focus: $focus' : '主要考察：$focus',
+                style: TextStyle(
+                  color: colors.onSurface,
+                  fontSize: 13,
+                  height: 1.45,
+                ),
+              ),
+            ],
+          ),
+        );
+      }),
+    );
+  }
+
+  static String _focusText(KnowledgeDiagnosis item, {required bool english}) {
+    final candidates = [...item.wrongQuestions, ...item.explanations]
+        .map((value) => value.replaceAll(RegExp(r'\s+'), ' ').trim())
+        .where(
+          (value) =>
+              value.isNotEmpty &&
+              value.toLowerCase() != item.name.toLowerCase(),
+        );
+    final value = candidates.isEmpty
+        ? (english
+              ? 'Review the concept and its application.'
+              : '复习该知识点的核心概念与应用条件')
+        : candidates.first;
+    return value.length > 72 ? '${value.substring(0, 72)}…' : value;
   }
 }
 
@@ -13783,6 +13916,7 @@ class _BarRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     return LayoutBuilder(
       builder: (context, constraints) {
         final barMaxWidth = constraints.maxWidth;
@@ -13799,9 +13933,9 @@ class _BarRow extends StatelessWidget {
                 Expanded(
                   child: Text(
                     label,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 13,
-                      color: kInk,
+                      color: colors.onSurface,
                       fontWeight: FontWeight.w700,
                     ),
                     maxLines: 1,
@@ -13810,7 +13944,10 @@ class _BarRow extends StatelessWidget {
                 ),
                 Text(
                   '$total 题',
-                  style: const TextStyle(fontSize: 11, color: kMuted),
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: colors.onSurfaceVariant,
+                  ),
                 ),
               ],
             ),
@@ -13821,7 +13958,7 @@ class _BarRow extends StatelessWidget {
                 height: 16,
                 child: Stack(
                   children: [
-                    Container(color: const Color(0xFFF1F5F9)),
+                    Container(color: colors.surfaceContainerHighest),
                     Positioned(
                       left: 0,
                       top: 0,
@@ -13871,10 +14008,14 @@ class _EmptyChart extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 18),
       alignment: Alignment.center,
-      child: Text(text, style: const TextStyle(fontSize: 13, color: kMuted)),
+      child: Text(
+        text,
+        style: TextStyle(fontSize: 13, color: colors.onSurfaceVariant),
+      ),
     );
   }
 }
@@ -14133,8 +14274,8 @@ class _AboutAppCard extends StatelessWidget {
           const SizedBox(height: 8),
           Text(
             english
-                ? 'v3.0.0 RC004 Test002 · Generation reliability and dark-theme readability fixes.'
-                : 'v3.0.0 RC004 Test002 · 修复题量不足、生成截断与深色模式可读性。',
+                ? 'v3.0.0 RC004 Test003 · Source-grounded questions, adaptive paper completion and dark-theme fixes.'
+                : 'v3.0.0 RC004 Test003 · 资料核心出题、试卷自适应补全与深色模式修复。',
             style: TextStyle(color: colors.onSurfaceVariant, height: 1.5),
           ),
         ],
@@ -16943,13 +17084,16 @@ class AiService {
     List<String> rootKeys = const ['questions', 'games', 'items'],
     bool Function(Map<String, dynamic> value)? isValid,
     bool requireExact = true,
+    int maxBatchSize = 5,
+    int? maxRequests,
   }) async {
     late final List<Map<String, dynamic>> collected;
     try {
       collected = await AiJsonBatchCollector.collect(
         expectedCount: expectedCount,
         rootKeys: rootKeys,
-        maxBatchSize: 5,
+        maxBatchSize: maxBatchSize,
+        maxRequests: maxRequests,
         isValid: isValid,
         requireExact: requireExact,
         identityOf: (value) {
@@ -17030,6 +17174,7 @@ class AiService {
     final materialText = material.length > 6500
         ? material.substring(0, 6500)
         : material;
+    final groundingPolicy = await QuestionGenerationPolicy.load();
     // v2.7.5: 当 enableListening=true 时，即使 enableRichContent=false 也必须允许 listening 块
     // listening 是 rich_content 数组的一种类型，不能被纯文字模式禁掉
     final richRequireBlock = enableRichContent
@@ -17048,7 +17193,7 @@ class AiService {
         ? '6. 本次为纯文字题目模式，**不要返回 math/physics/chemistry/chart/svg 等 rich_content**；但**英语听力题的 listening 块例外**，必须按第 8 条要求返回 listening rich_content。'
         : '6. 本次为纯文字题目模式，不要返回 rich_content 字段或留空数组 []，避免拖长输出导致 JSON 截断。';
     final chartNote = enableRichContent
-        ? '\n8. **图表题配额（强制）**：总共 $count 道题中，必须恰好有 $richTarget 道题包含 type:"chart" 的 rich_content（约 25%，必须保持在 20%-30%）。图表必须返回结构化数据，例如 {"type":"chart","data":{"chartType":"bar","title":"分布","xLabels":["A","B","C"],"series":[{"name":"人数","values":[30,50,20]}],"unit":"人","description":""}}。xLabels 与 values 数量必须一致且至少 2 组，数据必须与题干完全一致；其余题目不得返回 chart。'
+        ? '\n8. **图表题配额（强制）**：总共 $count 道题中，必须恰好有 $richTarget 道题包含 type:"chart" 的 rich_content（约 25%，必须保持在 20%-30%）。图表必须返回结构化数据，例如 {"type":"chart","data":{"chartType":"bar","title":"专业数据关系","xLabels":["条件A","条件B","条件C"],"series":[{"name":"测量值","values":[30,50,20]}],"unit":"单位","description":""}}。xLabels 与 values 数量必须一致且至少 2 组，数据必须与题干完全一致；图表必须考查资料中的专业数据、参数关系或实验结果，严禁统计章节习题数、题目数、页数、字数等文档元数据；其余题目不得返回 chart。'
         : '\n8. 本次不开启图表题，不要返回 chart 类型。';
     final listeningNote = enableListening
         ? '\n9. **听力题配额（强制）**：总共 $count 道题中，必须恰好有 $richTarget 道题包含 type:"listening" 的 rich_content（约 25%，必须保持在 20%-30%）。\n   - listening 块格式：{"type":"listening","data":{"audio_text":"完整可朗读段落（30-80 词，来自资料或基于资料改编，不要只截取零散词语）","voice":"en-US 或 zh-CN"}}\n   - audio_text 必须是完整句子或段落，各题不得重复\n   - 若图表和听力同时开启，两类各占约 25%，不要放在同一道题中'
@@ -17067,6 +17212,8 @@ class AiService {
     "options": ["A. 选项", "B. 选项"],
     "answer": "A 或 [\\"A\\",\\"C\\"] 或 正确/错误 或 填空答案",
     "explanation": "解析",
+    "knowledge_point": "具体学科知识点",
+    "source_basis": "资料中的简短事实依据",
     "rich_content": []
   }
 ]
@@ -17081,6 +17228,8 @@ $richRequireBlock
 7. 涉及图形/公式的题目，**禁止**在题干中使用"如图所示"等无法表达的描述，必须通过 rich_content 字段返回对应的图形描述。
 $chartNote
 $listeningNote
+
+$groundingPolicy
 
 学习资料：
 $materialText
@@ -17097,7 +17246,9 @@ $materialText
     "question": "题干",
     "options": ["A. 选项", "B. 选项"],
     "answer": "A 或 [\\"A\\",\\"C\\"] 或 正确/错误 或 填空答案",
-    "explanation": "解析"${enableListening ? '''
+    "explanation": "解析",
+    "knowledge_point": "具体学科知识点",
+    "source_basis": "资料中的简短事实依据"${enableListening ? '''
     ,"rich_content": []  // 仅英语听力题填 listening 块，其他题目留空数组''' : ''}
   }
 ]
@@ -17112,13 +17263,18 @@ $richRequireBlock
 $chartNote
 $listeningNote
 
+$groundingPolicy
+
 学习资料：
 $materialText
 ''';
     final list = await _requestJsonObjects(
       config: config,
       messages: [
-        {'role': 'system', 'content': '你是严谨的中文学习题库出题助手，只输出可解析 JSON。'},
+        {
+          'role': 'system',
+          'content': '你是严谨的学习题库出题助手，只输出可解析 JSON。\n\n$groundingPolicy',
+        },
         {'role': 'user', 'content': prompt},
       ],
       maxTokens: (count * 500).clamp(4500, 12000),
@@ -17131,7 +17287,9 @@ $materialText
         final answer = (item['answer'] ?? item['correct_answer'] ?? '')
             .toString()
             .trim();
-        return question.isNotEmpty && answer.isNotEmpty;
+        return question.isNotEmpty &&
+            answer.isNotEmpty &&
+            !QuestionGenerationPolicy.isClearlyIrrelevantMetadataQuestion(item);
       },
     );
     final questions = list
@@ -17180,6 +17338,7 @@ $materialText
     final materialText = material.length > 6500
         ? material.substring(0, 6500)
         : material;
+    final groundingPolicy = await QuestionGenerationPolicy.load();
     final isBoss = level == 5;
     final difficultyDesc = level <= 2
         ? '简单（基础概念、定义识别、直接套用公式）'
@@ -17213,6 +17372,7 @@ $materialText
     "answer": "A 或 填空答案 或 主观题参考答案",
     "explanation": "详细解析",
     "knowledge_point": "知识点（如：一元二次方程）",
+    "source_basis": "资料中的简短事实依据",
     "rich_content": []
   }
 ]
@@ -17226,6 +17386,8 @@ $materialText
 6. 第 ${level == 5 ? '1-4 题为基础难度，第 5 题为综合大题' : '所有题目难度一致'}。
 7. 不要返回 rich_content 字段，留空数组 []。
 
+$groundingPolicy
+
 学习资料：
 $materialText
 ''';
@@ -17234,13 +17396,21 @@ $materialText
       messages: [
         {
           'role': 'system',
-          'content': '你是严谨的中文学习题库出题助手，专长是按难度梯度生成闯关题目，只输出可解析 JSON。',
+          'content':
+              '你是严谨的学习题库出题助手，专长是按难度梯度生成闯关题目，只输出可解析 JSON。\n\n$groundingPolicy',
         },
         {'role': 'user', 'content': prompt},
       ],
       maxTokens: isBoss ? 8000 : 5000,
       expectedCount: 5,
       rootKeys: const ['questions', 'items'],
+      isValid: (item) {
+        final question = (item['question'] ?? '').toString().trim();
+        final answer = (item['answer'] ?? '').toString().trim();
+        return question.isNotEmpty &&
+            answer.isNotEmpty &&
+            !QuestionGenerationPolicy.isClearlyIrrelevantMetadataQuestion(item);
+      },
     );
     final questions = list
         .map(
@@ -17265,6 +17435,7 @@ $materialText
     final materialText = material.length > 6500
         ? material.substring(0, 6500)
         : material;
+    final groundingPolicy = await QuestionGenerationPolicy.load();
     final isBoss = level == 5;
     final difficultyDesc = level <= 2
         ? '简单（基础概念、定义识别）'
@@ -17363,6 +17534,9 @@ $materialText
 9. knowledge_point 简短 2-8 字。
 10. 题目必须紧扣资料内容，难度符合关卡设定。
 11. Boss 关（第5关）题目需综合、有挑战性。
+12. 每个对象增加 "source_basis":"资料中的简短事实依据"。
+
+$groundingPolicy
 
 学习资料：
 $materialText
@@ -17372,13 +17546,16 @@ $materialText
       messages: [
         {
           'role': 'system',
-          'content': '你是游戏化学习设计专家，擅长把知识点改造成有趣的 Mini-Game。只输出可解析 JSON 数组。',
+          'content':
+              '你是游戏化学习设计专家，擅长把资料核心知识改造成有趣的 Mini-Game。只输出可解析 JSON 数组。\n\n$groundingPolicy',
         },
         {'role': 'user', 'content': prompt},
       ],
       maxTokens: isBoss ? 8000 : 6000,
       expectedCount: gameCount,
       rootKeys: const ['games', 'items'],
+      isValid: (item) =>
+          !QuestionGenerationPolicy.isClearlyIrrelevantMetadataQuestion(item),
       // Mini-Game 仍保留既有的本地安全题目补齐逻辑，避免模型偶发少返回
       // 时阻断整段闯关；普通练习与试卷继续要求精确题量。
       requireExact: false,
@@ -17646,6 +17823,7 @@ $materialText
     final materialText = material.length > 8000
         ? material.substring(0, 8000)
         : material;
+    final groundingPolicy = await QuestionGenerationPolicy.load();
 
     // 选择题型分布：优先使用显式模板；否则按默认规则
     final tpl =
@@ -17691,7 +17869,10 @@ $materialText
         : richTarget;
 
     // 根据开关动态构建 rich_content 字段说明
-    final richFieldBlock = allowRichContent ? '''  "rich_content": []''' : '';
+    final richFieldBlock = allowRichContent
+        ? ''',
+  "rich_content": []'''
+        : '';
     final richDocBlock = allowRichContent
         ? '''
 【rich_content 字段说明（启用）】
@@ -17733,7 +17914,7 @@ $materialText
    普通纯文字题目可留空数组 []。'''
         : '10. 本次为纯文字题目模式，不要返回 rich_content 字段或留空数组 []。';
     final chartPaperNote = enableRichContent
-        ? '\n12. **图表题配额（强制）**：全卷 $totalQ 题中必须恰好有 $richTarget 道题包含 type:"chart" 的 rich_content（约 25%，保持在 20%-30%）。图表只返回结构化数据：data.chartType、data.title、data.xLabels、data.series、可选 data.unit 和 data.description；xLabels 与每组 series.values 长度一致且至少 2 组，并与题干完全一致。其余题目不得返回 chart。'
+        ? '\n12. **图表题配额（强制）**：全卷 $totalQ 题中必须恰好有 $richTarget 道题包含 type:"chart" 的 rich_content（约 25%，保持在 20%-30%）。图表只返回结构化数据：data.chartType、data.title、data.xLabels、data.series、可选 data.unit 和 data.description；xLabels 与每组 series.values 长度一致且至少 2 组，并与题干完全一致。图表必须表达资料中的专业数据、参数关系或实验结果，严禁统计章节习题数、题目数、页数、字数等文档元数据。其余题目不得返回 chart。'
         : '\n12. 本次不开启图表题，不要返回 chart 类型。';
     final listeningPaperNote = enableListening
         ? '\n13. **听力题配额（强制）**：全卷 $totalQ 题中必须恰好有 $effectiveListeningTarget 道题包含 type:"listening" 的 rich_content（保持在 20%-30%）。audio_text 为完整可朗读段落（30-80 词），各题不得重复；若图表同时开启，两类不要放在同一道题中。'
@@ -17767,7 +17948,7 @@ ${sections.join('\n')}
   "answer": "A 或 填空答案 或 正确/错误 或 主观题参考答案",
   "explanation": "详细解析（200字内）",
   "knowledge_point": "本题考查的知识点（5-12字，如：一元二次方程）",
-$richFieldBlock
+  "source_basis": "资料中的简短事实依据"$richFieldBlock
 }
 $richDocBlock
 
@@ -17787,6 +17968,8 @@ $chartPaperNote
 $listeningPaperNote
 $chapterNote
 $kpNote
+
+$groundingPolicy
 
 【内容审核红线（绝对禁止，违反则立即终止）】
 - 禁止涉政：不得出现任何破坏国家稳定安宁、恶意涉政的内容。
@@ -17809,13 +17992,26 @@ $materialText
         {
           'role': 'system',
           'content':
-              '你是严谨的中文试卷出题专家，熟悉国内小学/初中/高中/成年人各类考试（期末、期中、中考、高考、周测、小测、考研、考编等）的试卷格式。只输出可解析的 JSON 数组，不输出任何其他内容。',
+              '你是严谨的中文试卷出题专家，熟悉国内小学/初中/高中/成年人各类考试（期末、期中、中考、高考、周测、小测、考研、考编等）的试卷格式。只输出可解析的 JSON 数组，不输出任何其他内容。\n\n$groundingPolicy',
         },
         {'role': 'user', 'content': prompt},
       ],
       maxTokens: estTokens,
       expectedCount: totalQ,
       rootKeys: const ['questions', 'items'],
+      maxBatchSize: 3,
+      maxRequests: totalQ + 3,
+      isValid: (item) {
+        final question = (item['question'] ?? item['title'] ?? '')
+            .toString()
+            .trim();
+        final answer = (item['answer'] ?? item['correct_answer'] ?? '')
+            .toString()
+            .trim();
+        return question.isNotEmpty &&
+            answer.isNotEmpty &&
+            !QuestionGenerationPolicy.isClearlyIrrelevantMetadataQuestion(item);
+      },
     );
     final paperQuestions = list
         .map((item) {
@@ -21754,6 +21950,12 @@ typedef MiniGameCallback =
       String? correctAnswer,
     });
 
+Color _challengePrimaryText(BuildContext context) =>
+    Theme.of(context).colorScheme.onSurface;
+
+Color _challengeSecondaryText(BuildContext context) =>
+    Theme.of(context).colorScheme.onSurfaceVariant;
+
 class MiniGamePage extends StatefulWidget {
   const MiniGamePage({
     super.key,
@@ -21891,6 +22093,7 @@ class _MiniGamePageState extends State<MiniGamePage>
   @override
   Widget build(BuildContext context) {
     final game = widget.session.games[_currentGameIndex];
+    final colors = Theme.of(context).colorScheme;
     return Scaffold(
       body: Stack(
         children: [
@@ -21908,9 +22111,9 @@ class _MiniGamePageState extends State<MiniGamePage>
                     children: [
                       Text(
                         '${_currentGameIndex + 1}/$_total',
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 12,
-                          color: kMuted,
+                          color: colors.onSurfaceVariant,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
@@ -21957,7 +22160,7 @@ class _MiniGamePageState extends State<MiniGamePage>
                     vertical: 6,
                   ),
                   decoration: BoxDecoration(
-                    color: kBg,
+                    color: colors.surfaceContainerHigh,
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: Row(
@@ -21970,16 +22173,19 @@ class _MiniGamePageState extends State<MiniGamePage>
                       const SizedBox(width: 8),
                       Text(
                         game.type.label,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 13,
                           fontWeight: FontWeight.w700,
-                          color: kInk,
+                          color: colors.onSurface,
                         ),
                       ),
                       const SizedBox(width: 6),
                       Text(
                         game.type.desc,
-                        style: const TextStyle(fontSize: 11, color: kMuted),
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: colors.onSurfaceVariant,
+                        ),
                       ),
                     ],
                   ),
@@ -22049,6 +22255,7 @@ class _MiniGamePageState extends State<MiniGamePage>
   }
 
   Widget _buildTopBar() {
+    final colors = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       child: Row(
@@ -22083,10 +22290,10 @@ class _MiniGamePageState extends State<MiniGamePage>
             child: Text(
               '${widget.session.subject} · 第${widget.session.chapter}章 第${widget.session.level}关${widget.session.isBoss ? ' · Boss' : ''}',
               textAlign: TextAlign.center,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w700,
-                color: kInk,
+                color: colors.onSurface,
               ),
             ),
           ),
@@ -22311,10 +22518,10 @@ class _MatchingGameWidgetState extends State<MatchingGameWidget>
         children: [
           Text(
             widget.game.prompt,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.w700,
-              color: kInk,
+              color: _challengePrimaryText(context),
             ),
           ),
           if (widget.game.knowledgePoint != null) ...[
@@ -22673,10 +22880,10 @@ class _ListeningGameWidgetState extends State<ListeningGameWidget> {
         children: [
           Text(
             widget.game.prompt,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.w700,
-              color: kInk,
+              color: _challengePrimaryText(context),
             ),
           ),
           const SizedBox(height: 16),
@@ -23041,10 +23248,10 @@ class _FlashcardGameWidgetState extends State<FlashcardGameWidget>
             promptLines
                 .where((l) => !RegExp(r'^[A-D][.、)]').hasMatch(l.trim()))
                 .join('\n'),
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.w600,
-              color: kInk,
+              color: _challengePrimaryText(context),
             ),
           ),
           const SizedBox(height: 16),
@@ -23229,16 +23436,19 @@ class _ReorderGameWidgetState extends State<ReorderGameWidget> {
         children: [
           Text(
             widget.game.prompt,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.w700,
-              color: kInk,
+              color: _challengePrimaryText(context),
             ),
           ),
           const SizedBox(height: 8),
-          const Text(
+          Text(
             '按正确顺序点击下方步骤',
-            style: TextStyle(fontSize: 12, color: kMuted),
+            style: TextStyle(
+              fontSize: 12,
+              color: _challengeSecondaryText(context),
+            ),
           ),
           const SizedBox(height: 20),
           ...List.generate(_items.length, (i) {
@@ -23506,10 +23716,10 @@ class _TapFastGameWidgetState extends State<TapFastGameWidget>
           const SizedBox(height: 16),
           Text(
             widget.game.prompt,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.w600,
-              color: kInk,
+              color: _challengePrimaryText(context),
             ),
           ),
           const SizedBox(height: 24),
@@ -23643,10 +23853,10 @@ class _TapFastGameWidgetState extends State<TapFastGameWidget>
                     const SizedBox(height: 16),
                     Text(
                       '完成！正确 $_correctCount / 错误 $_wrongCount',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.w800,
-                        color: kInk,
+                        color: _challengePrimaryText(context),
                       ),
                     ),
                   ],
@@ -23793,10 +24003,10 @@ class _SpellGameWidgetState extends State<SpellGameWidget>
                 Expanded(
                   child: Text(
                     widget.game.prompt,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w600,
-                      color: kInk,
+                      color: _challengePrimaryText(context),
                     ),
                   ),
                 ),
@@ -23807,7 +24017,10 @@ class _SpellGameWidgetState extends State<SpellGameWidget>
           Center(
             child: Text(
               '拼写正确答案（${_units.length}个字/字母）',
-              style: const TextStyle(fontSize: 12, color: kMuted),
+              style: TextStyle(
+                fontSize: 12,
+                color: _challengeSecondaryText(context),
+              ),
             ),
           ),
           const SizedBox(height: 24),
@@ -24049,10 +24262,10 @@ class _FillBlankGameWidgetState extends State<FillBlankGameWidget> {
                       items.add(
                         Text(
                           _parts[i],
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 17,
                             height: 2.0,
-                            color: kInk,
+                            color: _challengePrimaryText(context),
                             fontWeight: FontWeight.w500,
                           ),
                         ),
@@ -24388,10 +24601,10 @@ class _TrueFalseGameWidgetState extends State<TrueFalseGameWidget>
                             Text(
                               widget.game.prompt,
                               textAlign: TextAlign.center,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 20,
                                 fontWeight: FontWeight.w700,
-                                color: kInk,
+                                color: _challengePrimaryText(context),
                                 height: 1.5,
                               ),
                             ),
@@ -24614,10 +24827,10 @@ class _LinkUpGameWidgetState extends State<LinkUpGameWidget>
               Expanded(
                 child: Text(
                   widget.game.prompt,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
-                    color: kInk,
+                    color: _challengePrimaryText(context),
                   ),
                 ),
               ),
