@@ -5,8 +5,9 @@ import '../../app/app_settings_controller.dart';
 import '../../core/localization/localization_extensions.dart';
 import '../../core/theme/app_spacing.dart';
 import '../motion_lab/motion_lab_page.dart';
+import 'api_usage_records_page.dart';
+import 'byok_data_flow_page.dart';
 import 'third_party_notices_page.dart';
-import '../official_ai/official_ai_page.dart';
 
 class SettingsCenterCard extends StatelessWidget {
   const SettingsCenterCard({super.key});
@@ -189,7 +190,16 @@ class SettingsCenterCard extends StatelessWidget {
             ListTile(
               contentPadding: EdgeInsets.zero,
               leading: const Icon(Icons.key_rounded),
-              title: Text(l10n.ownApiKey),
+              title: Text(
+                Localizations.localeOf(context).languageCode == 'en'
+                    ? 'Bring Your Own Key (BYOK)'
+                    : '使用自己的 API Key（BYOK）',
+              ),
+              subtitle: Text(
+                Localizations.localeOf(context).languageCode == 'en'
+                    ? 'Stored locally with Android Keystore. No in-app AI credits.'
+                    : 'Key 使用 Android Keystore 保存在本机；软件不出售模型额度。',
+              ),
               trailing: const Icon(
                 Icons.check_circle_rounded,
                 color: Color(0xFF10B981),
@@ -197,24 +207,46 @@ class SettingsCenterCard extends StatelessWidget {
             ),
             ListTile(
               contentPadding: EdgeInsets.zero,
-              leading: const Icon(Icons.cloud_outlined),
+              leading: const Icon(Icons.shield_outlined),
               title: Text(
                 Localizations.localeOf(context).languageCode == 'en'
-                    ? 'Official AI service (testing)'
-                    : '官方 AI 服务（测试中）',
+                    ? 'API usage protection'
+                    : 'API 使用保护与记录',
               ),
               subtitle: Text(
                 Localizations.localeOf(context).languageCode == 'en'
-                    ? 'Mock payment only. No real charge.'
-                    : '仅开放模拟支付，不会真实扣款',
+                    ? 'Duplicate blocking, bounded retry and local receipts'
+                    : '重复请求拦截、有限重试、本机脱敏凭证',
               ),
               trailing: const Icon(Icons.chevron_right_rounded),
               onTap: () => Navigator.of(context).push(
-                MaterialPageRoute<void>(builder: (_) => const OfficialAiPage()),
+                MaterialPageRoute<void>(
+                  builder: (_) => const ApiUsageRecordsPage(),
+                ),
               ),
             ),
             const Divider(height: 30),
             _label(context, l10n.dataAndPrivacy),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.route_outlined),
+              title: Text(
+                Localizations.localeOf(context).languageCode == 'en'
+                    ? 'BYOK & data flow'
+                    : 'BYOK 与数据流说明',
+              ),
+              subtitle: Text(
+                Localizations.localeOf(context).languageCode == 'en'
+                    ? 'Provider calls, quota risks and incident handling'
+                    : '第三方调用、额度风险与异常处理',
+              ),
+              trailing: const Icon(Icons.chevron_right_rounded),
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const ByokDataFlowPage(),
+                ),
+              ),
+            ),
             ListTile(
               contentPadding: EdgeInsets.zero,
               leading: const Icon(Icons.policy_outlined),
@@ -233,7 +265,7 @@ class SettingsCenterCard extends StatelessWidget {
                 contentPadding: EdgeInsets.zero,
                 leading: const Icon(Icons.science_outlined),
                 title: const Text('Motion Lab · 动效实验室'),
-                subtitle: const Text('本地模拟数据，不调用 API 或支付'),
+                subtitle: const Text('本地模拟数据，不调用模型或网络'),
                 trailing: const Icon(Icons.chevron_right_rounded),
                 onTap: () => Navigator.of(context).push(
                   MaterialPageRoute<void>(

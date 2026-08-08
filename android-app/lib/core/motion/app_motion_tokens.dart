@@ -24,21 +24,21 @@ abstract final class AppMotionTokens {
 class MotionSemanticColors extends ThemeExtension<MotionSemanticColors> {
   const MotionSemanticColors({
     required this.byokGlow,
-    required this.officialGlow,
+    required this.providerGlow,
     required this.forgeCore,
     required this.successGlow,
     required this.warningGlow,
   });
 
   final Color byokGlow;
-  final Color officialGlow;
+  final Color providerGlow;
   final Color forgeCore;
   final Color successGlow;
   final Color warningGlow;
 
   factory MotionSemanticColors.from(ColorScheme scheme) => MotionSemanticColors(
     byokGlow: scheme.tertiary,
-    officialGlow: scheme.primary,
+    providerGlow: scheme.primary,
     forgeCore: Color.lerp(scheme.primary, scheme.tertiary, .45)!,
     successGlow: const Color(0xFF10B981),
     warningGlow: const Color(0xFFF59E0B),
@@ -47,13 +47,13 @@ class MotionSemanticColors extends ThemeExtension<MotionSemanticColors> {
   @override
   MotionSemanticColors copyWith({
     Color? byokGlow,
-    Color? officialGlow,
+    Color? providerGlow,
     Color? forgeCore,
     Color? successGlow,
     Color? warningGlow,
   }) => MotionSemanticColors(
     byokGlow: byokGlow ?? this.byokGlow,
-    officialGlow: officialGlow ?? this.officialGlow,
+    providerGlow: providerGlow ?? this.providerGlow,
     forgeCore: forgeCore ?? this.forgeCore,
     successGlow: successGlow ?? this.successGlow,
     warningGlow: warningGlow ?? this.warningGlow,
@@ -67,7 +67,7 @@ class MotionSemanticColors extends ThemeExtension<MotionSemanticColors> {
     if (other is! MotionSemanticColors) return this;
     return MotionSemanticColors(
       byokGlow: Color.lerp(byokGlow, other.byokGlow, t)!,
-      officialGlow: Color.lerp(officialGlow, other.officialGlow, t)!,
+      providerGlow: Color.lerp(providerGlow, other.providerGlow, t)!,
       forgeCore: Color.lerp(forgeCore, other.forgeCore, t)!,
       successGlow: Color.lerp(successGlow, other.successGlow, t)!,
       warningGlow: Color.lerp(warningGlow, other.warningGlow, t)!,

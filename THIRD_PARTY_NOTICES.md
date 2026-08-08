@@ -1,7 +1,7 @@
 # AI题库第三方软件与许可证说明
 
-更新日期：2026-07-14
-适用范围：Android v3.0.0 Phase 3 Dev001
+更新日期：2026-08-08
+适用范围：Android v3.0.0 RC005（BYOK-only）
 
 本文件用于说明 AI题库直接使用的主要第三方软件。应用内“设置 → 开源许可”会展示 Flutter 在构建时收集的完整许可证原文；本文件侧重列出直接依赖、用途和需要关注的商业许可边界。各软件仍以其随包许可证原文为准。
 
@@ -10,7 +10,7 @@
 | Flutter | 当前构建工具链 | 跨平台应用框架 | BSD-3-Clause | https://flutter.dev | 否 |
 | http | 1.6.0 | API 请求 | BSD-3-Clause | https://pub.dev/packages/http | 否 |
 | shared_preferences | 2.5.5 | 本地非敏感设置与业务数据 | BSD-3-Clause | https://pub.dev/packages/shared_preferences | 否 |
-| flutter_secure_storage | 9.2.4 | Android Keystore API Key 与官方服务令牌安全存储 | BSD-3-Clause | https://pub.dev/packages/flutter_secure_storage | 否 |
+| flutter_secure_storage | 9.2.4 | Android Keystore 用户自带 API Key 安全存储 | BSD-3-Clause | https://pub.dev/packages/flutter_secure_storage | 否 |
 | file_picker | 11.0.2 | 资料文件选择 | MIT | https://pub.dev/packages/file_picker | 否 |
 | url_launcher | 6.3.2 | 打开网页和外部链接 | BSD-3-Clause | https://pub.dev/packages/url_launcher | 否 |
 | archive | 4.0.9 | ZIP 打包 | MIT | https://pub.dev/packages/archive | 否 |
@@ -33,7 +33,7 @@
 
 `syncfusion_flutter_pdf` 不是 MIT/BSD 类开源包。Syncfusion 明确要求使用者持有商业许可证，或经申请并满足条件的 Community License。Community License 当前公开条件包括：年总收入低于 100 万美元、开发者不超过 5 人、员工不超过 10 人，且外部融资历史不超过 300 万美元；开源项目使用前也要求联系 Syncfusion 注册。
 
-因此在发布商业化的官方 AI 服务前必须完成以下任一项：
+因此在公开发布或未来商业使用前必须完成以下任一项：
 
 1. 取得并留档有效的 Syncfusion Community License；或
 2. 购买适用的商业许可证；或

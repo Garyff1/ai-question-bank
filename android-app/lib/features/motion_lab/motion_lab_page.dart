@@ -4,13 +4,11 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/motion/motion_states.dart';
-import '../../core/motion/shared_element_route.dart';
 import '../../core/theme/app_theme.dart';
 import '../generation/motion/knowledge_forge_view.dart';
 import '../paper_builder/motion/answer_layer_reveal.dart';
 import '../paper_builder/motion/paper_binding_transition.dart';
-import '../service_mode/motion/service_mode_portal.dart';
-import '../service_mode/service_mode_controller.dart';
+import '../provider_portal/provider_portal.dart';
 import 'demo_data.dart';
 import 'motion_lab_controls.dart';
 
@@ -214,7 +212,7 @@ class _MotionLabPageState extends State<MotionLabPage> {
   };
 
   String _demoName(MotionLabDemo demo) => switch (demo) {
-    MotionLabDemo.servicePortal => 'AI 模式传送门',
+    MotionLabDemo.servicePortal => '模型服务商传送门',
     MotionLabDemo.knowledgeForge => '知识炼成生成过程',
     MotionLabDemo.paperBinding => '题目卡片形成试卷',
     MotionLabDemo.questionLift => '单题抬起编辑',
@@ -240,21 +238,17 @@ class _ServicePortalDemo extends StatelessWidget {
         children: [
           const Icon(Icons.hub_rounded, size: 54),
           const SizedBox(height: 12),
-          const Text('从当前服务标识进入两个连续的 AI 服务空间。', textAlign: TextAlign.center),
+          const Text(
+            '预览模型服务商之间的空间切换，不读取或展示 API Key。',
+            textAlign: TextAlign.center,
+          ),
           const SizedBox(height: 16),
           FilledButton.icon(
-            onPressed: () => Navigator.of(context).push<void>(
-              SharedElementRoute<void>(
-                opaque: false,
-                barrierLabel: 'Motion Lab service portal',
-                builder: (_) => ServiceModePortal(
-                  currentMode: AiServiceMode.byok,
-                  officialServiceEnabled: false,
-                  motionLab: true,
-                  reduceMotionOverride: reduceMotion,
-                  lowPerformance: lowPerformance,
-                ),
-              ),
+            onPressed: () => showProviderPortal(
+              context,
+              currentProviderId: 'deepseek',
+              keyConfigured: false,
+              currentModel: 'deepseek-v4-flash',
             ),
             icon: const Icon(Icons.open_in_new_rounded),
             label: const Text('打开传送门'),

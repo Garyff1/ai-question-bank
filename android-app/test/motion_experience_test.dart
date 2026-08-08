@@ -4,8 +4,6 @@ import 'package:ai_question_bank_android/features/generation/motion/generation_m
 import 'package:ai_question_bank_android/features/generation/motion/knowledge_forge_view.dart';
 import 'package:ai_question_bank_android/features/paper_builder/motion/answer_layer_reveal.dart';
 import 'package:ai_question_bank_android/features/paper_builder/motion/paper_binding_transition.dart';
-import 'package:ai_question_bank_android/features/service_mode/motion/service_mode_transition_controller.dart';
-import 'package:ai_question_bank_android/features/service_mode/service_mode_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -23,18 +21,6 @@ void main() {
     controller.reset();
     expect(controller.state, GenerateMotionState.idle);
     expect(controller.actualQuestionCount, isNull);
-  });
-
-  test('service portal locks the selected mode after confirmation', () {
-    final controller = ServiceModeTransitionController(AiServiceMode.byok);
-    controller.open();
-    controller.select(AiServiceMode.official);
-    controller.confirm();
-    controller.select(AiServiceMode.byok);
-
-    expect(controller.selected, AiServiceMode.official);
-    expect(controller.state, ServicePortalState.confirming);
-    expect(controller.locked, isTrue);
   });
 
   test('reduced and low-performance policies remove expensive effects', () {

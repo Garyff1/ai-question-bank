@@ -108,9 +108,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get ownApiKey => '使用自己的 API Key';
 
   @override
-  String get officialAiComingSoon => '官方 AI 服务（即将开放）';
-
-  @override
   String get dataAndPrivacy => '数据与隐私';
 
   @override

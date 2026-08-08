@@ -7,6 +7,7 @@ from app.database import get_db
 from app.models import User, ApiConfig
 from app.utils.auth import get_current_user
 from app.config import settings
+from app.services.provider_compat import build_chat_payload, build_llm_headers
 
 router = APIRouter()
 
@@ -14,19 +15,12 @@ router = APIRouter()
 PROVIDER_TEMPLATES = {
     "deepseek": {"name": "DeepSeek", "api_base": "https://api.deepseek.com", "model": "deepseek-v4-flash"},
     "qwen": {"name": "Qwen", "api_base": "https://dashscope.aliyuncs.com/compatible-mode/v1", "model": "qwen-plus"},
-    "zhipu": {"name": "智谱", "api_base": "https://api.z.ai/api/paas/v4", "model": "glm-4.5-flash"},
-    "mimo": {"name": "小米 MiMo", "api_base": "https://api.xiaomimimo.com/v1", "model": "MiMo-VL-7B-RL"},
-    "kimi": {"name": "Kimi", "api_base": "https://api.moonshot.ai/v1", "model": "kimi-k2.6"},
+    "zhipu": {"name": "智谱", "api_base": "https://open.bigmodel.cn/api/paas/v4", "model": "glm-5.2"},
+    "siliconflow": {"name": "硅基流动", "api_base": "https://api.siliconflow.cn/v1", "model": "Pro/zai-org/GLM-4.7"},
+    "mimo": {"name": "小米 MiMo", "api_base": "https://api.xiaomimimo.com/v1", "model": "mimo-v2.5-pro"},
+    "kimi": {"name": "Kimi", "api_base": "https://api.moonshot.cn/v1", "model": "kimi-k3"},
     "custom": {"name": "自定义", "api_base": "", "model": ""},
 }
-
-
-def build_llm_headers(api_key: str, api_base: str) -> dict[str, str]:
-    """构建大模型请求头；小米 MiMo 使用 api-key，其余预设按 OpenAI 兼容 Bearer。"""
-    base = api_base.lower()
-    if "xiaomimimo.com" in base:
-        return {"api-key": api_key, "Content-Type": "application/json"}
-    return {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
 
 
 class SaveConfigRequest(BaseModel):
@@ -133,12 +127,13 @@ def test_connection(
     """测试 API 连通性：发送一条简单请求"""
     try:
         headers = build_llm_headers(req.api_key, req.api_base)
-        payload = {
-            "model": req.model_name,
-            "messages": [{"role": "user", "content": "请回复 OK 两个字，不要多余内容。"}],
-            "max_tokens": 10,
-            "temperature": 0.1,
-        }
+        payload = build_chat_payload(
+            api_base=req.api_base,
+            model=req.model_name,
+            messages=[{"role": "user", "content": "请回复 OK 两个字，不要多余内容。"}],
+            max_tokens=10,
+            temperature=0.1,
+        )
         url = f"{req.api_base.rstrip('/')}/chat/completions"
 
         with httpx.Client(timeout=30) as client:

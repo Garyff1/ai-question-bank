@@ -40,6 +40,20 @@ class SecureApiConfigResult {
   final bool migrationFailed;
 }
 
+class ByokOnlyMigrationResult {
+  const ByokOnlyMigrationResult({
+    required this.hadOfficialMode,
+    required this.officialTokenCleared,
+    required this.apiKeyPreserved,
+    required this.completed,
+  });
+
+  final bool hadOfficialMode;
+  final bool officialTokenCleared;
+  final bool apiKeyPreserved;
+  final bool completed;
+}
+
 class SecureApiConfigStorage {
   SecureApiConfigStorage({SecureKeyValueStore? secureStore})
     : _secure = secureStore ?? FlutterSecureKeyValueStore();
@@ -48,6 +62,7 @@ class SecureApiConfigStorage {
   static const officialTokenStorageKey = 'secure.official_token_v3';
   static const serviceModePreferencesKey = 'ai_service_mode_v3';
   static const officialBaseUrlPreferencesKey = 'official_ai_base_url_v3';
+  static const byokOnlyMigrationMarkerKey = 'migration.byok_only_rc005';
 
   final SecureKeyValueStore _secure;
 
@@ -164,14 +179,43 @@ class SecureApiConfigStorage {
 
   Future<String?> readApiKey() => _secure.read(apiKeyStorageKey);
 
-  Future<String?> readOfficialToken() => _secure.read(officialTokenStorageKey);
-
-  Future<void> saveOfficialToken(String token) async {
-    await _secure.write(officialTokenStorageKey, token);
-    if (await _secure.read(officialTokenStorageKey) != token) {
-      throw StateError('Official service token verification failed');
+  /// RC005 将产品收敛为 BYOK-only。迁移只清理已经废弃的官方服务状态，
+  /// 并在每个破坏性步骤前后校验用户自己的 API Key，绝不清空整个安全存储。
+  Future<ByokOnlyMigrationResult> migrateToByokOnly({
+    required SharedPreferences preferences,
+  }) async {
+    final storedMode = preferences.getString(serviceModePreferencesKey);
+    final hadOfficialMode = storedMode == 'official';
+    final apiKeyBefore = await _secure.read(apiKeyStorageKey);
+    var tokenCleared = false;
+    try {
+      await _secure.delete(officialTokenStorageKey);
+      tokenCleared = (await _secure.read(officialTokenStorageKey)) == null;
+      final apiKeyAfter = await _secure.read(apiKeyStorageKey);
+      if (apiKeyAfter != apiKeyBefore) {
+        if (apiKeyBefore == null || apiKeyBefore.isEmpty) {
+          await _secure.delete(apiKeyStorageKey);
+        } else {
+          await _secure.write(apiKeyStorageKey, apiKeyBefore);
+        }
+        throw StateError('BYOK API Key changed during official-token cleanup');
+      }
+      await preferences.remove(serviceModePreferencesKey);
+      await preferences.remove(officialBaseUrlPreferencesKey);
+      await preferences.setBool(byokOnlyMigrationMarkerKey, true);
+      return ByokOnlyMigrationResult(
+        hadOfficialMode: hadOfficialMode,
+        officialTokenCleared: tokenCleared,
+        apiKeyPreserved: true,
+        completed: true,
+      );
+    } catch (_) {
+      return ByokOnlyMigrationResult(
+        hadOfficialMode: hadOfficialMode,
+        officialTokenCleared: tokenCleared,
+        apiKeyPreserved: (await _secure.read(apiKeyStorageKey)) == apiKeyBefore,
+        completed: false,
+      );
     }
   }
-
-  Future<void> clearOfficialToken() => _secure.delete(officialTokenStorageKey);
 }

@@ -19,6 +19,8 @@ import 'app/app.dart';
 import 'app/app_settings_controller.dart';
 import 'core/localization/localization_extensions.dart';
 import 'core/ai/ai_json_parser.dart';
+import 'core/ai/provider_catalog.dart';
+import 'core/ai_guard/ai_request_guard.dart';
 import 'core/ai/question_generation_policy.dart';
 import 'core/motion/motion_states.dart';
 import 'core/platform/generation_wake_lock.dart';
@@ -32,7 +34,6 @@ import 'features/challenge/challenge_rules.dart';
 import 'features/materials/ocr/ocr_models.dart';
 import 'features/materials/ocr/ocr_scan_page.dart';
 import 'features/generation/motion/knowledge_forge_view.dart';
-import 'features/official_ai/official_ai_page.dart';
 import 'features/paper_builder/models/paper_builder_models.dart';
 import 'features/paper_builder/paper_draft_storage.dart';
 import 'features/paper_builder/paper_editor_page.dart';
@@ -40,9 +41,7 @@ import 'features/paper_builder/paper_generation_progress.dart';
 import 'features/paper_builder/paper_template_service.dart';
 import 'features/paper_builder/motion/answer_layer_reveal.dart';
 import 'features/rich_content/chart_data.dart';
-import 'features/service_mode/service_mode_controller.dart';
-import 'features/service_mode/service_mode_selector.dart';
-import 'features/service_mode/service_mode_sheet.dart';
+import 'features/provider_portal/provider_portal.dart';
 import 'features/settings/settings_page.dart';
 import 'features/wrong_book/knowledge_diagnosis.dart';
 import 'rich_content.dart';
@@ -2267,8 +2266,6 @@ class _AppShellState extends State<AppShell> {
   // v2.8.0: 闯关 RPG 进度持久化
   static const _rpgProgressKey = 'rpg_progress_v1';
   final SecureApiConfigStorage _secureApiStorage = SecureApiConfigStorage();
-  final ServiceModeController _serviceModeController =
-      const ServiceModeController();
 
   final Set<String> _selectedTypes = {'choice'};
   final List<String> _audiences = const [
@@ -2322,7 +2319,6 @@ class _AppShellState extends State<AppShell> {
   RpgCompletionPayload? _pendingRpgCompletion;
   bool _handlingRpgCompletion = false;
   bool _apiMigrationWarning = false;
-  String _aiServiceMode = 'byok';
 
   @override
   void initState() {
@@ -2428,9 +2424,12 @@ class _AppShellState extends State<AppShell> {
     if (!prefs.containsKey(_enableListeningKey)) {
       await prefs.setBool(_enableListeningKey, false);
     }
-    final aiServiceMode =
-        prefs.getString(SecureApiConfigStorage.serviceModePreferencesKey) ??
-        'byok';
+    final byokMigration = await _secureApiStorage.migrateToByokOnly(
+      preferences: prefs,
+    );
+    if (!byokMigration.completed || !byokMigration.apiKeyPreserved) {
+      _apiMigrationWarning = true;
+    }
     // v2.7.3: 加载每日练习趋势日志（独立于 records）
     Map<String, int> practiceLog = {};
     try {
@@ -2462,7 +2461,6 @@ class _AppShellState extends State<AppShell> {
       _xpProfile = xpProfile;
       _enableRichContent = enableRich;
       _enableListening = enableListening;
-      _aiServiceMode = aiServiceMode;
     });
     // v2.7.2: 开屏动画最小展示 2.5 秒
     final elapsed = DateTime.now().difference(splashStart).inMilliseconds;
@@ -2651,8 +2649,6 @@ class _AppShellState extends State<AppShell> {
           body: SafeArea(
             child: ConfigPage(
               config: _config,
-              serviceMode: AiServiceModeValue.parse(_aiServiceMode),
-              onServiceModeChanged: _setServiceMode,
               onSave: _saveConfig,
               onDelete: _deleteConfig,
             ),
@@ -2660,86 +2656,39 @@ class _AppShellState extends State<AppShell> {
         ),
       ),
     );
-    final prefs = await SharedPreferences.getInstance();
-    if (!mounted) return;
-    setState(() {
-      _aiServiceMode =
-          prefs.getString(SecureApiConfigStorage.serviceModePreferencesKey) ??
-          'byok';
-    });
   }
 
-  Future<void> _setServiceMode(AiServiceMode mode) async {
+  Future<void> _openProviderPortal() async {
     if (_generating || _paperGenerating) {
-      _showSnack('当前请求仍在进行，请完成或取消后再切换 AI 服务模式');
+      _showSnack('当前请求仍在进行，请完成或取消后再切换模型服务商');
       return;
     }
-    await _serviceModeController.save(mode);
-    if (!mounted) return;
-    setState(() => _aiServiceMode = mode.storageValue);
-    _showSnack(
-      mode == AiServiceMode.byok ? '已切换为“使用自己的 API Key”' : '已切换为“官方 AI 服务”',
+    final selected = await showProviderPortal(
+      context,
+      currentProviderId: _config.provider,
+      keyConfigured: _config.apiKey.trim().isNotEmpty,
+      currentModel: _config.model,
     );
-
-    if (mode == AiServiceMode.byok && !_config.ready) {
-      final configure = await showDialog<bool>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('尚未配置 API Key'),
-          content: const Text('使用自己的 API Key 前，需要先填写服务商、Key、Base URL 和模型名称。'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('稍后配置'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('立即配置'),
-            ),
-          ],
-        ),
+    if (selected == null) return;
+    final preset = AiProviderCatalog.byId(selected);
+    if (selected != _config.provider) {
+      final next = ApiConfig(
+        provider: preset.id,
+        apiKey: _config.apiKey,
+        baseUrl: preset.id == 'custom' ? _config.baseUrl : preset.baseUrl,
+        model: preset.id == 'custom' ? _config.model : preset.model,
       );
-      if (configure == true && mounted) await _openConfigPage();
-    } else if (mode == AiServiceMode.official) {
-      final token = await _secureApiStorage.readOfficialToken();
-      if ((token ?? '').isEmpty && mounted) {
-        final login = await showDialog<bool>(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: const Text('使用官方 AI 服务需要登录'),
-            content: const Text('当前仍为内部测试环境，仅支持模拟订单和模拟支付，不会真实扣款。'),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context, false),
-                child: const Text('使用自己的 API Key'),
-              ),
-              FilledButton(
-                onPressed: () => Navigator.pop(context, true),
-                child: const Text('登录'),
-              ),
-            ],
-          ),
-        );
-        if (login == true && mounted) {
-          await Navigator.of(context).push<void>(
-            MaterialPageRoute(builder: (_) => const OfficialAiPage()),
-          );
-        } else if (login == false) {
-          await _serviceModeController.save(AiServiceMode.byok);
-          if (mounted) setState(() => _aiServiceMode = 'byok');
-        }
-      }
+      await _saveConfig(next);
     }
+    if (!mounted) return;
+    await _openConfigPage();
   }
 
-  Future<void> _openServiceModeSelector() async {
-    final selected = await showServiceModeSheet(
-      context,
-      currentMode: AiServiceModeValue.parse(_aiServiceMode),
-      officialServiceEnabled: false,
-    );
-    if (selected == null || selected.storageValue == _aiServiceMode) return;
-    await _setServiceMode(selected);
+  void _cancelActiveAiTask() {
+    final cancelled = AiRequestGuard.instance.cancelActiveTask();
+    if (!cancelled) return;
+    setState(() => _generateMotionState = GenerateMotionState.cancelled);
+    _showSnack('已取消生成，不会再启动后续自动重试');
   }
 
   void _openPaperViewer(Paper paper) {
@@ -2883,13 +2832,33 @@ class _AppShellState extends State<AppShell> {
             });
           },
           onRegenerate: (current, instruction) async {
-            if (_aiServiceMode == 'official') {
-              _showSnack('官方 AI 内部测试模式暂不支持单题重新生成');
-              return null;
-            }
             if (!_config.ready || sourceMaterial == null) {
               _showSnack('请先配置 API Key，并确保原资料仍然存在');
               return null;
+            }
+            final guardPreferences = await AiRequestGuard.instance
+                .loadPreferences();
+            if (guardPreferences.confirmRegularAi && mounted) {
+              final confirmed = await showDialog<bool>(
+                context: context,
+                builder: (context) => AlertDialog(
+                  title: const Text('重新生成将调用模型 API'),
+                  content: const Text(
+                    '本操作会再次使用你配置的第三方模型 API，可能产生新的额度消耗。只会重新生成当前这一题。',
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(context, false),
+                      child: const Text('取消'),
+                    ),
+                    FilledButton(
+                      onPressed: () => Navigator.pop(context, true),
+                      child: const Text('继续重新生成'),
+                    ),
+                  ],
+                ),
+              );
+              if (confirmed != true) return null;
             }
             try {
               final generated = await AiService.generateQuestions(
@@ -3561,13 +3530,47 @@ class _AppShellState extends State<AppShell> {
     await _addMaterial('生物复习：光合作用.txt', content);
   }
 
-  Future<void> _generateQuestions() async {
-    if (_aiServiceMode == 'official') {
-      await Navigator.of(
-        context,
-      ).push<void>(MaterialPageRoute(builder: (_) => const OfficialAiPage()));
-      return;
+  Future<bool> _confirmHighUsageTask({
+    required int questionCount,
+    required int materialLength,
+    required String taskName,
+  }) async {
+    final preferences = await AiRequestGuard.instance.loadPreferences();
+    final highUsage = questionCount >= 20 || materialLength >= 6000;
+    final dailyReminder = await AiRequestGuard.instance
+        .shouldShowDailyReminder();
+    final showLargeWarning = preferences.largeTaskWarning && highUsage;
+    if ((!showLargeWarning && !dailyReminder) || !mounted) return true;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(dailyReminder ? '今日 AI 任务较多' : '预计调用量较高'),
+        content: Text(
+          dailyReminder
+              ? '今天已达到本机提醒阈值。本记录只统计 AI题库 发起的任务；'
+                    '最终费用仍以模型服务商控制台为准。是否继续本次任务？'
+              : '$taskName将处理约 $materialLength 字资料并生成约 $questionCount 道题，'
+                    '可能消耗较多第三方模型额度。费用由你选择的模型服务商按其价格规则收取。',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('返回调整'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('继续生成'),
+          ),
+        ],
+      ),
+    );
+    if (dailyReminder) {
+      await AiRequestGuard.instance.markDailyReminderShown();
     }
+    return confirmed == true;
+  }
+
+  Future<void> _generateQuestions() async {
     final material = _selectedMaterial;
     if (material == null) {
       _showSnack('请先添加学习资料');
@@ -3582,13 +3585,21 @@ class _AppShellState extends State<AppShell> {
       _openConfigPage();
       return;
     }
+    final language = AppSettingsScope.of(context).generationLanguage;
+    if (!await _confirmHighUsageTask(
+      questionCount: _questionCount,
+      materialLength: material.content.length,
+      taskName: '本次练习',
+    )) {
+      return;
+    }
+    if (!mounted) return;
     setState(() {
       _generating = true;
       _generateMotionState = GenerateMotionState.readingMaterial;
     });
     await GenerationWakeLock.acquire();
     try {
-      final language = AppSettingsScope.of(context).generationLanguage;
       final outputLanguage = switch (language) {
         GenerationLanguage.followMaterial => '跟随资料主要语言',
         GenerationLanguage.zh => '简体中文',
@@ -3654,16 +3665,20 @@ class _AppShellState extends State<AppShell> {
     String paperName = '',
     int durationMinutes = 0,
   }) async {
-    if (_aiServiceMode == 'official') {
-      _showSnack('官方 AI 测试模式暂未开放试卷生成，请切换为“使用自己的 API Key”');
-      _openServiceModeSelector();
-      return;
-    }
     if (!_config.ready) {
       _showSnack('请先配置大模型 API，正在跳转...');
       _openConfigPage();
       return;
     }
+    final estimatedCount = template?.totalCount ?? max(10, pageCount * 8);
+    if (!await _confirmHighUsageTask(
+      questionCount: estimatedCount,
+      materialLength: material.content.length,
+      taskName: '本次试卷',
+    )) {
+      return;
+    }
+    if (!mounted) return;
     setState(() => _paperGenerating = true);
     await GenerationWakeLock.acquire();
     final progressStage = ValueNotifier<int>(0);
@@ -3673,7 +3688,10 @@ class _AppShellState extends State<AppShell> {
       barrierDismissible: false,
       builder: (context) => ValueListenableBuilder<int>(
         valueListenable: progressStage,
-        builder: (context, stage, _) => PaperGenerationProgress(stage: stage),
+        builder: (context, stage, _) => PaperGenerationProgress(
+          stage: stage,
+          onCancel: _cancelActiveAiTask,
+        ),
       ),
     );
     await Future<void>.delayed(Duration.zero);
@@ -3775,11 +3793,6 @@ class _AppShellState extends State<AppShell> {
   // v2.8.0: 打开 RPG 章节地图
   // v2.9.1: 教材选择替换学科选择，统一用「通用」学科，难度由章节(基础/进阶/综合)体现
   Future<void> _openRpgMap() async {
-    if (_aiServiceMode == 'official') {
-      _showSnack('官方 AI 测试模式暂未开放动态闯关，请切换为“使用自己的 API Key”');
-      _openConfigPage();
-      return;
-    }
     if (_materials.isEmpty) {
       _showSnack('请先导入学习资料');
       return;
@@ -4830,8 +4843,8 @@ class _AppShellState extends State<AppShell> {
         motionState: _generateMotionState,
         enableRichContent: _enableRichContent,
         enableListening: _enableListening,
-        serviceMode: _aiServiceMode,
-        onOpenServiceMode: _openServiceModeSelector,
+        config: _config,
+        onOpenProviderPortal: _openProviderPortal,
         onMaterialChanged: (material) {
           AppHaptics.instance.selectionClick();
           setState(() => _selectedMaterial = material);
@@ -4871,6 +4884,7 @@ class _AppShellState extends State<AppShell> {
           await prefs.setBool(_enableListeningKey, v);
         },
         onGenerate: _generateQuestions,
+        onCancelGeneration: _cancelActiveAiTask,
         onPickFile: _pickFile,
         onPaste: _openPasteDialog,
         onDemo: _addDemoMaterial,
@@ -4884,8 +4898,8 @@ class _AppShellState extends State<AppShell> {
         configReady: _config.ready,
         enableRichContent: _enableRichContent,
         enableListening: _enableListening,
-        serviceMode: _aiServiceMode,
-        onOpenServiceMode: _openServiceModeSelector,
+        config: _config,
+        onOpenProviderPortal: _openProviderPortal,
         onResumeDraft: (draft) {
           final original = _papers.cast<Paper?>().firstWhere(
             (paper) => paper?.id == draft.id,
@@ -6393,8 +6407,8 @@ class GeneratePage extends StatelessWidget {
     required this.motionState,
     required this.enableRichContent,
     required this.enableListening,
-    required this.serviceMode,
-    required this.onOpenServiceMode,
+    required this.config,
+    required this.onOpenProviderPortal,
     required this.onMaterialChanged,
     required this.onToggleType,
     required this.onCountChanged,
@@ -6402,6 +6416,7 @@ class GeneratePage extends StatelessWidget {
     required this.onToggleRichContent,
     required this.onToggleListening,
     required this.onGenerate,
+    required this.onCancelGeneration,
     required this.onPickFile,
     required this.onPaste,
     required this.onDemo,
@@ -6419,8 +6434,8 @@ class GeneratePage extends StatelessWidget {
   final GenerateMotionState motionState;
   final bool enableRichContent;
   final bool enableListening;
-  final String serviceMode;
-  final VoidCallback onOpenServiceMode;
+  final ApiConfig config;
+  final VoidCallback onOpenProviderPortal;
   final ValueChanged<StudyMaterial?> onMaterialChanged;
   final ValueChanged<String> onToggleType;
   final ValueChanged<int> onCountChanged;
@@ -6428,6 +6443,7 @@ class GeneratePage extends StatelessWidget {
   final ValueChanged<bool> onToggleRichContent;
   final ValueChanged<bool> onToggleListening;
   final VoidCallback onGenerate;
+  final VoidCallback onCancelGeneration;
   final VoidCallback onPickFile;
   final VoidCallback onPaste;
   final VoidCallback onDemo;
@@ -6450,9 +6466,11 @@ class GeneratePage extends StatelessWidget {
           subtitle: context.l10n.generatePageSubtitle,
         ),
         const SizedBox(height: 12),
-        CurrentServiceModeCard(
-          mode: AiServiceModeValue.parse(serviceMode),
-          onTap: onOpenServiceMode,
+        CurrentProviderCard(
+          providerId: config.provider,
+          model: config.model,
+          keyConfigured: config.apiKey.trim().isNotEmpty,
+          onTap: onOpenProviderPortal,
         ),
         const SizedBox(height: 16),
         const _FlowStepHeader(
@@ -6979,6 +6997,7 @@ class GeneratePage extends StatelessWidget {
                     materialName: activeMaterial?.name,
                     enabledTypes: selectedTypes.toList(growable: false),
                     totalQuestions: questionCount,
+                    onCancel: onCancelGeneration,
                   ),
                 ),
               ),
@@ -8660,8 +8679,8 @@ class PaperPage extends StatefulWidget {
     required this.configReady,
     required this.enableRichContent,
     required this.enableListening,
-    required this.serviceMode,
-    required this.onOpenServiceMode,
+    required this.config,
+    required this.onOpenProviderPortal,
     required this.onResumeDraft,
     required this.onToggleRichContent,
     required this.onToggleListening,
@@ -8681,8 +8700,8 @@ class PaperPage extends StatefulWidget {
   final bool configReady;
   final bool enableRichContent;
   final bool enableListening;
-  final String serviceMode;
-  final VoidCallback onOpenServiceMode;
+  final ApiConfig config;
+  final VoidCallback onOpenProviderPortal;
   final ValueChanged<PaperEditorDocument> onResumeDraft;
   final ValueChanged<bool> onToggleRichContent;
   final ValueChanged<bool> onToggleListening;
@@ -8940,7 +8959,7 @@ class _PaperPageState extends State<PaperPage> {
     hardPercent: _hardPercent,
     includeCharts: widget.enableRichContent,
     includeListening: widget.enableListening,
-    serviceMode: widget.serviceMode,
+    serviceMode: 'byok',
     selectedMaterialIds: _selectedMaterialIds.toList(),
   );
 
@@ -9787,9 +9806,11 @@ class _PaperPageState extends State<PaperPage> {
           subtitle: context.l10n.paperPageSubtitle,
         ),
         const SizedBox(height: 12),
-        CurrentServiceModeCard(
-          mode: AiServiceModeValue.parse(widget.serviceMode),
-          onTap: widget.onOpenServiceMode,
+        CurrentProviderCard(
+          providerId: widget.config.provider,
+          model: widget.config.model,
+          keyConfigured: widget.config.apiKey.trim().isNotEmpty,
+          onTap: widget.onOpenProviderPortal,
         ),
         FutureBuilder<PaperEditorDocument?>(
           key: ValueKey(_draftRevision),
@@ -9991,9 +10012,7 @@ class _PaperPageState extends State<PaperPage> {
                 if ((activeMaterial?.content.length ?? 0) > 12000) ...[
                   const SizedBox(height: 8),
                   Text(
-                    widget.serviceMode == 'official'
-                        ? '资料内容较多，生成时间可能增加；正式报价以服务器返回为准。'
-                        : '资料内容较多，生成时间和模型费用可能增加；费用由模型服务商收取。',
+                    '资料内容较多，生成时间和模型费用可能增加；费用由你选择的模型服务商收取。',
                     style: TextStyle(color: colors.tertiary, fontSize: 12),
                   ),
                 ],
@@ -10911,7 +10930,7 @@ class _PaperPageState extends State<PaperPage> {
             ),
           ),
         ),
-        if (!widget.configReady && widget.serviceMode == 'byok') ...[
+        if (!widget.configReady) ...[
           const SizedBox(height: 10),
           TextButton.icon(
             onPressed: widget.onOpenConfig,
@@ -15506,15 +15525,11 @@ class ConfigPage extends StatefulWidget {
   const ConfigPage({
     super.key,
     required this.config,
-    required this.serviceMode,
-    required this.onServiceModeChanged,
     required this.onSave,
     required this.onDelete,
   });
 
   final ApiConfig config;
-  final AiServiceMode serviceMode;
-  final Future<void> Function(AiServiceMode mode) onServiceModeChanged;
   final Future<bool> Function(ApiConfig) onSave;
   final Future<bool> Function() onDelete;
 
@@ -15529,19 +15544,10 @@ class _ConfigPageState extends State<ConfigPage> {
   late final TextEditingController _modelCtrl;
   late final SecretVisibilityController _secretVisibility;
   bool _testing = false;
-  late AiServiceMode _serviceMode;
 
-  static const providers = {
-    'deepseek': ('DeepSeek', 'https://api.deepseek.com', 'deepseek-v4-flash'),
-    'qwen': (
-      'Qwen',
-      'https://dashscope.aliyuncs.com/compatible-mode/v1',
-      'qwen-plus',
-    ),
-    'zhipu': ('智谱', 'https://api.z.ai/api/paas/v4', 'glm-4.7-flash'),
-    'mimo': ('小米 MiMo', 'https://api.xiaomimimo.com/v1', 'mimo-v2.5-pro'),
-    'kimi': ('Kimi', 'https://api.moonshot.ai/v1', 'kimi-k2.6'),
-    'custom': ('自定义', '', ''),
+  static final providers = {
+    for (final item in AiProviderCatalog.presets)
+      item.id: (item.name, item.baseUrl, item.model),
   };
 
   @override
@@ -15553,18 +15559,17 @@ class _ConfigPageState extends State<ConfigPage> {
     _modelCtrl = TextEditingController(text: widget.config.model);
     _secretVisibility = SecretVisibilityController();
     SecureScreen.enable();
-    _serviceMode = widget.serviceMode;
   }
 
-  Future<void> _chooseServiceMode() async {
-    final selected = await showServiceModeSheet(
+  Future<void> _chooseProviderPortal() async {
+    final selected = await showProviderPortal(
       context,
-      currentMode: _serviceMode,
-      officialServiceEnabled: false,
+      currentProviderId: _provider,
+      keyConfigured: _keyCtrl.text.trim().isNotEmpty,
+      currentModel: _modelCtrl.text.trim(),
     );
-    if (selected == null || selected == _serviceMode) return;
-    await widget.onServiceModeChanged(selected);
-    if (mounted) setState(() => _serviceMode = selected);
+    if (selected == null || selected == _provider) return;
+    _selectProvider(selected);
   }
 
   @override
@@ -15664,7 +15669,12 @@ class _ConfigPageState extends State<ConfigPage> {
           subtitle: context.l10n.apiPageSubtitle,
         ),
         const SizedBox(height: 16),
-        CurrentServiceModeCard(mode: _serviceMode, onTap: _chooseServiceMode),
+        CurrentProviderCard(
+          providerId: _provider,
+          model: _modelCtrl.text,
+          keyConfigured: _keyCtrl.text.trim().isNotEmpty,
+          onTap: _chooseProviderPortal,
+        ),
         const SizedBox(height: 18),
         Text(
           isEnglish ? 'Choose provider' : '选择服务商',
@@ -17069,9 +17079,21 @@ class PaperPdfService {
 
 class AiService {
   static Future<void> test(ApiConfig config) async {
-    await _chat(config, [
-      {'role': 'user', 'content': '请只回复 OK'},
-    ], maxTokens: 8);
+    await AiRequestGuard.instance.runTask<void>(
+      taskType: 'connection_test',
+      provider: config.provider,
+      model: config.model,
+      targetCount: 0,
+      fingerprint: AiRequestGuard.fingerprint([
+        'connection_test',
+        config.provider,
+        config.model,
+        config.baseUrl,
+      ]),
+      action: (_) => _chat(config, [
+        {'role': 'user', 'content': '请只回复 OK'},
+      ], maxTokens: 8),
+    );
   }
 
   /// 请求 JSON 对象数组。响应被截断时先保留已完整闭合的对象，再仅补充缺少
@@ -17160,6 +17182,44 @@ class AiService {
   }
 
   static Future<List<AiQuestion>> generateQuestions({
+    required ApiConfig config,
+    required String material,
+    required List<String> types,
+    required int count,
+    required String audience,
+    bool enableRichContent = false,
+    bool enableListening = false,
+    String outputLanguage = '跟随资料主要语言',
+  }) => AiRequestGuard.instance.runTask<List<AiQuestion>>(
+    taskType: 'question_generation',
+    provider: config.provider,
+    model: config.model,
+    targetCount: count,
+    fingerprint: AiRequestGuard.fingerprint([
+      'question_generation',
+      config.provider,
+      config.model,
+      material,
+      types.join(','),
+      count,
+      audience,
+      enableRichContent,
+      enableListening,
+      outputLanguage,
+    ]),
+    action: (_) => _generateQuestionsUnprotected(
+      config: config,
+      material: material,
+      types: types,
+      count: count,
+      audience: audience,
+      enableRichContent: enableRichContent,
+      enableListening: enableListening,
+      outputLanguage: outputLanguage,
+    ),
+  );
+
+  static Future<List<AiQuestion>> _generateQuestionsUnprotected({
     required ApiConfig config,
     required String material,
     required List<String> types,
@@ -17334,6 +17394,38 @@ $materialText
     required int chapter,
     required int level,
     String audience = '通用',
+  }) => AiRequestGuard.instance.runTask<List<AiQuestion>>(
+    taskType: 'rpg_generation',
+    provider: config.provider,
+    model: config.model,
+    targetCount: 5,
+    fingerprint: AiRequestGuard.fingerprint([
+      'rpg_generation',
+      config.provider,
+      config.model,
+      material,
+      subject,
+      chapter,
+      level,
+      audience,
+    ]),
+    action: (_) => _generateRpgQuestionsUnprotected(
+      config: config,
+      material: material,
+      subject: subject,
+      chapter: chapter,
+      level: level,
+      audience: audience,
+    ),
+  );
+
+  static Future<List<AiQuestion>> _generateRpgQuestionsUnprotected({
+    required ApiConfig config,
+    required String material,
+    required String subject,
+    required int chapter,
+    required int level,
+    String audience = '通用',
   }) async {
     final materialText = material.length > 6500
         ? material.substring(0, 6500)
@@ -17424,6 +17516,40 @@ $materialText
   /// v2.9.0: 生成 Mini-Game 闯关题目
   /// 根据关卡规则选择 Mini-Game 类型组合；热身关 3 题，其余关卡 5 题。
   static Future<List<MiniGame>> generateMiniGames({
+    required ApiConfig config,
+    required String material,
+    required String subject,
+    required int chapter,
+    required int level,
+    String audience = '通用',
+    List<WrongItem> wrongItems = const [],
+  }) => AiRequestGuard.instance.runTask<List<MiniGame>>(
+    taskType: 'challenge_generation',
+    provider: config.provider,
+    model: config.model,
+    targetCount: ChallengeRules.forLevel(level).questionCount,
+    fingerprint: AiRequestGuard.fingerprint([
+      'challenge_generation',
+      config.provider,
+      config.model,
+      material,
+      subject,
+      chapter,
+      level,
+      audience,
+    ]),
+    action: (_) => _generateMiniGamesUnprotected(
+      config: config,
+      material: material,
+      subject: subject,
+      chapter: chapter,
+      level: level,
+      audience: audience,
+      wrongItems: wrongItems,
+    ),
+  );
+
+  static Future<List<MiniGame>> _generateMiniGamesUnprotected({
     required ApiConfig config,
     required String material,
     required String subject,
@@ -17819,6 +17945,64 @@ $materialText
     String chapterRange = '',
     String knowledgePointSpec = '',
     int listeningCount = 0,
+  }) {
+    final effectiveTemplate =
+        template ??
+        PaperTemplate.defaultFor(
+          subject: subject,
+          gradeLevel: gradeLevel,
+          pageCount: pageCount,
+        );
+    return AiRequestGuard.instance.runTask<List<PaperQuestion>>(
+      taskType: 'paper_generation',
+      provider: config.provider,
+      model: config.model,
+      targetCount: effectiveTemplate.totalCount,
+      fingerprint: AiRequestGuard.fingerprint([
+        'paper_generation',
+        config.provider,
+        config.model,
+        material,
+        subject,
+        gradeLevel,
+        pageCount,
+        jsonEncode(effectiveTemplate.toJson()),
+        enableRichContent,
+        enableListening,
+        chapterRange,
+        knowledgePointSpec,
+        listeningCount,
+      ]),
+      action: (_) => _generatePaperUnprotected(
+        config: config,
+        material: material,
+        subject: subject,
+        gradeLevel: gradeLevel,
+        pageCount: pageCount,
+        scoreConfig: scoreConfig,
+        template: effectiveTemplate,
+        enableRichContent: enableRichContent,
+        enableListening: enableListening,
+        chapterRange: chapterRange,
+        knowledgePointSpec: knowledgePointSpec,
+        listeningCount: listeningCount,
+      ),
+    );
+  }
+
+  static Future<List<PaperQuestion>> _generatePaperUnprotected({
+    required ApiConfig config,
+    required String material,
+    required String subject,
+    required String gradeLevel,
+    required int pageCount,
+    PaperScoreConfig scoreConfig = const PaperScoreConfig(),
+    PaperTemplate? template,
+    bool enableRichContent = true,
+    bool enableListening = false,
+    String chapterRange = '',
+    String knowledgePointSpec = '',
+    int listeningCount = 0,
   }) async {
     final materialText = material.length > 8000
         ? material.substring(0, 8000)
@@ -18142,40 +18326,92 @@ $materialText
     final base = config.baseUrl.replaceAll(RegExp(r'/+$'), '');
     final uri = Uri.parse('$base/chat/completions');
     late http.Response response;
-    const maxAttempts = 3;
+    final guard = AiRequestGuard.instance;
+    final guardPreferences = await guard.loadPreferences();
+    final maxAttempts = guardPreferences.autoRetry ? 2 : 1;
     for (var attempt = 1; attempt <= maxAttempts; attempt++) {
+      final client = http.Client();
       try {
-        response = await http
+        guard.beforeNetworkRequest(retry: attempt > 1);
+        guard.registerNetworkCancellation(client.close);
+        response = await client
             .post(
               uri,
               headers: _headersFor(config),
-              body: jsonEncode({
-                'model': config.model,
-                'messages': messages,
-                'temperature': 0.2,
-                'max_tokens': maxTokens,
-              }),
+              body: jsonEncode(
+                _requestBodyFor(
+                  config,
+                  messages: messages,
+                  maxTokens: maxTokens,
+                ),
+              ),
             )
             .timeout(const Duration(seconds: 120));
+        if (response.statusCode >= 500 &&
+            response.statusCode < 600 &&
+            attempt < maxAttempts) {
+          debugPrint('[API] 服务商 ${response.statusCode}，准备进行唯一一次自动重试');
+          await Future<void>.delayed(Duration(milliseconds: 550 * attempt));
+          continue;
+        }
         break;
       } catch (error) {
+        guard.throwIfCancelled();
         final canRetry = isTransientApiError(error) && attempt < maxAttempts;
         if (!canRetry) {
           throw Exception(apiErrorMessage(error));
         }
         debugPrint('[API] 第 $attempt 次连接失败，准备重试：$error');
         await Future<void>.delayed(Duration(milliseconds: 550 * attempt));
+      } finally {
+        client.close();
+        guard.clearNetworkCancellation();
       }
     }
+    guard.throwIfCancelled();
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw Exception('API 请求失败：${response.statusCode} ${response.body}');
+      throw Exception(
+        'API 请求失败：${response.statusCode} ${redactSensitiveText(response.body)}',
+      );
     }
     final data =
         jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+    final usage = data['usage'];
+    if (usage is Map) {
+      guard.recordUsage(
+        inputTokens: (usage['prompt_tokens'] as num?)?.toInt(),
+        outputTokens: (usage['completion_tokens'] as num?)?.toInt(),
+      );
+    }
     final choices = data['choices'] as List?;
     if (choices == null || choices.isEmpty) throw Exception('API 没有返回 choices');
     final message = choices.first['message'] as Map?;
     return (message?['content'] ?? choices.first['text'] ?? '').toString();
+  }
+
+  static Map<String, dynamic> _requestBodyFor(
+    ApiConfig config, {
+    required List<Map<String, String>> messages,
+    required int maxTokens,
+  }) {
+    final base = config.baseUrl.toLowerCase();
+    final isMimo = config.provider == 'mimo' || base.contains('xiaomimimo.com');
+    final isKimi = config.provider == 'kimi' || base.contains('moonshot.cn');
+    return <String, dynamic>{
+      'model': config.model,
+      'messages': messages,
+      // MiMo's current OpenAI-compatible API documents
+      // max_completion_tokens. Other supported providers accept max_tokens.
+      if (isMimo)
+        'max_completion_tokens': maxTokens
+      else
+        'max_tokens': maxTokens,
+      // Current MiMo and Kimi models constrain temperature themselves. Omitting
+      // it lets their documented defaults apply and avoids invalid-parameter
+      // errors. Other OpenAI-compatible providers keep the deterministic value
+      // used by the question generator.
+      if (!isMimo && !isKimi) 'temperature': 0.2,
+    };
   }
 
   static Map<String, String> _headersFor(ApiConfig config) {

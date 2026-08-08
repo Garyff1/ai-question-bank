@@ -296,12 +296,6 @@ abstract class AppLocalizations {
   /// **'使用自己的 API Key'**
   String get ownApiKey;
 
-  /// No description provided for @officialAiComingSoon.
-  ///
-  /// In zh, this message translates to:
-  /// **'官方 AI 服务（即将开放）'**
-  String get officialAiComingSoon;
-
   /// No description provided for @dataAndPrivacy.
   ///
   /// In zh, this message translates to:

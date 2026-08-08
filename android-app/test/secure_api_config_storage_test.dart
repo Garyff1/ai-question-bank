@@ -108,16 +108,44 @@ void main() {
     );
   });
 
-  test('official logout does not remove personal API key', () async {
+  test('BYOK-only migration clears only official state', () async {
+    SharedPreferences.setMockInitialValues({
+      SecureApiConfigStorage.serviceModePreferencesKey: 'official',
+      SecureApiConfigStorage.officialBaseUrlPreferencesKey:
+          'https://official.example.test',
+    });
+    final prefs = await SharedPreferences.getInstance();
     final memory = MemorySecureStore()
-      ..values[SecureApiConfigStorage.apiKeyStorageKey] = 'sk-personal';
+      ..values[SecureApiConfigStorage.apiKeyStorageKey] = 'sk-personal'
+      ..values[SecureApiConfigStorage.officialTokenStorageKey] =
+          'official-token';
     final storage = SecureApiConfigStorage(secureStore: memory);
-    await storage.saveOfficialToken('official-token');
-    await storage.clearOfficialToken();
-    expect(await storage.readOfficialToken(), isNull);
+
+    final result = await storage.migrateToByokOnly(preferences: prefs);
+
+    expect(result.hadOfficialMode, isTrue);
+    expect(result.officialTokenCleared, isTrue);
+    expect(result.apiKeyPreserved, isTrue);
+    expect(result.completed, isTrue);
     expect(
       memory.values[SecureApiConfigStorage.apiKeyStorageKey],
       'sk-personal',
+    );
+    expect(
+      memory.values.containsKey(SecureApiConfigStorage.officialTokenStorageKey),
+      isFalse,
+    );
+    expect(
+      prefs.containsKey(SecureApiConfigStorage.serviceModePreferencesKey),
+      isFalse,
+    );
+    expect(
+      prefs.containsKey(SecureApiConfigStorage.officialBaseUrlPreferencesKey),
+      isFalse,
+    );
+    expect(
+      prefs.getBool(SecureApiConfigStorage.byokOnlyMigrationMarkerKey),
+      isTrue,
     );
   });
 }

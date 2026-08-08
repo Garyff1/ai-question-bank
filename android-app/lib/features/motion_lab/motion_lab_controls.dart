@@ -102,7 +102,7 @@ class MotionLabControls extends StatelessWidget {
                 const SizedBox(width: 6),
                 Expanded(
                   child: Text(
-                    '仅使用本地模拟数据，不读取 API Key，不调用模型或支付。',
+                    '仅使用本地模拟数据，不读取 API Key，不调用模型或网络。',
                     style: TextStyle(
                       color: scheme.onSurfaceVariant,
                       fontSize: 11,

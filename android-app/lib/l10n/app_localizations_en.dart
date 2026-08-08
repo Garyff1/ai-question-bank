@@ -108,9 +108,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get ownApiKey => 'Use my own API Key';
 
   @override
-  String get officialAiComingSoon => 'Official AI service (coming soon)';
-
-  @override
   String get dataAndPrivacy => 'Data & privacy';
 
   @override
