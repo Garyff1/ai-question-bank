@@ -23489,68 +23489,71 @@ class _MiniGamePageState extends State<MiniGamePage>
                   borderRadius: BorderRadius.circular(26),
                   border: Border.all(color: colors.outlineVariant),
                 ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      Icons.pause_circle_filled_rounded,
-                      size: 54,
-                      color: colors.primary,
-                    ),
-                    const SizedBox(height: 10),
-                    Text(
-                      '挑战已暂停',
-                      style: Theme.of(context).textTheme.headlineSmall
-                          ?.copyWith(fontWeight: FontWeight.w900),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      '计时、动画与听力均已暂停',
-                      style: TextStyle(color: colors.onSurfaceVariant),
-                    ),
-                    const SizedBox(height: 18),
-                    SwitchListTile.adaptive(
-                      contentPadding: EdgeInsets.zero,
-                      title: const Text('音效'),
-                      value: settings.soundEnabled,
-                      onChanged: settings.setSoundEnabled,
-                    ),
-                    SwitchListTile.adaptive(
-                      contentPadding: EdgeInsets.zero,
-                      title: const Text('震动反馈'),
-                      value: settings.hapticsEnabled,
-                      onChanged: settings.setHapticsEnabled,
-                    ),
-                    SwitchListTile.adaptive(
-                      contentPadding: EdgeInsets.zero,
-                      title: const Text('减少动态效果'),
-                      value: settings.reduceMotion,
-                      onChanged: settings.setReduceMotion,
-                    ),
-                    const SizedBox(height: 10),
-                    SizedBox(
-                      width: double.infinity,
-                      child: FilledButton.icon(
-                        onPressed: () => _setPaused(false),
-                        icon: const Icon(Icons.play_arrow_rounded),
-                        label: const Text('继续挑战'),
+                child: Material(
+                  color: Colors.transparent,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.pause_circle_filled_rounded,
+                        size: 54,
+                        color: colors.primary,
                       ),
-                    ),
-                    const SizedBox(height: 8),
-                    SizedBox(
-                      width: double.infinity,
-                      child: OutlinedButton.icon(
-                        onPressed: _restartLevel,
-                        icon: const Icon(Icons.restart_alt_rounded),
-                        label: const Text('重新开始本关'),
+                      const SizedBox(height: 10),
+                      Text(
+                        '挑战已暂停',
+                        style: Theme.of(context).textTheme.headlineSmall
+                            ?.copyWith(fontWeight: FontWeight.w900),
                       ),
-                    ),
-                    TextButton(
-                      onPressed: _confirmExit,
-                      style: TextButton.styleFrom(foregroundColor: kRed),
-                      child: const Text('退出本关'),
-                    ),
-                  ],
+                      const SizedBox(height: 6),
+                      Text(
+                        '计时、动画与听力均已暂停',
+                        style: TextStyle(color: colors.onSurfaceVariant),
+                      ),
+                      const SizedBox(height: 18),
+                      SwitchListTile.adaptive(
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('音效'),
+                        value: settings.soundEnabled,
+                        onChanged: settings.setSoundEnabled,
+                      ),
+                      SwitchListTile.adaptive(
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('震动反馈'),
+                        value: settings.hapticsEnabled,
+                        onChanged: settings.setHapticsEnabled,
+                      ),
+                      SwitchListTile.adaptive(
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('减少动态效果'),
+                        value: settings.reduceMotion,
+                        onChanged: settings.setReduceMotion,
+                      ),
+                      const SizedBox(height: 10),
+                      SizedBox(
+                        width: double.infinity,
+                        child: FilledButton.icon(
+                          onPressed: () => _setPaused(false),
+                          icon: const Icon(Icons.play_arrow_rounded),
+                          label: const Text('继续挑战'),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          onPressed: _restartLevel,
+                          icon: const Icon(Icons.restart_alt_rounded),
+                          label: const Text('重新开始本关'),
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: _confirmExit,
+                        style: TextButton.styleFrom(foregroundColor: kRed),
+                        child: const Text('退出本关'),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
