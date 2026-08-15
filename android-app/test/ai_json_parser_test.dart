@@ -114,4 +114,28 @@ void main() {
       expect(requestedCounts.skip(1), everyElement(1));
     },
   );
+
+  test('batch progress reports only accepted real objects', () async {
+    var serial = 0;
+    final snapshots = <AiJsonBatchProgress>[];
+    final result = await AiJsonBatchCollector.collect(
+      expectedCount: 5,
+      maxBatchSize: 3,
+      identityOf: (item) => item['question'].toString(),
+      onProgress: snapshots.add,
+      request: (requestedCount, requestNumber, _) async {
+        final count = requestNumber == 1 ? 2 : requestedCount;
+        final items = List.generate(count, (_) {
+          serial++;
+          return '{"question":"真实题目$serial","answer":"A"}';
+        });
+        return '[${items.join(',')}]';
+      },
+    );
+
+    expect(result, hasLength(5));
+    expect(snapshots.map((item) => item.acceptedCount), [2, 4, 5]);
+    expect(snapshots.last.expectedCount, 5);
+    expect(snapshots.last.fraction, 1);
+  });
 }

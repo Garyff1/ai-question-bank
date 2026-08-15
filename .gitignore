@@ -23,6 +23,14 @@ node_modules/
 .vscode/
 *.swp
 
+# Local Flutter / Android machine configuration
+android-app/android/local.properties
+android-app/.dart_tool/
+android-app/build/
+android-app/android/.gradle/
+android-app/android/.kotlin/
+android-app/android/app/.cxx/
+
 # OS
 .DS_Store
 Thumbs.db

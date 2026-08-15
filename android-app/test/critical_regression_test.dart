@@ -167,6 +167,101 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
+  testWidgets('flashcard flips to a readable question with tappable answers', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(420, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    SharedPreferences.setMockInitialValues(const {});
+    final settings = await AppSettingsController.load();
+    await settings.setReduceMotion(true);
+    MiniGameLevelResult? result;
+    const prompt = '机器人开始运动前首先应检查什么？';
+
+    await tester.pumpWidget(
+      AppSettingsScope(
+        controller: settings,
+        child: MaterialApp(
+          theme: AppTheme.light,
+          darkTheme: AppTheme.dark,
+          themeMode: ThemeMode.dark,
+          home: MiniGamePage(
+            session: MiniGameSession(
+              materialName: '机器人学导论',
+              games: const [
+                MiniGame(
+                  type: MiniGameType.flashcard,
+                  prompt: prompt,
+                  options: ['启动前必须确认急停按钮状态'],
+                  questionOptions: [
+                    'A. 急停按钮状态',
+                    'B. 外壳颜色',
+                    'C. 设备价格',
+                    'D. 包装尺寸',
+                  ],
+                  answer: 'A',
+                  explanation: '急停状态关系到启动安全。',
+                  knowledgePoint: '启动安全',
+                ),
+              ],
+              subject: '通用',
+              chapter: 1,
+              level: 1,
+              isBoss: false,
+              startTime: DateTime(2026, 8, 15),
+              lives: 3,
+            ),
+            onExit: () {},
+            onComplete: (value) => result = value,
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('我记好了，开始答题'));
+    await tester.pump();
+    expect(find.text(prompt), findsOneWidget);
+    expect(find.text('A. 急停按钮状态'), findsOneWidget);
+    await tester.tap(find.text('A. 急停按钮状态'));
+    await tester.pump(const Duration(milliseconds: 850));
+    expect(result?.correct, 1);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('challenge pause blocks play and safely resumes', (tester) async {
+    SharedPreferences.setMockInitialValues(const {});
+    final settings = await AppSettingsController.load();
+    MiniGameLevelResult? result;
+    await tester.pumpWidget(
+      AppSettingsScope(
+        controller: settings,
+        child: MaterialApp(
+          home: MiniGamePage(
+            session: _challengeSession(1),
+            onExit: () {},
+            onComplete: (value) => result = value,
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.byTooltip('暂停'));
+    await tester.pump();
+    expect(find.text('挑战已暂停'), findsOneWidget);
+    expect(find.text('继续挑战'), findsOneWidget);
+    await tester.tap(find.text('继续挑战'));
+    await tester.pump();
+    expect(find.text('挑战已暂停'), findsNothing);
+    await tester.tap(find.text('对'));
+    await tester.pump(const Duration(milliseconds: 750));
+    expect(result, isNull);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
   testWidgets('haptic gateway suppresses platform vibration when disabled', (
     tester,
   ) async {

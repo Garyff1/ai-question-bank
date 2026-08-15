@@ -30,7 +30,12 @@ import 'core/security/api_key_masking.dart';
 import 'core/security/api_key_security_audit.dart';
 import 'core/security/secure_screen.dart';
 import 'core/storage/secure_api_config_storage.dart';
+import 'core/subject/subject_capabilities.dart';
 import 'features/challenge/challenge_rules.dart';
+import 'features/card_run/card_run_models.dart';
+import 'features/card_run/card_run_page.dart';
+import 'features/audio/listening_audio_service.dart';
+import 'features/audio/listening_question.dart';
 import 'features/materials/ocr/ocr_models.dart';
 import 'features/materials/ocr/ocr_scan_page.dart';
 import 'features/generation/motion/knowledge_forge_view.dart';
@@ -40,6 +45,7 @@ import 'features/paper_builder/paper_editor_page.dart';
 import 'features/paper_builder/paper_generation_progress.dart';
 import 'features/paper_builder/paper_template_service.dart';
 import 'features/paper_builder/motion/answer_layer_reveal.dart';
+import 'features/paper_generation/paper_generation_models.dart';
 import 'features/rich_content/chart_data.dart';
 import 'features/provider_portal/provider_portal.dart';
 import 'features/settings/settings_page.dart';
@@ -376,6 +382,7 @@ class MiniGame {
     required this.options,
     required this.answer,
     this.audioText,
+    this.questionOptions = const [],
     this.explanation,
     this.knowledgePoint,
   });
@@ -386,6 +393,8 @@ class MiniGame {
   final String
   answer; // 正确答案（matching: 右侧对应；reorder: 正确顺序索引"0,2,1"；tapfast: "对"/"错"）
   final String? audioText; // listening 用：TTS 播放文本
+  /// 闪卡翻面后的作答选项。旧数据仍可从 prompt 中解析 A/B/C/D。
+  final List<String> questionOptions;
   final String? explanation; // 解析
   final String? knowledgePoint; // 知识点
 
@@ -433,6 +442,9 @@ class MiniGame {
         options: lefts,
         answer: rights.join('^A'), // 用 ^A 分隔右侧答案
         audioText: json['audio_text']?.toString(),
+        questionOptions: _normalizeQuestionOptions(
+          json['question_options'] ?? json['choices'],
+        ),
         explanation: json['explanation']?.toString(),
         knowledgePoint: json['knowledge_point']?.toString(),
       );
@@ -443,6 +455,9 @@ class MiniGame {
       options: options,
       answer: (json['answer'] ?? '').toString(),
       audioText: json['audio_text']?.toString(),
+      questionOptions: _normalizeQuestionOptions(
+        json['question_options'] ?? json['choices'],
+      ),
       explanation: json['explanation']?.toString(),
       knowledgePoint: json['knowledge_point']?.toString(),
     );
@@ -614,18 +629,35 @@ class StudyMaterial {
     required this.name,
     required this.content,
     required this.createdAt,
+    this.subject = SubjectCapabilities.auto,
   });
 
   final String id;
   final String name;
   final String content;
   final DateTime createdAt;
+  final String subject;
+
+  StudyMaterial copyWith({
+    String? id,
+    String? name,
+    String? content,
+    DateTime? createdAt,
+    String? subject,
+  }) => StudyMaterial(
+    id: id ?? this.id,
+    name: name ?? this.name,
+    content: content ?? this.content,
+    createdAt: createdAt ?? this.createdAt,
+    subject: SubjectCapabilities.normalize(subject ?? this.subject),
+  );
 
   Map<String, dynamic> toJson() => {
     'id': id,
     'name': name,
     'content': content,
     'createdAt': createdAt.toIso8601String(),
+    'subject': subject,
   };
 
   factory StudyMaterial.fromJson(Map<String, dynamic> json) => StudyMaterial(
@@ -634,6 +666,7 @@ class StudyMaterial {
     content: json['content'] as String,
     createdAt:
         DateTime.tryParse(json['createdAt'] as String? ?? '') ?? DateTime.now(),
+    subject: SubjectCapabilities.normalize(json['subject'] as String?),
   );
 }
 
@@ -684,6 +717,8 @@ class AiQuestion {
     required this.answer,
     required this.explanation,
     this.richContent = const [],
+    this.listeningScript = '',
+    this.listeningVoiceLocale = 'en-US',
   });
 
   final String type;
@@ -691,6 +726,8 @@ class AiQuestion {
   final List<String> options;
   final dynamic answer;
   final String explanation;
+  final String listeningScript;
+  final String listeningVoiceLocale;
 
   /// 富内容块（数学公式、函数图、物理图、化学结构、SVG、统计图、英语听力）
   /// 由 AI 在生成时通过 rich_content 字段返回，详见 rich_content.dart
@@ -719,6 +756,8 @@ class AiQuestion {
     'options': options,
     'answer': answer,
     'explanation': explanation,
+    if (listeningScript.isNotEmpty) 'listening_script': listeningScript,
+    if (listeningScript.isNotEmpty) 'voice_locale': listeningVoiceLocale,
     if (richContent.isNotEmpty) 'rich_content': richContent,
   };
 
@@ -775,7 +814,7 @@ class AiQuestion {
             return <String, dynamic>{};
           })
           .where((m) => m.isNotEmpty)
-          .toList(growable: false);
+          .toList(growable: true);
     }
     // 调试日志：方便排查 AI 是否返回 rich_content
     final qPreview = questionText.length > 30
@@ -803,6 +842,29 @@ class AiQuestion {
         );
       }
     }
+    final listeningData = ListeningQuestionData.fromJson(json);
+    final listeningLeaksAnswer =
+        listeningData.isValid &&
+        ListeningQuestionData.exposesAnswer(
+          script: listeningData.script,
+          answer: json['answer'] ?? json['correct_answer'],
+          options: options,
+        );
+    final safeListeningScript = listeningLeaksAnswer
+        ? ''
+        : listeningData.script;
+    if (safeListeningScript.isNotEmpty &&
+        !richContent.any(
+          (item) =>
+              (item['type'] ?? '').toString().toLowerCase() == 'listening',
+        )) {
+      richContent.add(
+        ListeningQuestionData(
+          script: safeListeningScript,
+          voiceLocale: listeningData.voiceLocale,
+        ).toRichContent(),
+      );
+    }
     final questionChart = _extractChartData('$questionText\n$explanationText');
     if (questionChart != null) {
       final chartIndex = richContent.indexWhere(
@@ -823,6 +885,8 @@ class AiQuestion {
       answer: json['answer'] ?? json['correct_answer'] ?? '',
       explanation: explanationText,
       richContent: richContent,
+      listeningScript: safeListeningScript,
+      listeningVoiceLocale: listeningData.voiceLocale,
     );
   }
 
@@ -2261,6 +2325,7 @@ class _AppShellState extends State<AppShell> {
   static const _xpProfileKey = 'xp_profile_v1';
   static const _enableRichKey = 'enable_rich_v2';
   static const _enableListeningKey = 'enable_listening_v1';
+  static const _generationSubjectKey = 'generation_subject_v1';
   // v2.7.3: 独立持久化的每日练习趋势日志，删除历史记录不影响本周趋势
   static const _practiceLogKey = 'practice_log_v1';
   // v2.8.0: 闯关 RPG 进度持久化
@@ -2292,11 +2357,17 @@ class _AppShellState extends State<AppShell> {
   int _wrongBookFocusRequest = 0;
   int _questionCount = 5;
   String _audience = '通用';
+  String _generationSubject = SubjectCapabilities.auto;
   bool _loading = true;
   bool _generating = false;
   GenerateMotionState _generateMotionState = GenerateMotionState.idle;
+  int _generateAcceptedCount = 0;
+  int _generateTargetCount = 0;
   bool _parsing = false;
   bool _paperGenerating = false;
+  List<CardRunQuestion>? _cardRunQuestions;
+  final Map<String, AiQuestion> _cardRunSourceQuestions = {};
+  final Map<String, String> _cardRunSourceMaterials = {};
   bool _enableRichContent = false;
   bool _enableListening = false;
   String? _parseFileName;
@@ -2424,6 +2495,10 @@ class _AppShellState extends State<AppShell> {
     if (!prefs.containsKey(_enableListeningKey)) {
       await prefs.setBool(_enableListeningKey, false);
     }
+    final generationSubject = SubjectCapabilities.normalize(
+      prefs.getString(_generationSubjectKey) ??
+          (materials.isEmpty ? null : materials.first.subject),
+    );
     final byokMigration = await _secureApiStorage.migrateToByokOnly(
       preferences: prefs,
     );
@@ -2461,6 +2536,7 @@ class _AppShellState extends State<AppShell> {
       _xpProfile = xpProfile;
       _enableRichContent = enableRich;
       _enableListening = enableListening;
+      _generationSubject = generationSubject;
     });
     // v2.7.2: 开屏动画最小展示 2.5 秒
     final elapsed = DateTime.now().difference(splashStart).inMilliseconds;
@@ -2507,6 +2583,51 @@ class _AppShellState extends State<AppShell> {
       _materialsKey,
       jsonEncode(_materials.map((item) => item.toJson()).toList()),
     );
+  }
+
+  Future<void> _changeGenerationSubject(String value) async {
+    final normalized = SubjectCapabilities.normalize(value);
+    final current = _selectedMaterial;
+    if (!mounted) return;
+    setState(() {
+      _generationSubject = normalized;
+      if (current != null) {
+        final updated = current.copyWith(subject: normalized);
+        final index = _materials.indexWhere((item) => item.id == current.id);
+        if (index >= 0) _materials[index] = updated;
+        _selectedMaterial = updated;
+      }
+      final capabilities = SubjectCapabilities.resolve(
+        normalized,
+        materialText: current?.content ?? '',
+      );
+      if (!capabilities.allowCharts) _enableRichContent = false;
+      if (!capabilities.allowListening) _enableListening = false;
+    });
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_generationSubjectKey, normalized);
+    await prefs.setBool(_enableRichKey, _enableRichContent);
+    await prefs.setBool(_enableListeningKey, _enableListening);
+    if (current != null) await _saveMaterials();
+  }
+
+  Future<void> _selectGenerationMaterial(StudyMaterial? material) async {
+    if (material == null || !mounted) return;
+    final subject = SubjectCapabilities.normalize(material.subject);
+    setState(() {
+      _selectedMaterial = material;
+      _generationSubject = subject;
+      final capabilities = SubjectCapabilities.resolve(
+        subject,
+        materialText: material.content,
+      );
+      if (!capabilities.allowCharts) _enableRichContent = false;
+      if (!capabilities.allowListening) _enableListening = false;
+    });
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_generationSubjectKey, subject);
+    await prefs.setBool(_enableRichKey, _enableRichContent);
+    await prefs.setBool(_enableListeningKey, _enableListening);
   }
 
   Future<void> _saveRecords() async {
@@ -3597,6 +3718,8 @@ class _AppShellState extends State<AppShell> {
     setState(() {
       _generating = true;
       _generateMotionState = GenerateMotionState.readingMaterial;
+      _generateAcceptedCount = 0;
+      _generateTargetCount = _questionCount;
     });
     await GenerationWakeLock.acquire();
     try {
@@ -3618,12 +3741,21 @@ class _AppShellState extends State<AppShell> {
       final questions = await AiService.generateQuestions(
         config: _config,
         material: material.content,
+        subject: _generationSubject,
         types: _selectedTypes.toList(),
         count: _questionCount,
         audience: _audience,
         enableRichContent: _enableRichContent,
         enableListening: _enableListening,
         outputLanguage: outputLanguage,
+        onProgress: (progress) {
+          if (!mounted) return;
+          setState(() {
+            _generateMotionState = GenerateMotionState.generatingQuestions;
+            _generateAcceptedCount = progress.acceptedCount;
+            _generateTargetCount = progress.expectedCount;
+          });
+        },
       );
       if (mounted) {
         setState(() => _generateMotionState = GenerateMotionState.validating);
@@ -3638,6 +3770,11 @@ class _AppShellState extends State<AppShell> {
             xpMultiplier: _xpProfile.activeMultiplier(),
           );
         });
+        if (questions.length < _questionCount) {
+          _showSnack(
+            '已保留 ${questions.length} / $_questionCount 道有效题目；已停止继续请求以保护 API 额度',
+          );
+        }
       }
     } catch (error) {
       _showSnack(apiErrorMessage(error));
@@ -3647,6 +3784,8 @@ class _AppShellState extends State<AppShell> {
         setState(() {
           _generating = false;
           _generateMotionState = GenerateMotionState.idle;
+          _generateAcceptedCount = 0;
+          _generateTargetCount = 0;
         });
       }
     }
@@ -3682,14 +3821,17 @@ class _AppShellState extends State<AppShell> {
     setState(() => _paperGenerating = true);
     await GenerationWakeLock.acquire();
     final progressStage = ValueNotifier<int>(0);
+    final progressBatch = ValueNotifier<AiJsonBatchProgress?>(null);
     var progressOpen = true;
     final progressDialog = showDialog<void>(
       context: context,
       barrierDismissible: false,
-      builder: (context) => ValueListenableBuilder<int>(
-        valueListenable: progressStage,
-        builder: (context, stage, _) => PaperGenerationProgress(
-          stage: stage,
+      builder: (context) => AnimatedBuilder(
+        animation: Listenable.merge([progressStage, progressBatch]),
+        builder: (context, _) => PaperGenerationProgress(
+          stage: progressStage.value,
+          currentQuestion: progressBatch.value?.acceptedCount,
+          totalQuestions: progressBatch.value?.expectedCount ?? estimatedCount,
           onCancel: _cancelActiveAiTask,
         ),
       ),
@@ -3706,7 +3848,7 @@ class _AppShellState extends State<AppShell> {
       progressStage.value = 1;
       await Future<void>.delayed(const Duration(milliseconds: 120));
       progressStage.value = 2;
-      final questions = await AiService.generatePaper(
+      final generation = await AiService.generatePaperResult(
         config: _config,
         material: material.content,
         subject: subject,
@@ -3719,7 +3861,12 @@ class _AppShellState extends State<AppShell> {
         chapterRange: chapterRange,
         knowledgePointSpec: knowledgePointSpec,
         listeningCount: listeningCount,
+        onProgress: (progress) {
+          if (!progressOpen) return;
+          progressBatch.value = progress;
+        },
       );
+      final questions = generation.items;
       if (questions.isEmpty) {
         closeProgress();
         _showSnack('AI 没有返回有效试题，请换个模型或缩短资料');
@@ -3745,8 +3892,58 @@ class _AppShellState extends State<AppShell> {
           progressStage.value = 4;
           await Future<void>.delayed(const Duration(milliseconds: 260));
           closeProgress();
-          _showSnack('试卷生成成功（共 ${questions.length} 题）');
-          await _openPaperEditor(paper, material);
+          if (generation.isComplete) {
+            _showSnack('试卷生成成功（共 ${questions.length} 题）');
+            await _openPaperEditor(paper, material);
+          } else {
+            final target = generation.diagnostics.targetCount;
+            final action = await showDialog<String>(
+              context: context,
+              builder: (context) => AlertDialog(
+                title: const Text('试卷已保留为草稿'),
+                content: Text(
+                  '当前已生成 ${questions.length} / $target 题。\n\n'
+                  '模型共返回 ${generation.diagnostics.modelDecodedCount} 个可解析对象，'
+                  '结构无效 ${generation.diagnostics.schemaRejectedCount} 个，'
+                  '偏离资料 ${generation.diagnostics.policyRejectedCount} 个，'
+                  '重复 ${generation.diagnostics.duplicateRejectedCount} 个。\n\n'
+                  '继续补齐会再次调用你的模型 API。',
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(context, 'keep'),
+                    child: const Text('保留草稿'),
+                  ),
+                  TextButton(
+                    onPressed: () => Navigator.pop(context, 'edit'),
+                    child: const Text('编辑现有题目'),
+                  ),
+                  FilledButton(
+                    onPressed: () => Navigator.pop(context, 'continue'),
+                    child: const Text('继续补齐'),
+                  ),
+                ],
+              ),
+            );
+            if (action == 'edit' && mounted) {
+              await _openPaperEditor(paper, material);
+            } else if (action == 'continue' && mounted) {
+              await _continuePaperDraft(
+                paper: paper,
+                material: material,
+                targetTemplate:
+                    template ??
+                    PaperTemplate.defaultFor(
+                      subject: subject,
+                      gradeLevel: gradeLevel,
+                      pageCount: pageCount,
+                    ),
+                chapterRange: chapterRange,
+                knowledgePointSpec: knowledgePointSpec,
+                listeningCount: listeningCount,
+              );
+            }
+          }
         }
       }
     } catch (error) {
@@ -3757,8 +3954,314 @@ class _AppShellState extends State<AppShell> {
       closeProgress();
       await progressDialog;
       progressStage.dispose();
+      progressBatch.dispose();
       if (mounted) setState(() => _paperGenerating = false);
     }
+  }
+
+  PaperTemplate _remainingPaperTemplate(
+    PaperTemplate target,
+    List<PaperQuestion> existing,
+  ) {
+    int count(String type) =>
+        existing.where((item) => item.question.type == type).length;
+    return PaperTemplate(
+      choiceCount: max(0, target.choiceCount - count('choice')),
+      multiChoiceCount: max(0, target.multiChoiceCount - count('multi_choice')),
+      fillCount: max(0, target.fillCount - count('fill')),
+      judgeCount: max(0, target.judgeCount - count('true_false')),
+      subjectiveCount: max(
+        0,
+        target.subjectiveCount -
+            existing
+                .where(
+                  (item) => !const {
+                    'choice',
+                    'multi_choice',
+                    'fill',
+                    'true_false',
+                  }.contains(item.question.type),
+                )
+                .length,
+      ),
+    );
+  }
+
+  Future<void> _continuePaperDraft({
+    required Paper paper,
+    required StudyMaterial material,
+    required PaperTemplate targetTemplate,
+    required String chapterRange,
+    required String knowledgePointSpec,
+    required int listeningCount,
+  }) async {
+    final remaining = _remainingPaperTemplate(targetTemplate, paper.questions);
+    if (remaining.totalCount <= 0) {
+      _showSnack('试卷题量已经完整');
+      await _openPaperEditor(paper, material);
+      return;
+    }
+    final progressStage = ValueNotifier<int>(2);
+    final progressBatch = ValueNotifier<AiJsonBatchProgress?>(null);
+    var progressOpen = true;
+    final dialog = showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AnimatedBuilder(
+        animation: Listenable.merge([progressStage, progressBatch]),
+        builder: (context, _) => PaperGenerationProgress(
+          stage: progressStage.value,
+          currentQuestion:
+              paper.questions.length +
+              (progressBatch.value?.acceptedCount ?? 0),
+          totalQuestions: targetTemplate.totalCount,
+          onCancel: _cancelActiveAiTask,
+        ),
+      ),
+    );
+    void closeProgress() {
+      if (!progressOpen || !mounted) return;
+      progressOpen = false;
+      Navigator.of(context, rootNavigator: true).pop();
+    }
+
+    try {
+      final supplement = await AiService.generatePaperResult(
+        config: _config,
+        material: material.content,
+        subject: paper.subject,
+        gradeLevel: paper.gradeLevel,
+        pageCount: paper.pageCount,
+        scoreConfig: paper.scoreConfig,
+        template: remaining,
+        enableRichContent: _enableRichContent,
+        enableListening: _enableListening,
+        chapterRange: chapterRange,
+        knowledgePointSpec: knowledgePointSpec,
+        listeningCount: listeningCount,
+        excludedQuestions: paper.questions
+            .map((item) => item.question.question)
+            .toList(growable: false),
+        onProgress: (progress) {
+          if (!progressOpen) return;
+          progressBatch.value = progress;
+        },
+      );
+      final seen = paper.questions
+          .map(
+            (item) => item.question.question
+                .replaceAll(RegExp(r'\s+'), '')
+                .toLowerCase(),
+          )
+          .toSet();
+      final uniqueSupplement = supplement.items
+          .where(
+            (item) => seen.add(
+              item.question.question
+                  .replaceAll(RegExp(r'\s+'), '')
+                  .toLowerCase(),
+            ),
+          )
+          .toList(growable: false);
+      final updated = Paper(
+        id: paper.id,
+        subject: paper.subject,
+        gradeLevel: paper.gradeLevel,
+        pageCount: paper.pageCount,
+        materialName: paper.materialName,
+        questions: [...paper.questions, ...uniqueSupplement],
+        createdAt: paper.createdAt,
+        scoreConfig: paper.scoreConfig,
+        name: paper.name,
+        durationMinutes: paper.durationMinutes,
+      );
+      final index = _papers.indexWhere((item) => item.id == paper.id);
+      if (index >= 0) {
+        setState(() => _papers[index] = updated);
+        await _savePapers();
+      }
+      closeProgress();
+      final target = targetTemplate.totalCount;
+      if (updated.questions.length >= target) {
+        _showSnack('试卷已补齐（共 ${updated.questions.length} 题）');
+      } else {
+        _showSnack(
+          '本轮补题后共 ${updated.questions.length} / $target 题；已停止继续请求以保护 API 额度',
+        );
+      }
+      if (mounted) await _openPaperEditor(updated, material);
+    } catch (error) {
+      closeProgress();
+      _showSnack(safeApiErrorMessage(error));
+    } finally {
+      closeProgress();
+      await dialog;
+      progressStage.dispose();
+      progressBatch.dispose();
+    }
+  }
+
+  List<CardRunQuestion> _buildLocalCardRunPool() {
+    final pool = <CardRunQuestion>[];
+    final identities = <String>{};
+    _cardRunSourceQuestions.clear();
+    _cardRunSourceMaterials.clear();
+
+    void addQuestion(
+      AiQuestion question, {
+      required String materialName,
+      required bool isWrong,
+    }) {
+      final prompt = question.question.trim();
+      final answer = question.answer?.toString().trim() ?? '';
+      if (prompt.isEmpty || answer.isEmpty || question.type == 'multi_choice') {
+        return;
+      }
+      if ((question.type == 'choice' || question.type == 'true_false') &&
+          question.options.length < 2) {
+        return;
+      }
+      final identity = prompt.replaceAll(RegExp(r'\s+'), '').toLowerCase();
+      if (!identities.add(identity)) return;
+      final id = 'card-run-${identity.hashCode.abs()}-${pool.length}';
+      final knowledgePoint = prompt.length > 12
+          ? prompt.substring(0, 12).replaceAll(RegExp(r'[\s\n]+'), ' ').trim()
+          : prompt;
+      pool.add(
+        CardRunQuestion(
+          id: id,
+          prompt: prompt,
+          options: List<String>.from(question.options),
+          answer: answer,
+          explanation: question.explanation,
+          knowledgePoint: knowledgePoint.isEmpty ? '综合' : knowledgePoint,
+          isWrong: isWrong,
+        ),
+      );
+      _cardRunSourceQuestions[id] = question;
+      _cardRunSourceMaterials[id] = materialName;
+    }
+
+    for (final wrong in _wrongs) {
+      addQuestion(
+        wrong.question,
+        materialName: wrong.materialName,
+        isWrong: true,
+      );
+    }
+    for (final paper in _papers) {
+      for (final item in paper.questions) {
+        addQuestion(
+          item.question,
+          materialName: paper.materialName,
+          isWrong: false,
+        );
+      }
+    }
+    return pool;
+  }
+
+  Future<void> _startCardRun() async {
+    final pool = _buildLocalCardRunPool();
+    if (pool.length < 10) {
+      final action = await showDialog<String>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('本地题目不足'),
+          content: Text(
+            pool.isEmpty
+                ? 'Card Run 默认只使用本地试卷和错题，不会自动调用 AI。请先生成或保存一些题目。'
+                : '当前可用 ${pool.length} 道本地题目，标准一局需要 10 道。你可以缩短本局，或先生成更多题目。',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, 'cancel'),
+              child: const Text('更换资料'),
+            ),
+            if (pool.length >= 3)
+              TextButton(
+                onPressed: () => Navigator.pop(context, 'short'),
+                child: Text('缩短为 ${pool.length} 题'),
+              ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, 'generate'),
+              child: const Text('生成更多题目'),
+            ),
+          ],
+        ),
+      );
+      if (!mounted) return;
+      if (action == 'generate') {
+        setState(() => _tab = 1);
+        return;
+      }
+      if (action != 'short') return;
+    }
+    pool.shuffle(Random());
+    setState(() => _cardRunQuestions = pool.take(10).toList(growable: false));
+  }
+
+  Future<void> _completeCardRun(CardRunResult result) async {
+    final oldLevel = _xpProfile.level;
+    final wrongs = <WrongItem>[];
+    final stats = <QuestionStat>[];
+    for (final answer in result.answers) {
+      final source = _cardRunSourceQuestions[answer.question.id];
+      if (source == null) continue;
+      stats.add(
+        QuestionStat(
+          type: source.type,
+          isCorrect: answer.correct,
+          answerLetter: answer.userAnswer,
+          knowledgePoint: answer.question.knowledgePoint,
+          questionText: source.question,
+          explanation: source.explanation,
+        ),
+      );
+      if (!answer.correct) {
+        wrongs.add(
+          WrongItem(
+            materialName:
+                _cardRunSourceMaterials[answer.question.id] ?? 'Card Run',
+            question: source,
+            userAnswer: answer.userAnswer,
+            createdAt: DateTime.now(),
+          ),
+        );
+      }
+    }
+    setState(() {
+      _xpProfile = _xpProfile.copyWith(
+        totalXp: _xpProfile.totalXp + result.totalXp,
+      );
+      _records.insert(
+        0,
+        PracticeRecord(
+          materialName: 'Card Run 卡牌学习',
+          total: result.total,
+          correct: result.correct,
+          createdAt: DateTime.now(),
+          xpEarned: result.totalXp,
+          questionStats: stats,
+        ),
+      );
+      _wrongs = mergeWrongItems(_wrongs, wrongs);
+      final todayKey = _dateKey(DateTime.now());
+      _practiceLog[todayKey] = (_practiceLog[todayKey] ?? 0) + result.total;
+      _cardRunQuestions = null;
+      _cardRunSourceQuestions.clear();
+      _cardRunSourceMaterials.clear();
+      _tab = 4;
+    });
+    await _saveXpProfile();
+    await _saveRecords();
+    await _saveWrongs();
+    await _savePracticeLog();
+    if (!mounted) return;
+    _showSnack(
+      'Card Run 已结算：基础 ${result.baseXp} XP，卡牌加成 ${result.cardBonusXp + result.eventBonusXp} XP',
+    );
+    if (_xpProfile.level > oldLevel) await _showLevelUp(_xpProfile.level);
   }
 
   Future<void> _startWrongCardChallenge() async {
@@ -4785,6 +5288,22 @@ class _AppShellState extends State<AppShell> {
     if (_loading) {
       return const Scaffold(body: _SplashLoadingView());
     }
+    final cardRunQuestions = _cardRunQuestions;
+    if (cardRunQuestions != null) {
+      return CardRunPage(
+        questions: cardRunQuestions,
+        reduceMotion: appSettings.reduceMotion,
+        hapticsEnabled: appSettings.hapticsEnabled,
+        onExit: () {
+          setState(() {
+            _cardRunQuestions = null;
+            _cardRunSourceQuestions.clear();
+            _cardRunSourceMaterials.clear();
+          });
+        },
+        onComplete: _completeCardRun,
+      );
+    }
     // v2.9.0: RPG 闯关用 MiniGamePage 替代 PracticeScreen
     final miniSession = _miniGameSession;
     if (miniSession != null) {
@@ -4830,6 +5349,7 @@ class _AppShellState extends State<AppShell> {
         onCheckIn: _dailyCheckIn,
         onOpenConfig: _openConfigPage,
         onRpgChallenge: _openRpgMap,
+        onCardRun: _startCardRun,
         onScan: _openOcrScan,
       ),
       GeneratePage(
@@ -4839,15 +5359,19 @@ class _AppShellState extends State<AppShell> {
         questionCount: _questionCount,
         audience: _audience,
         audiences: _audiences,
+        subject: _generationSubject,
+        subjects: SubjectCapabilities.subjects,
         generating: _generating,
         motionState: _generateMotionState,
+        generatedQuestionCount: _generateAcceptedCount,
+        generationTargetCount: _generateTargetCount,
         enableRichContent: _enableRichContent,
         enableListening: _enableListening,
         config: _config,
         onOpenProviderPortal: _openProviderPortal,
         onMaterialChanged: (material) {
           AppHaptics.instance.selectionClick();
-          setState(() => _selectedMaterial = material);
+          _selectGenerationMaterial(material);
         },
         onToggleType: (type) {
           AppHaptics.instance.selectionClick();
@@ -4870,6 +5394,10 @@ class _AppShellState extends State<AppShell> {
         onAudienceChanged: (value) {
           AppHaptics.instance.selectionClick();
           setState(() => _audience = value);
+        },
+        onSubjectChanged: (value) {
+          AppHaptics.instance.selectionClick();
+          _changeGenerationSubject(value);
         },
         onToggleRichContent: (v) async {
           AppHaptics.instance.selectionClick();
@@ -5228,81 +5756,100 @@ class _OnboardingGuideState extends State<OnboardingGuide> {
 
   @override
   Widget build(BuildContext context) {
-    return Dialog.fullscreen(
-      backgroundColor: kBg,
-      child: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(22),
-          child: Column(
-            children: [
-              Row(
-                children: [
-                  const _LogoMark(size: 44),
-                  const SizedBox(width: 12),
-                  const Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          '欢迎使用 AI题库',
-                          style: TextStyle(
-                            fontSize: 22,
-                            fontWeight: FontWeight.w900,
-                            color: kInk,
+    final colors = Theme.of(context).colorScheme;
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final overlayStyle = dark
+        ? SystemUiOverlayStyle.light.copyWith(
+            statusBarColor: Colors.transparent,
+            systemNavigationBarColor: colors.surface,
+          )
+        : SystemUiOverlayStyle.dark.copyWith(
+            statusBarColor: Colors.transparent,
+            systemNavigationBarColor: colors.surface,
+          );
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: overlayStyle,
+      child: Dialog.fullscreen(
+        backgroundColor: colors.surface,
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(22),
+            child: Column(
+              children: [
+                Row(
+                  children: [
+                    const _LogoMark(size: 44),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '欢迎使用 AI题库',
+                            style: TextStyle(
+                              fontSize: 22,
+                              fontWeight: FontWeight.w900,
+                              color: colors.onSurface,
+                            ),
                           ),
-                        ),
-                        SizedBox(height: 3),
-                        Text('一分钟了解每个页面能做什么', style: TextStyle(color: kMuted)),
-                      ],
+                          const SizedBox(height: 3),
+                          Text(
+                            '一分钟了解每个页面能做什么',
+                            style: TextStyle(color: colors.onSurfaceVariant),
+                          ),
+                        ],
+                      ),
+                    ),
+                    TextButton(onPressed: _finish, child: const Text('跳过')),
+                  ],
+                ),
+                const SizedBox(height: 20),
+                Expanded(
+                  child: PageView.builder(
+                    controller: _controller,
+                    itemCount: _steps.length,
+                    onPageChanged: (value) {
+                      AppHaptics.instance.selectionClick();
+                      setState(() => _index = value);
+                    },
+                    itemBuilder: (context, index) =>
+                        _GuideStepCard(step: _steps[index]),
+                  ),
+                ),
+                const SizedBox(height: 18),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: List.generate(
+                    _steps.length,
+                    (index) => AnimatedContainer(
+                      duration: const Duration(milliseconds: 180),
+                      width: index == _index ? 24 : 8,
+                      height: 8,
+                      margin: const EdgeInsets.symmetric(horizontal: 4),
+                      decoration: BoxDecoration(
+                        color: index == _index
+                            ? colors.primary
+                            : colors.outlineVariant,
+                        borderRadius: BorderRadius.circular(999),
+                      ),
                     ),
                   ),
-                  TextButton(onPressed: _finish, child: const Text('跳过')),
-                ],
-              ),
-              const SizedBox(height: 20),
-              Expanded(
-                child: PageView.builder(
-                  controller: _controller,
-                  itemCount: _steps.length,
-                  onPageChanged: (value) {
-                    AppHaptics.instance.selectionClick();
-                    setState(() => _index = value);
-                  },
-                  itemBuilder: (context, index) =>
-                      _GuideStepCard(step: _steps[index]),
                 ),
-              ),
-              const SizedBox(height: 18),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: List.generate(
-                  _steps.length,
-                  (index) => AnimatedContainer(
-                    duration: const Duration(milliseconds: 180),
-                    width: index == _index ? 24 : 8,
-                    height: 8,
-                    margin: const EdgeInsets.symmetric(horizontal: 4),
-                    decoration: BoxDecoration(
-                      color: index == _index ? kBlue : const Color(0xFFCBD5E1),
-                      borderRadius: BorderRadius.circular(999),
+                const SizedBox(height: 18),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: _next,
+                    icon: Icon(
+                      _index == _steps.length - 1
+                          ? Icons.check_rounded
+                          : Icons.arrow_forward_rounded,
                     ),
+                    label: Text(_index == _steps.length - 1 ? '开始使用' : '下一步'),
                   ),
                 ),
-              ),
-              const SizedBox(height: 18),
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton.icon(
-                  onPressed: _next,
-                  icon: Icon(
-                    _index == _steps.length - 1
-                        ? Icons.check_rounded
-                        : Icons.arrow_forward_rounded,
-                  ),
-                  label: Text(_index == _steps.length - 1 ? '开始使用' : '下一步'),
-                ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -5354,28 +5901,28 @@ class _GuideStepCard extends StatelessWidget {
             width: 74,
             height: 74,
             decoration: BoxDecoration(
-              color: const Color(0xFFEFF6FF),
+              color: colors.primaryContainer,
               borderRadius: BorderRadius.circular(24),
             ),
-            child: Icon(step.icon, color: kBlue, size: 36),
+            child: Icon(step.icon, color: colors.onPrimaryContainer, size: 36),
           ),
           const SizedBox(height: 26),
           Text(
             step.title,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 28,
               height: 1.15,
               fontWeight: FontWeight.w900,
-              color: kInk,
+              color: colors.onSurface,
             ),
           ),
           const SizedBox(height: 14),
           Text(
             step.body,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 15.5,
               height: 1.75,
-              color: kMuted,
+              color: colors.onSurfaceVariant,
               fontWeight: FontWeight.w600,
             ),
           ),
@@ -5383,20 +5930,23 @@ class _GuideStepCard extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
-              color: const Color(0xFFFFFBEB),
+              color: colors.tertiaryContainer,
               borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: const Color(0xFFFDE68A)),
+              border: Border.all(color: colors.tertiary.withValues(alpha: .34)),
             ),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Icon(Icons.lightbulb_outline, color: Color(0xFFD97706)),
+                Icon(
+                  Icons.lightbulb_outline,
+                  color: colors.onTertiaryContainer,
+                ),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(
                     step.tip,
-                    style: const TextStyle(
-                      color: Color(0xFF92400E),
+                    style: TextStyle(
+                      color: colors.onTertiaryContainer,
                       height: 1.55,
                       fontWeight: FontWeight.w700,
                     ),
@@ -5456,6 +6006,7 @@ class HomePage extends StatelessWidget {
     required this.onCheckIn,
     required this.onOpenConfig,
     required this.onRpgChallenge,
+    required this.onCardRun,
     required this.onScan,
   });
 
@@ -5475,6 +6026,7 @@ class HomePage extends StatelessWidget {
   final VoidCallback onCheckIn;
   final VoidCallback onOpenConfig;
   final VoidCallback onRpgChallenge;
+  final VoidCallback onCardRun;
   final VoidCallback onScan;
 
   @override
@@ -5554,6 +6106,7 @@ class HomePage extends StatelessWidget {
             onGenerate: onGoGenerate,
             onWrongCards: onGoWrong,
             onRpgChallenge: onRpgChallenge,
+            onCardRun: onCardRun,
             onScan: onScan,
           ),
         ),
@@ -6190,6 +6743,7 @@ class _HomeActionGrid extends StatelessWidget {
     required this.onGenerate,
     required this.onWrongCards,
     required this.onRpgChallenge,
+    required this.onCardRun,
     required this.onScan,
   });
 
@@ -6198,6 +6752,7 @@ class _HomeActionGrid extends StatelessWidget {
   final VoidCallback onGenerate;
   final VoidCallback onWrongCards;
   final VoidCallback onRpgChallenge;
+  final VoidCallback onCardRun;
   final VoidCallback onScan;
 
   @override
@@ -6250,6 +6805,13 @@ class _HomeActionGrid extends StatelessWidget {
           subtitle: context.l10n.rpgChallengeSubtitle,
           onTap: onRpgChallenge,
           color: const Color(0xFFEC4899),
+        ),
+        _HomeActionCard(
+          icon: Icons.style_rounded,
+          title: 'Card Run',
+          subtitle: '本地题库 · 三选一卡牌学习',
+          onTap: onCardRun,
+          color: const Color(0xFF4F46E5),
         ),
       ],
     );
@@ -6403,8 +6965,12 @@ class GeneratePage extends StatelessWidget {
     required this.questionCount,
     required this.audience,
     required this.audiences,
+    required this.subject,
+    required this.subjects,
     required this.generating,
     required this.motionState,
+    required this.generatedQuestionCount,
+    required this.generationTargetCount,
     required this.enableRichContent,
     required this.enableListening,
     required this.config,
@@ -6413,6 +6979,7 @@ class GeneratePage extends StatelessWidget {
     required this.onToggleType,
     required this.onCountChanged,
     required this.onAudienceChanged,
+    required this.onSubjectChanged,
     required this.onToggleRichContent,
     required this.onToggleListening,
     required this.onGenerate,
@@ -6430,8 +6997,12 @@ class GeneratePage extends StatelessWidget {
   final int questionCount;
   final String audience;
   final List<String> audiences;
+  final String subject;
+  final List<String> subjects;
   final bool generating;
   final GenerateMotionState motionState;
+  final int generatedQuestionCount;
+  final int generationTargetCount;
   final bool enableRichContent;
   final bool enableListening;
   final ApiConfig config;
@@ -6440,6 +7011,7 @@ class GeneratePage extends StatelessWidget {
   final ValueChanged<String> onToggleType;
   final ValueChanged<int> onCountChanged;
   final ValueChanged<String> onAudienceChanged;
+  final ValueChanged<String> onSubjectChanged;
   final ValueChanged<bool> onToggleRichContent;
   final ValueChanged<bool> onToggleListening;
   final VoidCallback onGenerate;
@@ -6458,6 +7030,10 @@ class GeneratePage extends StatelessWidget {
     final activeMaterial =
         material ?? (materials.isEmpty ? null : materials.first);
     final colors = Theme.of(context).colorScheme;
+    final capabilities = SubjectCapabilities.resolve(
+      subject,
+      materialText: activeMaterial?.content ?? '',
+    );
     final content = ListView(
       padding: const EdgeInsets.all(18),
       children: [
@@ -6594,6 +7170,36 @@ class GeneratePage extends StatelessWidget {
                   ),
                 ),
               ],
+            ),
+          ),
+          const SizedBox(height: 18),
+          const _SectionHeader(title: '练习学科', subtitle: '用于匹配合理的图表、公式和听力能力'),
+          const SizedBox(height: 8),
+          DropdownButtonFormField<String>(
+            initialValue: SubjectCapabilities.normalize(subject),
+            dropdownColor: colors.surface,
+            items: subjects
+                .map(
+                  (item) =>
+                      DropdownMenuItem<String>(value: item, child: Text(item)),
+                )
+                .toList(growable: false),
+            onChanged: (value) {
+              if (value != null) onSubjectChanged(value);
+            },
+            decoration: InputDecoration(
+              prefixIcon: const Icon(Icons.school_outlined),
+              labelText: '选择学科',
+              helperText: subject == SubjectCapabilities.auto
+                  ? '当前自动判断为：${capabilities.subject}'
+                  : capabilities.chartEnabledByMaterial
+                  ? '资料中检测到明确图表内容，已允许图表能力'
+                  : '可随时手动覆盖，设置会保存到当前资料',
+              filled: true,
+              fillColor: colors.surface,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(18),
+              ),
             ),
           ),
           const SizedBox(height: 18),
@@ -6755,41 +7361,42 @@ class GeneratePage extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 10,
-                  ),
-                  decoration: BoxDecoration(
-                    color: colors.surfaceContainerHighest,
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: colors.outlineVariant),
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      IconButton.filledTonal(
-                        onPressed: questionCount <= 1
-                            ? null
-                            : () => onCountChanged(questionCount - 1),
-                        icon: const Icon(Icons.remove),
-                      ),
-                      Text(
-                        '$questionCount',
-                        style: const TextStyle(
-                          fontSize: 32,
-                          fontWeight: FontWeight.w900,
+                if (capabilities.allowCharts || capabilities.allowFormulas)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 10,
+                    ),
+                    decoration: BoxDecoration(
+                      color: colors.surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: colors.outlineVariant),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        IconButton.filledTonal(
+                          onPressed: questionCount <= 1
+                              ? null
+                              : () => onCountChanged(questionCount - 1),
+                          icon: const Icon(Icons.remove),
                         ),
-                      ),
-                      IconButton.filledTonal(
-                        onPressed: questionCount >= 20
-                            ? null
-                            : () => onCountChanged(questionCount + 1),
-                        icon: const Icon(Icons.add),
-                      ),
-                    ],
+                        Text(
+                          '$questionCount',
+                          style: const TextStyle(
+                            fontSize: 32,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        IconButton.filledTonal(
+                          onPressed: questionCount >= 20
+                              ? null
+                              : () => onCountChanged(questionCount + 1),
+                          icon: const Icon(Icons.add),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
                 const SizedBox(height: 8),
                 Wrap(
                   spacing: 8,
@@ -6882,78 +7489,79 @@ class GeneratePage extends StatelessWidget {
                     ],
                   ),
                 ),
-                const SizedBox(height: 10),
+                if (capabilities.allowListening) const SizedBox(height: 10),
                 // 启用音频题（英语听力）开关
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 14,
-                    vertical: 6,
-                  ),
-                  decoration: BoxDecoration(
-                    color: enableListening
-                        ? colors.tertiaryContainer
-                        : colors.surfaceContainerHighest,
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(
+                if (capabilities.allowListening)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
                       color: enableListening
-                          ? colors.tertiary
-                          : colors.outlineVariant,
+                          ? colors.tertiaryContainer
+                          : colors.surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(
+                        color: enableListening
+                            ? colors.tertiary
+                            : colors.outlineVariant,
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 36,
+                          height: 36,
+                          decoration: BoxDecoration(
+                            color: enableListening
+                                ? colors.tertiary
+                                : colors.surfaceContainerHigh,
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Icon(
+                            Icons.headphones_rounded,
+                            color: enableListening
+                                ? colors.onTertiary
+                                : colors.onSurfaceVariant,
+                            size: 20,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                '启用音频题（英语听力）',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w900,
+                                  color: colors.onSurface,
+                                ),
+                              ),
+                              Text(
+                                enableListening
+                                    ? '已开启：听力题约占总题数 25%（保持在 20%-30%）'
+                                    : '关闭：纯文字题，无听力音频',
+                                style: TextStyle(
+                                  color: colors.onSurfaceVariant,
+                                  fontSize: 11,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Switch(
+                          value: enableListening,
+                          onChanged: (v) {
+                            AppHaptics.instance.selectionClick();
+                            onToggleListening(v);
+                          },
+                          activeThumbColor: colors.tertiary,
+                        ),
+                      ],
                     ),
                   ),
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 36,
-                        height: 36,
-                        decoration: BoxDecoration(
-                          color: enableListening
-                              ? colors.tertiary
-                              : colors.surfaceContainerHigh,
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Icon(
-                          Icons.headphones_rounded,
-                          color: enableListening
-                              ? colors.onTertiary
-                              : colors.onSurfaceVariant,
-                          size: 20,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              '启用音频题（英语听力）',
-                              style: TextStyle(
-                                fontWeight: FontWeight.w900,
-                                color: colors.onSurface,
-                              ),
-                            ),
-                            Text(
-                              enableListening
-                                  ? '已开启：听力题约占总题数 25%（保持在 20%-30%）'
-                                  : '关闭：纯文字题，无听力音频',
-                              style: TextStyle(
-                                color: colors.onSurfaceVariant,
-                                fontSize: 11,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      Switch(
-                        value: enableListening,
-                        onChanged: (v) {
-                          AppHaptics.instance.selectionClick();
-                          onToggleListening(v);
-                        },
-                        activeThumbColor: colors.tertiary,
-                      ),
-                    ],
-                  ),
-                ),
               ],
             ),
           ),
@@ -6996,7 +7604,10 @@ class GeneratePage extends StatelessWidget {
                     state: motionState,
                     materialName: activeMaterial?.name,
                     enabledTypes: selectedTypes.toList(growable: false),
-                    totalQuestions: questionCount,
+                    actualQuestionCount: generatedQuestionCount,
+                    totalQuestions: generationTargetCount > 0
+                        ? generationTargetCount
+                        : questionCount,
                     onCancel: onCancelGeneration,
                   ),
                 ),
@@ -9766,6 +10377,13 @@ class _PaperPageState extends State<PaperPage> {
             _ => value,
           };
     final activeMaterial = _combinedMaterial;
+    final capabilitySubject = _customSubjects.contains(_subject)
+        ? SubjectCapabilities.custom
+        : _subject;
+    final subjectCapabilities = SubjectCapabilities.resolve(
+      capabilitySubject,
+      materialText: activeMaterial?.content ?? '',
+    );
 
     // 历史试卷按资料分组（保留插入顺序）
     final grouped = <String, List<Paper>>{};
@@ -10039,6 +10657,13 @@ class _PaperPageState extends State<PaperPage> {
           onSelected: (s) {
             AppHaptics.instance.selectionClick();
             setState(() => _subject = s);
+            final profile = SubjectCapabilities.resolve(
+              s,
+              materialText: activeMaterial?.content ?? '',
+            );
+            if (!profile.allowCharts) widget.onToggleRichContent(false);
+            if (!profile.allowListening) widget.onToggleListening(false);
+            _saveLastSelection();
           },
           onPickCustom: (preset) => _pickCustom(
             title: '自定义学科',
@@ -10629,146 +11254,149 @@ class _PaperPageState extends State<PaperPage> {
           ),
         ),
         const SizedBox(height: 18),
-        // 启用图表渲染开关
-        Container(
-          margin: const EdgeInsets.only(bottom: 10),
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-          decoration: BoxDecoration(
-            color: widget.enableRichContent
-                ? colors.primaryContainer
-                : colors.surfaceContainerHigh,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(
+        // 仅在学科合理或资料明确包含图表时展示图表/公式能力。
+        if (subjectCapabilities.allowCharts ||
+            subjectCapabilities.allowFormulas)
+          Container(
+            margin: const EdgeInsets.only(bottom: 10),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+            decoration: BoxDecoration(
               color: widget.enableRichContent
-                  ? colors.primary.withValues(alpha: .55)
-                  : colors.outlineVariant,
+                  ? colors.primaryContainer
+                  : colors.surfaceContainerHigh,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: widget.enableRichContent
+                    ? colors.primary.withValues(alpha: .55)
+                    : colors.outlineVariant,
+              ),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: widget.enableRichContent
+                        ? colors.primary
+                        : colors.surfaceContainerHighest,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(
+                    Icons.insights_rounded,
+                    color: widget.enableRichContent
+                        ? colors.onPrimary
+                        : colors.onSurfaceVariant,
+                    size: 20,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '启用图表/公式渲染',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w900,
+                          color: colors.onSurface,
+                        ),
+                      ),
+                      Text(
+                        widget.enableRichContent
+                            ? '已开启：图表题约占全卷 25%（保持在 20%-30%）'
+                            : '关闭：纯文字试卷，生成更快',
+                        style: TextStyle(
+                          color: colors.onSurfaceVariant,
+                          fontSize: 11,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Switch(
+                  value: widget.enableRichContent,
+                  onChanged: (v) {
+                    AppHaptics.instance.selectionClick();
+                    widget.onToggleRichContent(v);
+                  },
+                  activeThumbColor: kBlue,
+                ),
+              ],
             ),
           ),
-          child: Row(
-            children: [
-              Container(
-                width: 36,
-                height: 36,
-                decoration: BoxDecoration(
-                  color: widget.enableRichContent
-                      ? colors.primary
-                      : colors.surfaceContainerHighest,
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Icon(
-                  Icons.insights_rounded,
-                  color: widget.enableRichContent
-                      ? colors.onPrimary
-                      : colors.onSurfaceVariant,
-                  size: 20,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '启用图表/公式渲染',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w900,
-                        color: colors.onSurface,
-                      ),
-                    ),
-                    Text(
-                      widget.enableRichContent
-                          ? '已开启：图表题约占全卷 25%（保持在 20%-30%）'
-                          : '关闭：纯文字试卷，生成更快',
-                      style: TextStyle(
-                        color: colors.onSurfaceVariant,
-                        fontSize: 11,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Switch(
-                value: widget.enableRichContent,
-                onChanged: (v) {
-                  AppHaptics.instance.selectionClick();
-                  widget.onToggleRichContent(v);
-                },
-                activeThumbColor: kBlue,
-              ),
-            ],
-          ),
-        ),
-        // 启用音频题开关
-        Container(
-          margin: const EdgeInsets.only(bottom: 18),
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-          decoration: BoxDecoration(
-            color: widget.enableListening
-                ? colors.tertiaryContainer
-                : colors.surfaceContainerHigh,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(
+        // 英语和用户自定义学科才展示听力能力。
+        if (subjectCapabilities.allowListening)
+          Container(
+            margin: const EdgeInsets.only(bottom: 18),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+            decoration: BoxDecoration(
               color: widget.enableListening
-                  ? colors.tertiary.withValues(alpha: .55)
-                  : colors.outlineVariant,
+                  ? colors.tertiaryContainer
+                  : colors.surfaceContainerHigh,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: widget.enableListening
+                    ? colors.tertiary.withValues(alpha: .55)
+                    : colors.outlineVariant,
+              ),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: widget.enableListening
+                        ? colors.tertiary
+                        : colors.surfaceContainerHighest,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(
+                    Icons.headphones_rounded,
+                    color: widget.enableListening
+                        ? colors.onTertiary
+                        : colors.onSurfaceVariant,
+                    size: 20,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '启用音频题（英语听力）',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w900,
+                          color: colors.onSurface,
+                        ),
+                      ),
+                      Text(
+                        widget.enableListening
+                            ? '已开启：听力题约占全卷 25%（保持在 20%-30%）'
+                            : '关闭：纯文字题，无听力音频',
+                        style: TextStyle(
+                          color: colors.onSurfaceVariant,
+                          fontSize: 11,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Switch(
+                  value: widget.enableListening,
+                  onChanged: (v) {
+                    AppHaptics.instance.selectionClick();
+                    widget.onToggleListening(v);
+                  },
+                  activeThumbColor: const Color(0xFF10B981),
+                ),
+              ],
             ),
           ),
-          child: Row(
-            children: [
-              Container(
-                width: 36,
-                height: 36,
-                decoration: BoxDecoration(
-                  color: widget.enableListening
-                      ? colors.tertiary
-                      : colors.surfaceContainerHighest,
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Icon(
-                  Icons.headphones_rounded,
-                  color: widget.enableListening
-                      ? colors.onTertiary
-                      : colors.onSurfaceVariant,
-                  size: 20,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '启用音频题（英语听力）',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w900,
-                        color: colors.onSurface,
-                      ),
-                    ),
-                    Text(
-                      widget.enableListening
-                          ? '已开启：听力题约占全卷 25%（保持在 20%-30%）'
-                          : '关闭：纯文字题，无听力音频',
-                      style: TextStyle(
-                        color: colors.onSurfaceVariant,
-                        fontSize: 11,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Switch(
-                value: widget.enableListening,
-                onChanged: (v) {
-                  AppHaptics.instance.selectionClick();
-                  widget.onToggleListening(v);
-                },
-                activeThumbColor: const Color(0xFF10B981),
-              ),
-            ],
-          ),
-        ),
         // v2.7.4: 听力题数量设定（仅在启用听力时显示）
-        if (widget.enableListening)
+        if (subjectCapabilities.allowListening && widget.enableListening)
           Container(
             margin: const EdgeInsets.only(bottom: 18),
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
@@ -17108,126 +17736,166 @@ class AiService {
     bool requireExact = true,
     int maxBatchSize = 5,
     int? maxRequests,
+    AiJsonBatchProgressCallback? onProgress,
   }) async {
-    late final List<Map<String, dynamic>> collected;
-    try {
-      collected = await AiJsonBatchCollector.collect(
-        expectedCount: expectedCount,
-        rootKeys: rootKeys,
-        maxBatchSize: maxBatchSize,
-        maxRequests: maxRequests,
-        isValid: isValid,
-        requireExact: requireExact,
-        identityOf: (value) {
-          final identity = [
-            value['question'],
-            value['title'],
-            value['prompt'],
-            value['game_type'],
-            value['answer'],
-            value['correct_answer'],
-          ].where((part) => part != null).join('|').trim();
-          return identity.isEmpty ? jsonEncode(value) : identity;
-        },
-        request: (requestedCount, requestNumber, existing) async {
-          final previousTitles = existing
-              .map(
-                (item) =>
-                    (item['question'] ?? item['title'] ?? item['prompt'] ?? '')
-                        .toString()
-                        .replaceAll(RegExp(r'\s+'), ' ')
-                        .trim(),
-              )
-              .where((item) => item.isNotEmpty)
-              .take(10)
-              .toList(growable: false);
-          final batchInstruction = StringBuffer()
-            ..writeln()
-            ..writeln('【分批输出指令（优先级最高）】')
-            ..writeln('整个任务目标为 $expectedCount 个对象，客户端会分批收集。')
-            ..writeln('这是第 $requestNumber 批，本批严格只返回 $requestedCount 个完整对象。')
-            ..writeln('必须从 [ 开始、以 ] 结束；不要 Markdown，不要前后说明，不要省略号。')
-            ..writeln('每个对象必须包含完整题干、答案和所需字段，解析请简洁，避免输出被截断。');
-          if (previousTitles.isNotEmpty) {
-            batchInstruction
-              ..writeln('以下题目已经收集，本批不得重复：')
-              ..writeln(previousTitles.map((item) => '- $item').join('\n'));
-          }
-          final batchMessages = messages
-              .map((message) => Map<String, String>.from(message))
-              .toList(growable: true);
-          final userIndex = batchMessages.lastIndexWhere(
-            (message) => message['role'] == 'user',
-          );
-          if (userIndex >= 0) {
-            batchMessages[userIndex]['content'] =
-                '${batchMessages[userIndex]['content'] ?? ''}\n$batchInstruction';
-          } else {
-            batchMessages.add({'role': 'user', 'content': '$batchInstruction'});
-          }
-          final batchMaxTokens = (requestedCount * 850).clamp(2400, maxTokens);
-          debugPrint(
-            '[AI JSON] 请求第 $requestNumber 批：$requestedCount 个，已收集 ${existing.length}/$expectedCount',
-          );
-          return _chat(config, batchMessages, maxTokens: batchMaxTokens);
-        },
-      );
-    } on AiJsonIncompleteException catch (error) {
+    final collection = await _requestJsonCollection(
+      config: config,
+      messages: messages,
+      maxTokens: maxTokens,
+      expectedCount: expectedCount,
+      rootKeys: rootKeys,
+      isValid: isValid,
+      maxBatchSize: maxBatchSize,
+      maxRequests: maxRequests,
+      onProgress: onProgress,
+    );
+    if (requireExact && collection.items.length < expectedCount) {
       throw Exception(
-        '模型未能完整生成 $expectedCount 道有效题目（已收到 ${error.actualCount} 道），'
-        '系统已自动分批补全。请重试，或检查模型输出上限。',
+        '模型未能完整生成 $expectedCount 道有效题目（已收到 ${collection.items.length} 道），'
+        '已停止自动补题以保护 API 额度。请保留现有结果后主动决定是否继续。',
       );
     }
-    return collected;
+    return collection.items;
+  }
+
+  static Future<AiJsonCollectionResult> _requestJsonCollection({
+    required ApiConfig config,
+    required List<Map<String, String>> messages,
+    required int maxTokens,
+    required int expectedCount,
+    List<String> rootKeys = const ['questions', 'games', 'items'],
+    bool Function(Map<String, dynamic> value)? isValid,
+    int maxBatchSize = 5,
+    int? maxRequests,
+    AiJsonBatchProgressCallback? onProgress,
+  }) {
+    return AiJsonBatchCollector.collectWithDiagnostics(
+      expectedCount: expectedCount,
+      rootKeys: rootKeys,
+      maxBatchSize: maxBatchSize,
+      maxRequests: maxRequests,
+      isValid: isValid,
+      onProgress: onProgress,
+      identityOf: (value) {
+        final identity = [
+          value['question'],
+          value['title'],
+          value['prompt'],
+          value['game_type'],
+          value['answer'],
+          value['correct_answer'],
+        ].where((part) => part != null).join('|').trim();
+        return identity.isEmpty ? jsonEncode(value) : identity;
+      },
+      request: (requestedCount, requestNumber, existing) async {
+        final previousTitles = existing
+            .map(
+              (item) =>
+                  (item['question'] ?? item['title'] ?? item['prompt'] ?? '')
+                      .toString()
+                      .replaceAll(RegExp(r'\s+'), ' ')
+                      .trim(),
+            )
+            .where((item) => item.isNotEmpty)
+            .take(10)
+            .toList(growable: false);
+        final batchInstruction = StringBuffer()
+          ..writeln()
+          ..writeln('【分批输出指令（优先级最高）】')
+          ..writeln('整个任务目标为 $expectedCount 个对象，客户端会分批收集。')
+          ..writeln('这是第 $requestNumber 批，本批严格只返回 $requestedCount 个完整对象。')
+          ..writeln('必须从 [ 开始、以 ] 结束；不要 Markdown，不要前后说明，不要省略号。')
+          ..writeln('每个对象必须包含完整题干、答案和所需字段，解析请简洁，避免输出被截断。');
+        if (previousTitles.isNotEmpty) {
+          batchInstruction
+            ..writeln('以下题目已经收集，本批不得重复：')
+            ..writeln(previousTitles.map((item) => '- $item').join('\n'));
+        }
+        final batchMessages = messages
+            .map((message) => Map<String, String>.from(message))
+            .toList(growable: true);
+        final userIndex = batchMessages.lastIndexWhere(
+          (message) => message['role'] == 'user',
+        );
+        if (userIndex >= 0) {
+          batchMessages[userIndex]['content'] =
+              '${batchMessages[userIndex]['content'] ?? ''}\n$batchInstruction';
+        } else {
+          batchMessages.add({'role': 'user', 'content': '$batchInstruction'});
+        }
+        final batchMaxTokens = (requestedCount * 850).clamp(2400, maxTokens);
+        debugPrint(
+          '[AI JSON] 请求第 $requestNumber 批：$requestedCount 个，已收集 ${existing.length}/$expectedCount',
+        );
+        return _chat(config, batchMessages, maxTokens: batchMaxTokens);
+      },
+    );
   }
 
   static Future<List<AiQuestion>> generateQuestions({
     required ApiConfig config,
     required String material,
+    String subject = SubjectCapabilities.auto,
     required List<String> types,
     required int count,
     required String audience,
     bool enableRichContent = false,
     bool enableListening = false,
     String outputLanguage = '跟随资料主要语言',
-  }) => AiRequestGuard.instance.runTask<List<AiQuestion>>(
-    taskType: 'question_generation',
-    provider: config.provider,
-    model: config.model,
-    targetCount: count,
-    fingerprint: AiRequestGuard.fingerprint([
-      'question_generation',
-      config.provider,
-      config.model,
-      material,
-      types.join(','),
-      count,
-      audience,
-      enableRichContent,
-      enableListening,
-      outputLanguage,
-    ]),
-    action: (_) => _generateQuestionsUnprotected(
-      config: config,
-      material: material,
-      types: types,
-      count: count,
-      audience: audience,
-      enableRichContent: enableRichContent,
-      enableListening: enableListening,
-      outputLanguage: outputLanguage,
-    ),
-  );
+    AiJsonBatchProgressCallback? onProgress,
+  }) {
+    final capabilities = SubjectCapabilities.resolve(
+      subject,
+      materialText: material,
+    );
+    final effectiveRichContent =
+        enableRichContent &&
+        (capabilities.allowCharts || capabilities.allowFormulas);
+    final effectiveListening = enableListening && capabilities.allowListening;
+    return AiRequestGuard.instance.runTask<List<AiQuestion>>(
+      taskType: 'question_generation',
+      provider: config.provider,
+      model: config.model,
+      targetCount: count,
+      fingerprint: AiRequestGuard.fingerprint([
+        'question_generation',
+        config.provider,
+        config.model,
+        material,
+        capabilities.subject,
+        types.join(','),
+        count,
+        audience,
+        effectiveRichContent,
+        effectiveListening,
+        outputLanguage,
+      ]),
+      action: (_) => _generateQuestionsUnprotected(
+        config: config,
+        material: material,
+        subject: capabilities.subject,
+        types: types,
+        count: count,
+        audience: audience,
+        enableRichContent: effectiveRichContent,
+        enableListening: effectiveListening,
+        outputLanguage: outputLanguage,
+        onProgress: onProgress,
+      ),
+    );
+  }
 
   static Future<List<AiQuestion>> _generateQuestionsUnprotected({
     required ApiConfig config,
     required String material,
+    required String subject,
     required List<String> types,
     required int count,
     required String audience,
     bool enableRichContent = false,
     bool enableListening = false,
     String outputLanguage = '跟随资料主要语言',
+    AiJsonBatchProgressCallback? onProgress,
   }) async {
     final typeText = types.map(_typeLabel).join('、');
     final richTarget = richContentTargetCount(count);
@@ -17244,7 +17912,7 @@ class AiService {
    - 统计图（柱状/折线/饼图）→ type:"chart"，使用结构化 data.chartType、data.xLabels 和 data.series
    - 物理受力/电路/光路等示意图 → type:"physics"
    - 化学分子结构/反应方程 → type:"chemistry"${enableListening ? '''
-   - 英语听力原文 → type:"listening"（仅英语学科使用，audio_text 必填）''' : ''}
+   - 英语听力原文 → 独立 listening_script 字段；同时可返回 type:"listening" 兼容块''' : ''}
    普通纯文字题目可留空数组 []。
    例：{"type":"math","data":{"content":"\$\$x^2 + y^2 = r^2\$\$"}}
 
@@ -17256,11 +17924,12 @@ class AiService {
         ? '\n8. **图表题配额（强制）**：总共 $count 道题中，必须恰好有 $richTarget 道题包含 type:"chart" 的 rich_content（约 25%，必须保持在 20%-30%）。图表必须返回结构化数据，例如 {"type":"chart","data":{"chartType":"bar","title":"专业数据关系","xLabels":["条件A","条件B","条件C"],"series":[{"name":"测量值","values":[30,50,20]}],"unit":"单位","description":""}}。xLabels 与 values 数量必须一致且至少 2 组，数据必须与题干完全一致；图表必须考查资料中的专业数据、参数关系或实验结果，严禁统计章节习题数、题目数、页数、字数等文档元数据；其余题目不得返回 chart。'
         : '\n8. 本次不开启图表题，不要返回 chart 类型。';
     final listeningNote = enableListening
-        ? '\n9. **听力题配额（强制）**：总共 $count 道题中，必须恰好有 $richTarget 道题包含 type:"listening" 的 rich_content（约 25%，必须保持在 20%-30%）。\n   - listening 块格式：{"type":"listening","data":{"audio_text":"完整可朗读段落（30-80 词，来自资料或基于资料改编，不要只截取零散词语）","voice":"en-US 或 zh-CN"}}\n   - audio_text 必须是完整句子或段落，各题不得重复\n   - 若图表和听力同时开启，两类各占约 25%，不要放在同一道题中'
+        ? '\n9. **听力题配额（强制）**：总共 $count 道题中，必须恰好有 $richTarget 道英语听力题（约 25%，保持在 20%-30%）。\n   - 每道听力题必须提供独立 listening_script（30-80词自然英语），这是用户真正听到的内容\n   - question 是用户看到的问题，必须与 listening_script 分离\n   - listening_script 不得包含答案、解析、Markdown、JSON符号或“正确答案是”等提示\n   - 优先生成短对话或短文；不同听力题脚本不得重复\n   - 同时返回 {"type":"listening","data":{"audio_text":"与listening_script完全一致","voice":"en-US"}} 兼容块\n   - 若图表和听力同时开启，两类各占约25%，不要放在同一道题中'
         : '\n9. 本次不生成听力题（音频开关已关闭）。';
     final prompt = enableRichContent
         ? '''
-请基于下面学习资料生成 $count 道题，目标群体：$audience。
+本次完整任务目标为 $count 道题，客户端会分成多个小批次请求。请以消息末尾的本批数量为准，目标群体：$audience。
+学科：$subject。
 题型范围：$typeText。
 输出语言：$outputLanguage。除非资料需要保留原文，否则题干、选项和解析使用该语言。
 
@@ -17274,6 +17943,7 @@ class AiService {
     "explanation": "解析",
     "knowledge_point": "具体学科知识点",
     "source_basis": "资料中的简短事实依据",
+    "listening_script": "仅听力题填写；普通题为空字符串",
     "rich_content": []
   }
 ]
@@ -17295,7 +17965,8 @@ $groundingPolicy
 $materialText
 '''
         : '''
-请基于下面学习资料生成 $count 道题，目标群体：$audience。
+本次完整任务目标为 $count 道题，客户端会分成多个小批次请求。请以消息末尾的本批数量为准，目标群体：$audience。
+学科：$subject。
 题型范围：$typeText。
 输出语言：$outputLanguage。除非资料需要保留原文，否则题干、选项和解析使用该语言。
 
@@ -17308,8 +17979,9 @@ $materialText
     "answer": "A 或 [\\"A\\",\\"C\\"] 或 正确/错误 或 填空答案",
     "explanation": "解析",
     "knowledge_point": "具体学科知识点",
-    "source_basis": "资料中的简短事实依据"${enableListening ? '''
-    ,"rich_content": []  // 仅英语听力题填 listening 块，其他题目留空数组''' : ''}
+    "source_basis": "资料中的简短事实依据"${enableListening ? ''',
+    "listening_script": "仅听力题填写；普通题为空字符串",
+    "rich_content": []''' : ''}
   }
 ]
 
@@ -17328,7 +18000,8 @@ $groundingPolicy
 学习资料：
 $materialText
 ''';
-    final list = await _requestJsonObjects(
+    final plan = PaperGenerationPlan(targetCount: count);
+    final collection = await _requestJsonCollection(
       config: config,
       messages: [
         {
@@ -17340,6 +18013,9 @@ $materialText
       maxTokens: (count * 500).clamp(4500, 12000),
       expectedCount: count,
       rootKeys: const ['questions', 'items'],
+      maxBatchSize: plan.maxBatchSize,
+      maxRequests: plan.safeRequestLimit,
+      onProgress: onProgress,
       isValid: (item) {
         final question = (item['question'] ?? item['title'] ?? '')
             .toString()
@@ -17352,17 +18028,16 @@ $materialText
             !QuestionGenerationPolicy.isClearlyIrrelevantMetadataQuestion(item);
       },
     );
+    final list = collection.items;
+    debugPrint(
+      '[QuestionGeneration] ${jsonEncode(collection.diagnostics.toJson())}',
+    );
     final questions = list
         .map(
           (item) => AiQuestion.fromJson(Map<String, dynamic>.from(item as Map)),
         )
         .where((q) => q.question.trim().isNotEmpty)
         .toList();
-    if (questions.length != count) {
-      throw Exception(
-        '模型返回的有效题目数量不足：需要 $count 道，实际 ${questions.length} 道。请重试。',
-      );
-    }
     // v2.7.1 听力题兜底：若 enableListening=true 且资料含较多英文，
     // 但 AI 未生成任何 listening 题，强制改造第一道题为听力题
     if (enableListening && questions.isNotEmpty) {
@@ -17621,8 +18296,8 @@ $materialText
 {"game_type":"matching","prompt":"将左侧术语与右侧定义配对","pairs":[{"left":"术语1","right":"定义1"},{"left":"术语2","right":"定义2"},{"left":"术语3","right":"定义3"},{"left":"术语4","right":"定义4"}],"explanation":"本组知识点概述","knowledge_point":"知识点"}
 
 2. flashcard（闪卡记忆）：
-{"game_type":"flashcard","prompt":"先看闪卡内容记住，然后回答问题","options":["闪卡正面内容（公式/概念/定义）"],"answer":"针对闪卡内容的一道选择题答案（A/B/C/D）","explanation":"解析","knowledge_point":"知识点"}
-注意：flashcard 的 options[0] 是闪卡展示内容，prompt 是闪卡看完后的问题（含4个选项写在prompt里）
+{"game_type":"flashcard","prompt":"闪卡看完后的问题（不要把选项拼进题干）","options":["闪卡正面内容（公式/概念/定义）"],"question_options":["A. 选项一","B. 选项二","C. 选项三","D. 选项四"],"answer":"A","explanation":"解析","knowledge_point":"知识点"}
+注意：flashcard 的 options[0] 是闪卡展示内容，question_options 是翻面后可点击的四个选项，answer 必须是 A/B/C/D。
 
 4. reorder（顺序排列）：
 {"game_type":"reorder","prompt":"将以下步骤排列成正确顺序（题干描述任务）","options":["步骤1（已打乱）","步骤2","步骤3","步骤4"],"answer":"0,2,1,3","explanation":"解析","knowledge_point":"知识点"}
@@ -17652,15 +18327,16 @@ $materialText
 1. 每种类型的字段必须完整。
 2. matching/linkup 的 pairs 必须 3-4 组，左右内容不能重复。
 3. 不得返回 listening（听力）类型；听力题仅用于普通出题和试卷模式。
-4. reorder 的 answer 必须是打乱后到正确顺序的索引映射。
-5. tapfast 的 options 至少 4 个陈述，answer 用 对/错 标记。
-6. spell 的 answer 是要拼的单词/术语（2-10字符），options 留空。
-7. fillblank 的 prompt 用 ___ 标记空位，options 含正确答案+干扰词。
-8. truefalse 的 answer 只能是 对 或 错，options 留空。
-9. knowledge_point 简短 2-8 字。
-10. 题目必须紧扣资料内容，难度符合关卡设定。
-11. Boss 关（第5关）题目需综合、有挑战性。
-12. 每个对象增加 "source_basis":"资料中的简短事实依据"。
+4. flashcard 必须提供4个 question_options，确保翻面后存在完整作答路径。
+5. reorder 的 answer 必须是打乱后到正确顺序的索引映射。
+6. tapfast 的 options 至少 4 个陈述，answer 用 对/错 标记。
+7. spell 的 answer 是要拼的单词/术语（2-10字符），options 留空。
+8. fillblank 的 prompt 用 ___ 标记空位，options 含正确答案+干扰词。
+9. truefalse 的 answer 只能是 对 或 错，options 留空。
+10. knowledge_point 简短 2-8 字。
+11. 题目必须紧扣资料内容，难度符合关卡设定。
+12. Boss 关（第5关）题目需综合、有挑战性。
+13. 每个对象增加 "source_basis":"资料中的简短事实依据"。
 
 $groundingPolicy
 
@@ -17945,52 +18621,27 @@ $materialText
     String chapterRange = '',
     String knowledgePointSpec = '',
     int listeningCount = 0,
-  }) {
-    final effectiveTemplate =
-        template ??
-        PaperTemplate.defaultFor(
-          subject: subject,
-          gradeLevel: gradeLevel,
-          pageCount: pageCount,
-        );
-    return AiRequestGuard.instance.runTask<List<PaperQuestion>>(
-      taskType: 'paper_generation',
-      provider: config.provider,
-      model: config.model,
-      targetCount: effectiveTemplate.totalCount,
-      fingerprint: AiRequestGuard.fingerprint([
-        'paper_generation',
-        config.provider,
-        config.model,
-        material,
-        subject,
-        gradeLevel,
-        pageCount,
-        jsonEncode(effectiveTemplate.toJson()),
-        enableRichContent,
-        enableListening,
-        chapterRange,
-        knowledgePointSpec,
-        listeningCount,
-      ]),
-      action: (_) => _generatePaperUnprotected(
-        config: config,
-        material: material,
-        subject: subject,
-        gradeLevel: gradeLevel,
-        pageCount: pageCount,
-        scoreConfig: scoreConfig,
-        template: effectiveTemplate,
-        enableRichContent: enableRichContent,
-        enableListening: enableListening,
-        chapterRange: chapterRange,
-        knowledgePointSpec: knowledgePointSpec,
-        listeningCount: listeningCount,
-      ),
+    AiJsonBatchProgressCallback? onProgress,
+  }) async {
+    final result = await generatePaperResult(
+      config: config,
+      material: material,
+      subject: subject,
+      gradeLevel: gradeLevel,
+      pageCount: pageCount,
+      scoreConfig: scoreConfig,
+      template: template,
+      enableRichContent: enableRichContent,
+      enableListening: enableListening,
+      chapterRange: chapterRange,
+      knowledgePointSpec: knowledgePointSpec,
+      listeningCount: listeningCount,
+      onProgress: onProgress,
     );
+    return result.items;
   }
 
-  static Future<List<PaperQuestion>> _generatePaperUnprotected({
+  static Future<PaperGenerationResult<PaperQuestion>> generatePaperResult({
     required ApiConfig config,
     required String material,
     required String subject,
@@ -18003,6 +18654,81 @@ $materialText
     String chapterRange = '',
     String knowledgePointSpec = '',
     int listeningCount = 0,
+    List<String> excludedQuestions = const [],
+    AiJsonBatchProgressCallback? onProgress,
+  }) {
+    final capabilities = SubjectCapabilities.resolve(
+      subject,
+      materialText: material,
+    );
+    final effectiveRichContent =
+        enableRichContent &&
+        (capabilities.allowCharts || capabilities.allowFormulas);
+    final effectiveListening = enableListening && capabilities.allowListening;
+    final effectiveTemplate =
+        template ??
+        PaperTemplate.defaultFor(
+          subject: subject,
+          gradeLevel: gradeLevel,
+          pageCount: pageCount,
+        );
+    return AiRequestGuard.instance
+        .runTask<PaperGenerationResult<PaperQuestion>>(
+          taskType: 'paper_generation',
+          provider: config.provider,
+          model: config.model,
+          targetCount: effectiveTemplate.totalCount,
+          fingerprint: AiRequestGuard.fingerprint([
+            'paper_generation',
+            config.provider,
+            config.model,
+            material,
+            subject,
+            gradeLevel,
+            pageCount,
+            jsonEncode(effectiveTemplate.toJson()),
+            effectiveRichContent,
+            effectiveListening,
+            chapterRange,
+            knowledgePointSpec,
+            listeningCount,
+            ...excludedQuestions,
+          ]),
+          action: (_) => _generatePaperResultUnprotected(
+            config: config,
+            material: material,
+            subject: subject,
+            gradeLevel: gradeLevel,
+            pageCount: pageCount,
+            scoreConfig: scoreConfig,
+            template: effectiveTemplate,
+            enableRichContent: effectiveRichContent,
+            enableListening: effectiveListening,
+            chapterRange: chapterRange,
+            knowledgePointSpec: knowledgePointSpec,
+            listeningCount: listeningCount,
+            excludedQuestions: excludedQuestions,
+            onProgress: onProgress,
+          ),
+        );
+  }
+
+  static Future<PaperGenerationResult<PaperQuestion>>
+  _generatePaperResultUnprotected({
+    required ApiConfig config,
+    required String material,
+    required String subject,
+    required String gradeLevel,
+    required int pageCount,
+    PaperScoreConfig scoreConfig = const PaperScoreConfig(),
+    PaperTemplate? template,
+    bool enableRichContent = true,
+    bool enableListening = false,
+    String chapterRange = '',
+    String knowledgePointSpec = '',
+    int listeningCount = 0,
+    List<String> excludedQuestions = const [],
+    AiJsonBatchProgressCallback? onProgress,
   }) async {
     final materialText = material.length > 8000
         ? material.substring(0, 8000)
@@ -18057,6 +18783,10 @@ $materialText
         ? ''',
   "rich_content": []'''
         : '';
+    final listeningFieldBlock = enableListening
+        ? ''',
+  "listening_script": "仅听力题填写；普通题为空字符串"'''
+        : '';
     final richDocBlock = allowRichContent
         ? '''
 【rich_content 字段说明（启用）】
@@ -18082,7 +18812,7 @@ $materialText
 {"type":"svg","data":{"svg":"<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='40' fill='#4CAF50'/></svg>"}}
 
 7. 英语听力
-{"type":"listening","data":{"audio_text":"Hello, welcome to our English class."}}'''
+{"type":"listening","data":{"audio_text":"与 listening_script 完全一致","voice":"en-US"}}'''
         : '''
 【rich_content 字段说明（已禁用）】
 本次为纯文字题目模式，**不要返回 rich_content 字段**或留空数组 []，避免拖长输出导致 JSON 截断。''';
@@ -18094,14 +18824,14 @@ $materialText
     - 统计图（柱状/折线/饼图）→ type:"chart"
     - 物理受力/电路/光路等示意图 → type:"physics"
     - 化学分子结构/反应方程 → type:"chemistry"${enableListening ? '''
-    - 英语听力原文 → type:"listening"（仅英语学科使用，audio_text 必填）''' : ''}
+    - 英语听力原文 → 独立 listening_script 字段，同时返回 type:"listening" 兼容块''' : ''}
    普通纯文字题目可留空数组 []。'''
         : '10. 本次为纯文字题目模式，不要返回 rich_content 字段或留空数组 []。';
     final chartPaperNote = enableRichContent
-        ? '\n12. **图表题配额（强制）**：全卷 $totalQ 题中必须恰好有 $richTarget 道题包含 type:"chart" 的 rich_content（约 25%，保持在 20%-30%）。图表只返回结构化数据：data.chartType、data.title、data.xLabels、data.series、可选 data.unit 和 data.description；xLabels 与每组 series.values 长度一致且至少 2 组，并与题干完全一致。图表必须表达资料中的专业数据、参数关系或实验结果，严禁统计章节习题数、题目数、页数、字数等文档元数据。其余题目不得返回 chart。'
+        ? '\n12. **图表题配额**：全卷目标为约 $richTarget 道图表题（20%-30%）。客户端会分批请求，每批仅在资料确有专业数据、参数关系或实验结果时生成约四分之一图表题。图表只返回结构化数据：data.chartType、data.title、data.xLabels、data.series、可选 data.unit 和 data.description；xLabels 与每组 series.values 长度一致且至少 2 组，并与题干完全一致。严禁统计章节习题数、题目数、页数、字数等文档元数据。'
         : '\n12. 本次不开启图表题，不要返回 chart 类型。';
     final listeningPaperNote = enableListening
-        ? '\n13. **听力题配额（强制）**：全卷 $totalQ 题中必须恰好有 $effectiveListeningTarget 道题包含 type:"listening" 的 rich_content（保持在 20%-30%）。audio_text 为完整可朗读段落（30-80 词），各题不得重复；若图表同时开启，两类不要放在同一道题中。'
+        ? '\n13. **听力题配额**：全卷目标为 $effectiveListeningTarget 道英语听力题（20%-30%）。客户端会分批请求，每批按相同比例生成。每题必须提供独立 listening_script（30-80词自然英语）作为用户真正听到的内容，question 是用户看到的问题；脚本不得包含答案、解析、Markdown或JSON符号，同时返回内容一致的 listening rich_content 兼容块。若图表同时开启，两类不要放在同一道题中。'
         : '\n13. 本次不生成听力题（音频开关已关闭）。';
     // v2.7.1 按章节/知识点出题
     final chapterNote = chapterRange.trim().isNotEmpty
@@ -18110,6 +18840,9 @@ $materialText
     final kpNote = knowledgePointSpec.trim().isNotEmpty
         ? '\n14. **各题型知识点要求**：\n${knowledgePointSpec.trim()}\n请严格按照上述知识点分配出题，每个题型的题目必须落在指定知识点范围内。'
         : '';
+    final exclusionNote = excludedQuestions.isEmpty
+        ? ''
+        : '\n【已生成题目，禁止重复】\n${excludedQuestions.take(30).map((item) => '- ${item.replaceAll(RegExp(r'\s+'), ' ').trim()}').join('\n')}';
 
     final prompt =
         '''
@@ -18117,7 +18850,7 @@ $materialText
 适用对象：$gradeLevel。
 试卷页数：约 $pageCount 面（共约 $totalQ 题）。
 
-【重要】必须生成完整的 $totalQ 道题，不得省略或减少题量，否则试卷页数会不足。
+【重要】客户端将把全卷拆成多个小批次。请严格服从消息末尾的“分批输出指令”，本批只返回指定数量，不要尝试一次输出整卷。
 
 【试卷结构】严格按以下大题顺序：
 ${sections.join('\n')}
@@ -18132,7 +18865,7 @@ ${sections.join('\n')}
   "answer": "A 或 填空答案 或 正确/错误 或 主观题参考答案",
   "explanation": "详细解析（200字内）",
   "knowledge_point": "本题考查的知识点（5-12字，如：一元二次方程）",
-  "source_basis": "资料中的简短事实依据"$richFieldBlock
+  "source_basis": "资料中的简短事实依据"$listeningFieldBlock$richFieldBlock
 }
 $richDocBlock
 
@@ -18152,6 +18885,7 @@ $chartPaperNote
 $listeningPaperNote
 $chapterNote
 $kpNote
+$exclusionNote
 
 $groundingPolicy
 
@@ -18169,8 +18903,11 @@ $materialText
 ''';
     // 题/页比降到约 5（避免大模型输出超长导致 JSON 截断）
     // v2.6.3：上限从 8000 提到 12000，给 rich_content 输出留足空间
-    final estTokens = (totalQ * 300).clamp(4500, 12000);
-    final list = await _requestJsonObjects(
+    final plan = PaperGenerationPlan(targetCount: totalQ);
+    var schemaRejectedCount = 0;
+    var policyRejectedCount = 0;
+    final estTokens = (plan.maxBatchSize * 1000).clamp(3000, 4800);
+    final collection = await _requestJsonCollection(
       config: config,
       messages: [
         {
@@ -18183,8 +18920,9 @@ $materialText
       maxTokens: estTokens,
       expectedCount: totalQ,
       rootKeys: const ['questions', 'items'],
-      maxBatchSize: 3,
-      maxRequests: totalQ + 3,
+      maxBatchSize: plan.maxBatchSize,
+      maxRequests: plan.safeRequestLimit,
+      onProgress: onProgress,
       isValid: (item) {
         final question = (item['question'] ?? item['title'] ?? '')
             .toString()
@@ -18192,11 +18930,20 @@ $materialText
         final answer = (item['answer'] ?? item['correct_answer'] ?? '')
             .toString()
             .trim();
-        return question.isNotEmpty &&
-            answer.isNotEmpty &&
-            !QuestionGenerationPolicy.isClearlyIrrelevantMetadataQuestion(item);
+        if (question.isEmpty || answer.isEmpty) {
+          schemaRejectedCount++;
+          return false;
+        }
+        if (QuestionGenerationPolicy.isClearlyIrrelevantMetadataQuestion(
+          item,
+        )) {
+          policyRejectedCount++;
+          return false;
+        }
+        return true;
       },
     );
+    final list = collection.items;
     final paperQuestions = list
         .map((item) {
           final map = Map<String, dynamic>.from(item);
@@ -18315,7 +19062,23 @@ $materialText
       type: 'listening',
       target: enableListening ? actualListeningTarget : 0,
     );
-    return paperQuestions;
+    final diagnostics = PaperGenerationDiagnostics.fromCollection(
+      collection.diagnostics,
+      schemaRejectedCount: schemaRejectedCount,
+      policyRejectedCount: policyRejectedCount,
+      finalCount: paperQuestions.length,
+    );
+    debugPrint('[PaperGeneration] ${jsonEncode(diagnostics.toJson())}');
+    final status = paperQuestions.length >= totalQ
+        ? PaperGenerationStatus.success
+        : paperQuestions.isEmpty
+        ? PaperGenerationStatus.failed
+        : PaperGenerationStatus.partial;
+    return PaperGenerationResult<PaperQuestion>(
+      status: status,
+      items: paperQuestions,
+      diagnostics: diagnostics,
+    );
   }
 
   static Future<String> _chat(
@@ -20501,9 +21264,7 @@ class _LevelNode extends StatelessWidget {
             _buildShape(),
             const SizedBox(height: 3),
             Text(
-              isBoss
-                  ? 'BOSS · ${rule.title(Localizations.localeOf(context))}'
-                  : rule.title(Localizations.localeOf(context)),
+              isBoss ? 'BOSS' : rule.title(Localizations.localeOf(context)),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
@@ -20758,52 +21519,64 @@ class _BossNodeState extends State<_BossNode>
     final reduceMotion = AppSettingsScope.of(context).reduceMotion;
     return TickerMode(
       enabled: !reduceMotion,
-      child: AnimatedBuilder(
-        animation: _ctrl,
-        builder: (context, child) {
-          final scale = reduceMotion ? 1.0 : 1 + 0.12 * _ctrl.value;
-          return Transform.scale(
-            scale: scale,
-            child: Container(
-              width: 44,
-              height: 44,
-              transform: Matrix4.identity()..rotateZ(3.14159 / 4),
-              transformAlignment: Alignment.center,
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [
-                    widget.isCleared
-                        ? const Color(0xFFEF4444)
-                        : const Color(0xFF7F1D1D),
-                    widget.isCleared
-                        ? const Color(0xFFDC2626)
-                        : const Color(0xFF991B1B),
-                  ],
-                ),
-                border: Border.all(
-                  color: widget.isCleared
-                      ? const Color(0xFFFBBF24)
-                      : const Color(0xFFEF4444),
-                  width: 2,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color:
-                        (widget.isCleared
-                                ? const Color(0xFFEF4444)
-                                : const Color(0xFF7F1D1D))
-                            .withValues(alpha: 0.5 + 0.4 * _ctrl.value),
-                    blurRadius: 18,
-                    spreadRadius: 2,
+      child: SizedBox(
+        width: 40,
+        height: 40,
+        child: AnimatedBuilder(
+          animation: _ctrl,
+          builder: (context, child) {
+            // 菱形使用 30px 本体并限制在 40px 布局盒内，避免窄屏第 5 格越界。
+            final scale = reduceMotion ? 1.0 : 1 + 0.06 * _ctrl.value;
+            return Center(
+              child: Transform.scale(
+                scale: scale,
+                child: Container(
+                  width: 30,
+                  height: 30,
+                  transform: Matrix4.identity()..rotateZ(pi / 4),
+                  transformAlignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [
+                        widget.isCleared
+                            ? const Color(0xFFEF4444)
+                            : const Color(0xFF7F1D1D),
+                        widget.isCleared
+                            ? const Color(0xFFDC2626)
+                            : const Color(0xFF991B1B),
+                      ],
+                    ),
+                    border: Border.all(
+                      color: widget.isCleared
+                          ? const Color(0xFFFBBF24)
+                          : const Color(0xFFEF4444),
+                      width: 2,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color:
+                            (widget.isCleared
+                                    ? const Color(0xFFEF4444)
+                                    : const Color(0xFF7F1D1D))
+                                .withValues(alpha: 0.45 + 0.25 * _ctrl.value),
+                        blurRadius: 10,
+                        spreadRadius: 1,
+                      ),
+                    ],
                   ),
-                ],
+                  child: Transform.rotate(
+                    angle: -pi / 4,
+                    child: const Icon(
+                      Icons.flag_rounded,
+                      color: Colors.white,
+                      size: 16,
+                    ),
+                  ),
+                ),
               ),
-              child: Center(
-                child: Icon(Icons.flag_rounded, color: Colors.white, size: 20),
-              ),
-            ),
-          );
-        },
+            );
+          },
+        ),
       ),
     );
   }
@@ -22209,7 +22982,7 @@ class MiniGamePage extends StatefulWidget {
 }
 
 class _MiniGamePageState extends State<MiniGamePage>
-    with TickerProviderStateMixin {
+    with TickerProviderStateMixin, WidgetsBindingObserver {
   int _currentGameIndex = 0;
   int _lives = 0;
   int _correct = 0;
@@ -22220,16 +22993,29 @@ class _MiniGamePageState extends State<MiniGamePage>
   bool _showComboBurst = false;
   final Set<String> _weakKnowledgePoints = {};
   final List<WrongItem> _wrongs = [];
-  late final DateTime _startTime;
+  late DateTime _startTime;
   late final AnimationController _progressCtrl;
   Timer? _countdownTimer;
   bool _levelFinished = false;
+  bool _paused = false;
+  int _gameEpoch = 0;
+  DateTime? _pauseStartedAt;
+  Duration _pausedDuration = Duration.zero;
+  ({
+    bool correct,
+    WrongItem? wrong,
+    String? questionText,
+    String? userAnswer,
+    String? correctAnswer,
+  })?
+  _pendingGameCompletion;
 
   int get _total => widget.session.games.length;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _lives = widget.session.lives;
     _bossEnergy = widget.session.rule.isBoss ? widget.session.games.length : 0;
     _remainingSeconds = widget.session.rule.timeLimit?.inSeconds;
@@ -22238,18 +23024,30 @@ class _MiniGamePageState extends State<MiniGamePage>
       vsync: this,
       duration: const Duration(milliseconds: 600),
     );
-    if (_remainingSeconds != null) {
-      _countdownTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-        if (!mounted || _levelFinished) return;
-        final next = (_remainingSeconds ?? 1) - 1;
-        setState(() => _remainingSeconds = next);
-        if (next <= 0) _finishLevel();
-      });
+    _startCountdown();
+  }
+
+  void _startCountdown() {
+    _countdownTimer?.cancel();
+    if (_remainingSeconds == null) return;
+    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted || _levelFinished || _paused) return;
+      final next = (_remainingSeconds ?? 1) - 1;
+      setState(() => _remainingSeconds = next);
+      if (next <= 0) _finishLevel();
+    });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed && !_levelFinished) {
+      _setPaused(true);
     }
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _countdownTimer?.cancel();
     _progressCtrl.dispose();
     super.dispose();
@@ -22263,6 +23061,16 @@ class _MiniGamePageState extends State<MiniGamePage>
     String? correctAnswer,
   }) {
     if (!mounted || _levelFinished) return;
+    if (_paused) {
+      _pendingGameCompletion = (
+        correct: correct,
+        wrong: wrong,
+        questionText: questionText,
+        userAnswer: userAnswer,
+        correctAnswer: correctAnswer,
+      );
+      return;
+    }
     final currentGame = widget.session.games[_currentGameIndex];
     setState(() {
       if (correct) {
@@ -22312,7 +23120,12 @@ class _MiniGamePageState extends State<MiniGamePage>
     if (_levelFinished) return;
     _levelFinished = true;
     _countdownTimer?.cancel();
-    final duration = DateTime.now().difference(_startTime);
+    final activePause = _pauseStartedAt == null
+        ? Duration.zero
+        : DateTime.now().difference(_pauseStartedAt!);
+    final elapsed = DateTime.now().difference(_startTime);
+    final activeDuration = elapsed - (_pausedDuration + activePause);
+    final duration = activeDuration.isNegative ? Duration.zero : activeDuration;
     widget.onComplete(
       MiniGameLevelResult(
         total: _total,
@@ -22326,166 +23139,258 @@ class _MiniGamePageState extends State<MiniGamePage>
     );
   }
 
+  void _setPaused(bool value) {
+    if (!mounted || _levelFinished || _paused == value) return;
+    if (value) {
+      _pauseStartedAt = DateTime.now();
+      setState(() => _paused = true);
+      return;
+    }
+    final started = _pauseStartedAt;
+    if (started != null) {
+      _pausedDuration += DateTime.now().difference(started);
+    }
+    _pauseStartedAt = null;
+    final pending = _pendingGameCompletion;
+    _pendingGameCompletion = null;
+    setState(() => _paused = false);
+    if (pending != null) {
+      scheduleMicrotask(() {
+        if (!mounted || _levelFinished || _paused) return;
+        _onGameComplete(
+          correct: pending.correct,
+          wrong: pending.wrong,
+          questionText: pending.questionText,
+          userAnswer: pending.userAnswer,
+          correctAnswer: pending.correctAnswer,
+        );
+      });
+    }
+  }
+
+  void _restartLevel() {
+    _pendingGameCompletion = null;
+    _countdownTimer?.cancel();
+    setState(() {
+      _currentGameIndex = 0;
+      _lives = widget.session.lives;
+      _correct = 0;
+      _combo = 0;
+      _maxCombo = 0;
+      _bossEnergy = widget.session.rule.isBoss
+          ? widget.session.games.length
+          : 0;
+      _remainingSeconds = widget.session.rule.timeLimit?.inSeconds;
+      _showComboBurst = false;
+      _weakKnowledgePoints.clear();
+      _wrongs.clear();
+      _startTime = DateTime.now();
+      _pausedDuration = Duration.zero;
+      _pauseStartedAt = null;
+      _paused = false;
+      _gameEpoch++;
+    });
+    _startCountdown();
+  }
+
+  Future<void> _confirmExit() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('退出本关？'),
+        content: const Text('本关未完成进度不会计入通关成绩；已经提交的错题事实仍会保留。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('继续挑战'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: TextButton.styleFrom(foregroundColor: kRed),
+            child: const Text('退出本关'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true && mounted) widget.onExit();
+  }
+
   @override
   Widget build(BuildContext context) {
     final game = widget.session.games[_currentGameIndex];
     final colors = Theme.of(context).colorScheme;
-    return Scaffold(
-      body: Stack(
-        children: [
-          SafeArea(
-            child: Column(
-              children: [
-                _buildTopBar(),
-                // 进度条
-                Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 8,
-                  ),
-                  child: Row(
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop || _levelFinished) return;
+        _setPaused(!_paused);
+      },
+      child: Scaffold(
+        body: Stack(
+          children: [
+            TickerMode(
+              enabled: !_paused,
+              child: IgnorePointer(
+                ignoring: _paused,
+                child: SafeArea(
+                  child: Column(
                     children: [
-                      Text(
-                        '${_currentGameIndex + 1}/$_total',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: colors.onSurfaceVariant,
-                          fontWeight: FontWeight.w600,
+                      _buildTopBar(),
+                      // 进度条
+                      Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 8,
+                        ),
+                        child: Row(
+                          children: [
+                            Text(
+                              '${_currentGameIndex + 1}/$_total',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: colors.onSurfaceVariant,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(8),
+                                child: LinearProgressIndicator(
+                                  value: (_currentGameIndex + 1) / _total,
+                                  minHeight: 8,
+                                  backgroundColor: kLine,
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                    widget.session.isBoss ? kRed : kBlue,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Row(
+                              children: List.generate(widget.session.lives, (
+                                i,
+                              ) {
+                                return Padding(
+                                  padding: const EdgeInsets.only(left: 2),
+                                  child: Icon(
+                                    i < _lives
+                                        ? Icons.shield_rounded
+                                        : Icons.shield_outlined,
+                                    size: 18,
+                                    color: i < _lives ? kBlue : kLine,
+                                  ),
+                                );
+                              }),
+                            ),
+                          ],
                         ),
                       ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(8),
-                          child: LinearProgressIndicator(
-                            value: (_currentGameIndex + 1) / _total,
-                            minHeight: 8,
-                            backgroundColor: kLine,
-                            valueColor: AlwaysStoppedAnimation<Color>(
-                              widget.session.isBoss ? kRed : kBlue,
+                      // Mini-game 类型标签
+                      Container(
+                        margin: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 4,
+                        ),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 6,
+                        ),
+                        decoration: BoxDecoration(
+                          color: colors.surfaceContainerHigh,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              game.type.emoji,
+                              style: const TextStyle(fontSize: 18),
                             ),
-                          ),
+                            const SizedBox(width: 8),
+                            Text(
+                              game.type.label,
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700,
+                                color: colors.onSurface,
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              game.type.desc,
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: colors.onSurfaceVariant,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                      const SizedBox(width: 8),
-                      Row(
-                        children: List.generate(widget.session.lives, (i) {
-                          return Padding(
-                            padding: const EdgeInsets.only(left: 2),
-                            child: Icon(
-                              i < _lives
-                                  ? Icons.shield_rounded
-                                  : Icons.shield_outlined,
-                              size: 18,
-                              color: i < _lives ? kBlue : kLine,
-                            ),
-                          );
-                        }),
-                      ),
+                      if (widget.session.rule.isBoss)
+                        _BossEnergyBar(remaining: _bossEnergy, total: _total)
+                      else if (widget.session.rule.usesCombo || _combo > 0)
+                        _ChallengeComboStrip(
+                          combo: _combo,
+                          maxCombo: _maxCombo,
+                          remainingSeconds: _remainingSeconds,
+                        )
+                      else if (_remainingSeconds != null)
+                        _ChallengeComboStrip(
+                          combo: 0,
+                          maxCombo: _maxCombo,
+                          remainingSeconds: _remainingSeconds,
+                        ),
+                      // 当前 mini-game
+                      Expanded(child: _buildGame(game)),
                     ],
                   ),
                 ),
-                // Mini-game 类型标签
-                Container(
-                  margin: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 4,
-                  ),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 6,
-                  ),
-                  decoration: BoxDecoration(
-                    color: colors.surfaceContainerHigh,
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        game.type.emoji,
-                        style: const TextStyle(fontSize: 18),
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        game.type.label,
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
-                          color: colors.onSurface,
-                        ),
-                      ),
-                      const SizedBox(width: 6),
-                      Text(
-                        game.type.desc,
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: colors.onSurfaceVariant,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                if (widget.session.rule.isBoss)
-                  _BossEnergyBar(remaining: _bossEnergy, total: _total)
-                else if (widget.session.rule.usesCombo || _combo > 0)
-                  _ChallengeComboStrip(
-                    combo: _combo,
-                    maxCombo: _maxCombo,
-                    remainingSeconds: _remainingSeconds,
-                  )
-                else if (_remainingSeconds != null)
-                  _ChallengeComboStrip(
-                    combo: 0,
-                    maxCombo: _maxCombo,
-                    remainingSeconds: _remainingSeconds,
-                  ),
-                // 当前 mini-game
-                Expanded(child: _buildGame(game)),
-              ],
+              ),
             ),
-          ),
-          IgnorePointer(
-            child: AnimatedOpacity(
-              opacity: _showComboBurst ? 1 : 0,
-              duration: const Duration(milliseconds: 180),
-              child: Center(
-                child: AnimatedScale(
-                  scale: _showComboBurst ? 1 : 0.72,
-                  duration: const Duration(milliseconds: 260),
-                  curve: Curves.elasticOut,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 22,
-                      vertical: 12,
-                    ),
-                    decoration: BoxDecoration(
-                      gradient: const LinearGradient(
-                        colors: [Color(0xFF2563EB), Color(0xFF7C3AED)],
+            IgnorePointer(
+              child: AnimatedOpacity(
+                opacity: _showComboBurst ? 1 : 0,
+                duration: const Duration(milliseconds: 180),
+                child: Center(
+                  child: AnimatedScale(
+                    scale: _showComboBurst ? 1 : 0.72,
+                    duration: const Duration(milliseconds: 260),
+                    curve: Curves.elasticOut,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 22,
+                        vertical: 12,
                       ),
-                      borderRadius: BorderRadius.circular(999),
-                      boxShadow: const [
-                        BoxShadow(
-                          color: Color(0x662563EB),
-                          blurRadius: 30,
-                          spreadRadius: 4,
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [Color(0xFF2563EB), Color(0xFF7C3AED)],
                         ),
-                      ],
-                    ),
-                    child: Text(
-                      _combo >= 5 ? '知识爆发 ×$_combo' : '连击 ×$_combo',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 22,
-                        fontWeight: FontWeight.w900,
+                        borderRadius: BorderRadius.circular(999),
+                        boxShadow: const [
+                          BoxShadow(
+                            color: Color(0x662563EB),
+                            blurRadius: 30,
+                            spreadRadius: 4,
+                          ),
+                        ],
+                      ),
+                      child: Text(
+                        _combo >= 5 ? '知识爆发 ×$_combo' : '连击 ×$_combo',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 22,
+                          fontWeight: FontWeight.w900,
+                        ),
                       ),
                     ),
                   ),
                 ),
               ),
             ),
-          ),
-        ],
+            if (_paused) _buildPauseOverlay(),
+          ],
+        ),
       ),
     );
   }
@@ -22497,30 +23402,9 @@ class _MiniGamePageState extends State<MiniGamePage>
       child: Row(
         children: [
           IconButton(
-            icon: const Icon(Icons.close_rounded),
-            onPressed: () {
-              showDialog(
-                context: context,
-                builder: (ctx) => AlertDialog(
-                  title: const Text('放弃闯关？'),
-                  content: const Text('进度将不会保存，确定退出吗？'),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.pop(ctx),
-                      child: const Text('继续闯关'),
-                    ),
-                    TextButton(
-                      onPressed: () {
-                        Navigator.pop(ctx);
-                        widget.onExit();
-                      },
-                      style: TextButton.styleFrom(foregroundColor: kRed),
-                      child: const Text('放弃'),
-                    ),
-                  ],
-                ),
-              );
-            },
+            tooltip: '暂停',
+            icon: const Icon(Icons.pause_rounded),
+            onPressed: () => _setPaused(true),
           ),
           Expanded(
             child: Text(
@@ -22547,6 +23431,7 @@ class _MiniGamePageState extends State<MiniGamePage>
       ),
       MiniGameType.listening => ListeningGameWidget(
         game: game,
+        isPaused: _paused,
         onComplete: _onGameComplete,
       ),
       MiniGameType.flashcard => FlashcardGameWidget(
@@ -22579,8 +23464,99 @@ class _MiniGamePageState extends State<MiniGamePage>
       ),
     };
     return KeyedSubtree(
-      key: ValueKey('mini-game-$_currentGameIndex-${game.type.name}'),
+      key: ValueKey(
+        'mini-game-$_gameEpoch-$_currentGameIndex-${game.type.name}',
+      ),
       child: child,
+    );
+  }
+
+  Widget _buildPauseOverlay() {
+    final colors = Theme.of(context).colorScheme;
+    final settings = AppSettingsScope.of(context);
+    return Positioned.fill(
+      child: ColoredBox(
+        color: colors.scrim.withValues(alpha: .72),
+        child: SafeArea(
+          child: Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(24),
+              child: Container(
+                width: 420,
+                padding: const EdgeInsets.all(22),
+                decoration: BoxDecoration(
+                  color: colors.surface,
+                  borderRadius: BorderRadius.circular(26),
+                  border: Border.all(color: colors.outlineVariant),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.pause_circle_filled_rounded,
+                      size: 54,
+                      color: colors.primary,
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      '挑战已暂停',
+                      style: Theme.of(context).textTheme.headlineSmall
+                          ?.copyWith(fontWeight: FontWeight.w900),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      '计时、动画与听力均已暂停',
+                      style: TextStyle(color: colors.onSurfaceVariant),
+                    ),
+                    const SizedBox(height: 18),
+                    SwitchListTile.adaptive(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('音效'),
+                      value: settings.soundEnabled,
+                      onChanged: settings.setSoundEnabled,
+                    ),
+                    SwitchListTile.adaptive(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('震动反馈'),
+                      value: settings.hapticsEnabled,
+                      onChanged: settings.setHapticsEnabled,
+                    ),
+                    SwitchListTile.adaptive(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('减少动态效果'),
+                      value: settings.reduceMotion,
+                      onChanged: settings.setReduceMotion,
+                    ),
+                    const SizedBox(height: 10),
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton.icon(
+                        onPressed: () => _setPaused(false),
+                        icon: const Icon(Icons.play_arrow_rounded),
+                        label: const Text('继续挑战'),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: _restartLevel,
+                        icon: const Icon(Icons.restart_alt_rounded),
+                        label: const Text('重新开始本关'),
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: _confirmExit,
+                      style: TextButton.styleFrom(foregroundColor: kRed),
+                      child: const Text('退出本关'),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
@@ -22747,6 +23723,7 @@ class _MatchingGameWidgetState extends State<MatchingGameWidget>
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -22792,7 +23769,7 @@ class _MatchingGameWidgetState extends State<MatchingGameWidget>
                             ? kGreen.withValues(alpha: 0.15)
                             : selected
                             ? kBlue.withValues(alpha: 0.15)
-                            : Colors.white,
+                            : colors.surfaceContainerHigh,
                         borderRadius: BorderRadius.circular(12),
                         child: InkWell(
                           onTap: matched ? null : () => _onTapLeft(i),
@@ -22825,7 +23802,7 @@ class _MatchingGameWidgetState extends State<MatchingGameWidget>
                                         ? kGreen
                                         : selected
                                         ? kBlue
-                                        : kLine,
+                                        : colors.surfaceContainerHighest,
                                   ),
                                   child: Center(
                                     child: matched
@@ -22841,7 +23818,7 @@ class _MatchingGameWidgetState extends State<MatchingGameWidget>
                                               fontWeight: FontWeight.w800,
                                               color: matched
                                                   ? Colors.white
-                                                  : kInk,
+                                                  : colors.onSurface,
                                             ),
                                           ),
                                   ),
@@ -22852,7 +23829,9 @@ class _MatchingGameWidgetState extends State<MatchingGameWidget>
                                     _lefts[i],
                                     style: TextStyle(
                                       fontSize: 13,
-                                      color: matched ? kMuted : kInk,
+                                      color: matched
+                                          ? colors.onSurfaceVariant
+                                          : colors.onSurface,
                                       decoration: matched
                                           ? TextDecoration.lineThrough
                                           : null,
@@ -22884,7 +23863,7 @@ class _MatchingGameWidgetState extends State<MatchingGameWidget>
                             ? kRed.withValues(alpha: 0.15)
                             : flash && _flashCorrect == true
                             ? kGreen.withValues(alpha: 0.2)
-                            : Colors.white,
+                            : colors.surfaceContainerHigh,
                         borderRadius: BorderRadius.circular(12),
                         child: InkWell(
                           onTap: matched || _selectedLeft == null
@@ -22915,7 +23894,9 @@ class _MatchingGameWidgetState extends State<MatchingGameWidget>
                                   height: 28,
                                   decoration: BoxDecoration(
                                     shape: BoxShape.circle,
-                                    color: matched ? kGreen : kLine,
+                                    color: matched
+                                        ? kGreen
+                                        : colors.surfaceContainerHighest,
                                   ),
                                   child: Center(
                                     child: Text(
@@ -22923,7 +23904,9 @@ class _MatchingGameWidgetState extends State<MatchingGameWidget>
                                       style: TextStyle(
                                         fontSize: 13,
                                         fontWeight: FontWeight.w800,
-                                        color: matched ? Colors.white : kInk,
+                                        color: matched
+                                            ? Colors.white
+                                            : colors.onSurface,
                                       ),
                                     ),
                                   ),
@@ -22934,7 +23917,9 @@ class _MatchingGameWidgetState extends State<MatchingGameWidget>
                                     _rights[i],
                                     style: TextStyle(
                                       fontSize: 13,
-                                      color: matched ? kMuted : kInk,
+                                      color: matched
+                                          ? colors.onSurfaceVariant
+                                          : colors.onSurface,
                                     ),
                                   ),
                                 ),
@@ -22969,9 +23954,11 @@ class ListeningGameWidget extends StatefulWidget {
   const ListeningGameWidget({
     super.key,
     required this.game,
+    this.isPaused = false,
     required this.onComplete,
   });
   final MiniGame game;
+  final bool isPaused;
   final void Function({
     required bool correct,
     WrongItem? wrong,
@@ -22986,83 +23973,52 @@ class ListeningGameWidget extends StatefulWidget {
 }
 
 class _ListeningGameWidgetState extends State<ListeningGameWidget> {
-  bool _playing = false;
+  late final ListeningAudioService _audio;
   bool _played = false;
   String? _selected;
   bool? _answered;
-  String? _audioError;
+
+  @override
+  void initState() {
+    super.initState();
+    _audio = ListeningAudioService()..addListener(_handleAudioState);
+  }
+
+  @override
+  void didUpdateWidget(covariant ListeningGameWidget oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!oldWidget.isPaused && widget.isPaused) {
+      _audio.pause();
+    }
+  }
+
+  void _handleAudioState() {
+    if (!mounted) return;
+    if (_audio.state == ListeningPlaybackState.playing) {
+      _played = true;
+    }
+    setState(() {});
+  }
+
+  @override
+  void dispose() {
+    _audio
+      ..removeListener(_handleAudioState)
+      ..dispose();
+    super.dispose();
+  }
 
   Future<void> _playAudio() async {
-    if (_playing) return;
-    // v2.9.2: audioText 为空时用 prompt 兜底，确保有音频可播
-    final ttsText =
-        (widget.game.audioText?.isNotEmpty == true
-                ? widget.game.audioText!
-                : widget.game.prompt)
-            .trim();
-    if (ttsText.isEmpty) {
-      setState(() => _audioError = '听力文本为空，无法播放');
-      return;
-    }
-    setState(() {
-      _playing = true;
-      _audioError = null;
-    });
+    if (widget.isPaused) return;
+    final source = widget.game.audioText?.trim() ?? '';
+    final ttsText = ListeningQuestionData.sanitizeScript(
+      source.isNotEmpty ? source : widget.game.prompt,
+    );
     SoundService.instance.play(SoundType.click);
-    FlutterEdgeTts? tts;
-    AudioPlayer? player;
-    var success = false;
-    try {
-      final isEnglish = RegExp(r'^[A-Za-z\s]').hasMatch(ttsText);
-      final ttsVoiceName = isEnglish
-          ? 'en-US-AriaNeural'
-          : 'zh-CN-XiaoxiaoNeural';
-      final ttsLocale = isEnglish ? 'en-US' : 'zh-CN';
-      tts = FlutterEdgeTts(
-        voice: ttsVoiceName,
-        voiceLocale: ttsLocale,
-        outputFormat: EdgeTtsOutputFormat.audio24Khz96KbitrateMonoMp3,
-        enableSentenceBoundary: true,
-      );
-      final dir = await getTemporaryDirectory();
-      final path =
-          '${dir.path}/rpg_listening_${DateTime.now().millisecondsSinceEpoch}.mp3';
-      await tts.synthesizeToFile(
-        ttsText,
-        audioFilePath: path,
-        prosody: const EdgeTtsProsody(rate: '0.95', volume: '100'),
-      );
-      final audioFile = File(path);
-      if (!await audioFile.exists() || await audioFile.length() == 0) {
-        throw Exception('TTS 未生成有效音频文件');
-      }
-      player = AudioPlayer();
-      await player.setReleaseMode(ReleaseMode.stop);
-      await player.setVolume(1.0);
-      await player.play(DeviceFileSource(path));
-      final timeoutSeconds = max(8, min(60, ttsText.length ~/ 4));
-      await player.onPlayerComplete.first.timeout(
-        Duration(seconds: timeoutSeconds),
-      );
-      success = true;
-    } catch (e, stack) {
-      debugPrint('[RPG Listening] 播放失败：$e');
-      debugPrintStack(stackTrace: stack);
-      if (mounted) {
-        setState(() {
-          _audioError = '播放失败，请检查网络连接、系统音量或稍后重试';
-        });
-      }
-    } finally {
-      await player?.dispose();
-      await tts?.close();
-      if (mounted) {
-        setState(() {
-          _playing = false;
-          if (success) _played = true;
-        });
-      }
-    }
+    await _audio.play(
+      ttsText,
+      locale: RegExp(r'[A-Za-z]').hasMatch(ttsText) ? 'en-US' : 'zh-CN',
+    );
   }
 
   void _submit(String option) {
@@ -23109,6 +24065,10 @@ class _ListeningGameWidgetState extends State<ListeningGameWidget> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final loading = _audio.state == ListeningPlaybackState.loading;
+    final playing = _audio.state == ListeningPlaybackState.playing;
+    final paused = _audio.state == ListeningPlaybackState.paused;
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -23126,7 +24086,11 @@ class _ListeningGameWidgetState extends State<ListeningGameWidget> {
           // 播放按钮
           Center(
             child: GestureDetector(
-              onTap: _playing ? null : _playAudio,
+              onTap: loading
+                  ? null
+                  : playing
+                  ? _audio.pause
+                  : _playAudio,
               child: Container(
                 width: 120,
                 height: 120,
@@ -23148,7 +24112,7 @@ class _ListeningGameWidgetState extends State<ListeningGameWidget> {
                     ),
                   ],
                 ),
-                child: _playing
+                child: loading
                     ? const Center(
                         child: SizedBox(
                           width: 36,
@@ -23162,7 +24126,9 @@ class _ListeningGameWidgetState extends State<ListeningGameWidget> {
                         ),
                       )
                     : Icon(
-                        _played
+                        playing
+                            ? Icons.pause_rounded
+                            : _played
                             ? Icons.replay_rounded
                             : Icons.volume_up_rounded,
                         size: 48,
@@ -23174,19 +24140,23 @@ class _ListeningGameWidgetState extends State<ListeningGameWidget> {
           const SizedBox(height: 8),
           Center(
             child: Text(
-              _playing
-                  ? '正在播放...'
+              loading
+                  ? '正在准备系统语音…'
+                  : playing
+                  ? '正在播放，点击可暂停'
+                  : paused
+                  ? '已暂停，点击重新播放'
                   : _played
                   ? '点击重播'
                   : '点击播放音频',
-              style: TextStyle(fontSize: 13, color: kMuted),
+              style: TextStyle(fontSize: 13, color: colors.onSurfaceVariant),
             ),
           ),
-          if (_audioError != null) ...[
+          if (_audio.errorMessage != null) ...[
             const SizedBox(height: 8),
             Center(
               child: Text(
-                _audioError!,
+                _audio.errorMessage!,
                 textAlign: TextAlign.center,
                 style: const TextStyle(
                   fontSize: 12,
@@ -23214,7 +24184,7 @@ class _ListeningGameWidgetState extends State<ListeningGameWidget> {
                     ? kGreen.withValues(alpha: 0.1)
                     : showWrong
                     ? kRed.withValues(alpha: 0.1)
-                    : Colors.white,
+                    : colors.surface,
                 borderRadius: BorderRadius.circular(12),
                 child: InkWell(
                   onTap: _answered == true
@@ -23245,7 +24215,10 @@ class _ListeningGameWidgetState extends State<ListeningGameWidget> {
                         Expanded(
                           child: Text(
                             opt,
-                            style: TextStyle(fontSize: 14, color: kInk),
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: colors.onSurface,
+                            ),
                           ),
                         ),
                         if (showCorrect)
@@ -23298,7 +24271,9 @@ class FlashcardGameWidget extends StatefulWidget {
 class _FlashcardGameWidgetState extends State<FlashcardGameWidget>
     with SingleTickerProviderStateMixin {
   late final AnimationController _flipCtrl;
-  bool _showCard = true;
+  Timer? _autoFlipTimer;
+  Timer? _completionTimer;
+  bool _revealed = false;
   bool _answered = false;
   String? _selected;
 
@@ -23309,29 +24284,63 @@ class _FlashcardGameWidgetState extends State<FlashcardGameWidget>
       vsync: this,
       duration: const Duration(milliseconds: 600),
     );
-    // 5 秒后自动隐藏
-    Future.delayed(const Duration(seconds: 5), () {
-      if (mounted && _showCard) {
-        setState(() => _showCard = false);
-        _flipCtrl.forward();
-      }
-    });
+    _autoFlipTimer = Timer(const Duration(seconds: 5), _revealQuestion);
   }
 
   @override
   void dispose() {
+    _autoFlipTimer?.cancel();
+    _completionTimer?.cancel();
     _flipCtrl.dispose();
     super.dispose();
   }
 
+  void _revealQuestion() {
+    if (!mounted || _revealed || _answered) return;
+    _autoFlipTimer?.cancel();
+    setState(() => _revealed = true);
+    if (AppSettingsScope.of(context).reduceMotion) {
+      _flipCtrl.value = 1;
+    } else {
+      _flipCtrl.forward(from: 0);
+    }
+  }
+
+  List<String> get _choices {
+    if (widget.game.questionOptions.isNotEmpty) {
+      return List<String>.from(widget.game.questionOptions);
+    }
+    final embedded = <String>[];
+    for (final line in widget.game.prompt.split('\n')) {
+      final match = RegExp(r'^([A-Da-d])[.、)]\s*(.+)').firstMatch(line.trim());
+      if (match != null) {
+        embedded.add('${match.group(1)!.toUpperCase()}. ${match.group(2)}');
+      }
+    }
+    return embedded;
+  }
+
+  String get _questionText => widget.game.prompt
+      .split('\n')
+      .where((line) => !RegExp(r'^[A-Da-d][.、)]').hasMatch(line.trim()))
+      .join('\n')
+      .trim();
+
+  String _answerKey(String value) {
+    final trimmed = value.trim();
+    final match = RegExp(r'^([A-Da-d])(?:[.、)\s]|$)').firstMatch(trimmed);
+    return match?.group(1)?.toUpperCase() ?? trimmed;
+  }
+
   void _submit(String option) {
-    if (_answered) return;
-    final userAns = option.isNotEmpty ? option[0] : option;
-    final correctAns = widget.game.answer.isNotEmpty
-        ? widget.game.answer[0]
-        : widget.game.answer;
+    if (_answered || !_revealed) return;
+    final userAns = _answerKey(option);
+    final correctAns = _answerKey(widget.game.answer);
     final isCorrect = userAns == correctAns;
-    setState(() => _answered = true);
+    setState(() {
+      _selected = option;
+      _answered = true;
+    });
     if (isCorrect) {
       AppHaptics.instance.lightImpact();
       SoundService.instance.play(SoundType.correct);
@@ -23346,8 +24355,8 @@ class _FlashcardGameWidgetState extends State<FlashcardGameWidget>
         question: AiQuestion(
           type: 'choice',
           question:
-              '${widget.game.prompt}\n闪卡内容：${widget.game.options.isNotEmpty ? widget.game.options.first : ''}',
-          options: const [],
+              '$_questionText\n闪卡内容：${widget.game.options.isNotEmpty ? widget.game.options.first : ''}',
+          options: _choices,
           answer: widget.game.answer,
           explanation: widget.game.explanation ?? '',
         ),
@@ -23355,7 +24364,8 @@ class _FlashcardGameWidgetState extends State<FlashcardGameWidget>
         createdAt: DateTime.now(),
       );
     }
-    Future.delayed(const Duration(milliseconds: 800), () {
+    _completionTimer = Timer(const Duration(milliseconds: 800), () {
+      if (!mounted) return;
       widget.onComplete(
         correct: isCorrect,
         wrong: wrong,
@@ -23366,20 +24376,49 @@ class _FlashcardGameWidgetState extends State<FlashcardGameWidget>
     });
   }
 
+  void _submitRecall({required bool remembered}) {
+    if (_answered || !_revealed) return;
+    setState(() => _answered = true);
+    if (remembered) {
+      AppHaptics.instance.lightImpact();
+      SoundService.instance.play(SoundType.correct);
+    } else {
+      AppHaptics.instance.heavyImpact();
+      SoundService.instance.play(SoundType.wrong);
+    }
+    final wrong = remembered
+        ? null
+        : WrongItem(
+            materialName: 'RPG 闯关',
+            question: AiQuestion(
+              type: 'subjective',
+              question: _questionText,
+              options: const [],
+              answer: widget.game.answer,
+              explanation: widget.game.explanation ?? '',
+            ),
+            userAnswer: '还需复习',
+            createdAt: DateTime.now(),
+          );
+    _completionTimer = Timer(const Duration(milliseconds: 520), () {
+      if (!mounted) return;
+      widget.onComplete(
+        correct: remembered,
+        wrong: wrong,
+        questionText: _questionText,
+        userAnswer: remembered ? '我记住了' : '还需复习',
+        correctAnswer: widget.game.answer,
+      );
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     final flashcardContent = widget.game.options.isNotEmpty
         ? widget.game.options.first
         : '（无闪卡内容）';
-    // 从 prompt 提取选项（A/B/C/D 在 prompt 里）
-    final promptLines = widget.game.prompt.split('\n');
-    final choices = <String>[];
-    for (final line in promptLines) {
-      final m = RegExp(r'^([A-D])[.、)]\s*(.+)').firstMatch(line.trim());
-      if (m != null) {
-        choices.add('${m.group(1)}. ${m.group(2)}');
-      }
-    }
+    final choices = _choices;
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -23388,179 +24427,238 @@ class _FlashcardGameWidgetState extends State<FlashcardGameWidget>
           // 闪卡区域
           Center(
             child: GestureDetector(
-              onTap: () {
-                setState(() => _showCard = !_showCard);
-                if (_showCard) {
-                  _flipCtrl.forward();
-                }
-              },
+              onTap: _revealQuestion,
               child: AnimatedBuilder(
                 animation: _flipCtrl,
-                builder: (context, child) {
-                  final angle = _showCard ? 0.0 : pi;
+                builder: (context, _) {
+                  final angle = _flipCtrl.value * pi;
+                  final showFront = angle < pi / 2;
+                  final face = showFront
+                      ? _buildFlashcardFace(
+                          colors: const [Color(0xFF6366F1), Color(0xFF8B5CF6)],
+                          icon: Icons.style_rounded,
+                          eyebrow: '闪卡内容',
+                          body: flashcardContent,
+                          footer: '点击翻卡 · 5 秒后自动进入答题',
+                        )
+                      : Transform(
+                          alignment: Alignment.center,
+                          transform: Matrix4.identity()..rotateY(pi),
+                          child: _buildFlashcardFace(
+                            colors: const [
+                              Color(0xFF047857),
+                              Color(0xFF10B981),
+                            ],
+                            icon: Icons.lightbulb_rounded,
+                            eyebrow: '答题时间',
+                            body: _questionText.isEmpty
+                                ? '请回忆闪卡内容'
+                                : _questionText,
+                            footer: choices.isEmpty ? '核对答案后进行自评' : '点击下方选项作答',
+                          ),
+                        );
                   return Transform(
                     alignment: Alignment.center,
                     transform: Matrix4.identity()
                       ..setEntry(3, 2, 0.002)
-                      ..rotateY(angle * _flipCtrl.value),
-                    child: child,
+                      ..rotateY(angle),
+                    child: face,
                   );
                 },
-                child: Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(24),
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: _showCard
-                          ? [const Color(0xFF6366F1), const Color(0xFF8B5CF6)]
-                          : [const Color(0xFF10B981), const Color(0xFF34D399)],
-                    ),
-                    borderRadius: BorderRadius.circular(20),
-                    boxShadow: [
-                      BoxShadow(
-                        color: (_showCard ? const Color(0xFF6366F1) : kGreen)
-                            .withValues(alpha: 0.4),
-                        blurRadius: 20,
-                        spreadRadius: 2,
-                      ),
-                    ],
-                  ),
-                  child: Column(
-                    children: [
-                      Icon(
-                        _showCard
-                            ? Icons.style_rounded
-                            : Icons.lightbulb_rounded,
-                        size: 40,
-                        color: Colors.white,
-                      ),
-                      const SizedBox(height: 12),
-                      if (_showCard) ...[
-                        const Text(
-                          '闪卡内容',
-                          style: TextStyle(color: Colors.white70, fontSize: 12),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          flashcardContent,
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 16,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        const Text(
-                          '5 秒后自动隐藏',
-                          style: TextStyle(color: Colors.white54, fontSize: 10),
-                        ),
-                      ] else ...[
-                        const Text(
-                          '答题时间',
-                          style: TextStyle(color: Colors.white70, fontSize: 12),
-                        ),
-                        const SizedBox(height: 8),
-                        const Icon(
-                          Icons.touch_app_rounded,
-                          size: 32,
-                          color: Colors.white,
-                        ),
-                        const SizedBox(height: 8),
-                        const Text(
-                          '点击下方选项作答',
-                          style: TextStyle(color: Colors.white70, fontSize: 11),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
               ),
             ),
           ),
           const SizedBox(height: 20),
-          // 问题（不含选项行）
-          Text(
-            promptLines
-                .where((l) => !RegExp(r'^[A-D][.、)]').hasMatch(l.trim()))
-                .join('\n'),
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              color: _challengePrimaryText(context),
+          if (!_revealed)
+            Center(
+              child: OutlinedButton.icon(
+                onPressed: _revealQuestion,
+                icon: const Icon(Icons.flip_rounded),
+                label: const Text('我记好了，开始答题'),
+              ),
             ),
-          ),
-          const SizedBox(height: 16),
           // 选项
-          ...choices.map((opt) {
-            final isSelected = _selected == opt;
-            final userAns = opt.isNotEmpty ? opt[0] : '';
-            final correctAns = widget.game.answer.isNotEmpty
-                ? widget.game.answer[0]
-                : '';
-            final isCorrect = userAns == correctAns;
-            final showCorrect = _answered && isCorrect;
-            final showWrong = _answered && isSelected && !isCorrect;
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: Material(
-                color: showCorrect
-                    ? kGreen.withValues(alpha: 0.1)
-                    : showWrong
-                    ? kRed.withValues(alpha: 0.1)
-                    : Colors.white,
-                borderRadius: BorderRadius.circular(12),
-                child: InkWell(
-                  onTap: _answered
-                      ? null
-                      : () {
-                          setState(() => _selected = opt);
-                          _submit(opt);
-                        },
+          if (_revealed)
+            ...choices.map((opt) {
+              final isSelected = _selected == opt;
+              final userAns = opt.isNotEmpty ? opt[0] : '';
+              final correctAns = widget.game.answer.isNotEmpty
+                  ? widget.game.answer[0]
+                  : '';
+              final isCorrect = userAns == correctAns;
+              final showCorrect = _answered && isCorrect;
+              final showWrong = _answered && isSelected && !isCorrect;
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: Material(
+                  color: showCorrect
+                      ? kGreen.withValues(alpha: 0.1)
+                      : showWrong
+                      ? kRed.withValues(alpha: 0.1)
+                      : colors.surfaceContainerHigh,
                   borderRadius: BorderRadius.circular(12),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 14,
-                    ),
-                    decoration: BoxDecoration(
-                      border: Border.all(
-                        color: showCorrect
-                            ? kGreen
-                            : showWrong
-                            ? kRed
-                            : kLine,
-                        width: showCorrect || showWrong ? 2 : 1,
+                  child: InkWell(
+                    onTap: _answered
+                        ? null
+                        : () {
+                            setState(() => _selected = opt);
+                            _submit(opt);
+                          },
+                    borderRadius: BorderRadius.circular(12),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 14,
                       ),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            opt,
-                            style: const TextStyle(fontSize: 14, color: kInk),
-                          ),
+                      decoration: BoxDecoration(
+                        border: Border.all(
+                          color: showCorrect
+                              ? kGreen
+                              : showWrong
+                              ? kRed
+                              : kLine,
+                          width: showCorrect || showWrong ? 2 : 1,
                         ),
-                        if (showCorrect)
-                          const Icon(
-                            Icons.check_circle_rounded,
-                            color: kGreen,
-                            size: 20,
-                          )
-                        else if (showWrong)
-                          const Icon(
-                            Icons.cancel_rounded,
-                            color: kRed,
-                            size: 20,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              opt,
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: colors.onSurface,
+                              ),
+                            ),
                           ),
-                      ],
+                          if (showCorrect)
+                            const Icon(
+                              Icons.check_circle_rounded,
+                              color: kGreen,
+                              size: 20,
+                            )
+                          else if (showWrong)
+                            const Icon(
+                              Icons.cancel_rounded,
+                              color: kRed,
+                              size: 20,
+                            ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
+              );
+            }),
+          if (_revealed && choices.isEmpty) ...[
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: colors.surfaceContainerHigh,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: colors.outlineVariant),
               ),
-            );
-          }).toList(),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '参考答案',
+                    style: TextStyle(color: colors.onSurfaceVariant),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    widget.game.answer,
+                    style: TextStyle(
+                      color: colors.onSurface,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _answered
+                        ? null
+                        : () => _submitRecall(remembered: false),
+                    icon: const Icon(Icons.refresh_rounded),
+                    label: const Text('还需复习'),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: _answered
+                        ? null
+                        : () => _submitRecall(remembered: true),
+                    icon: const Icon(Icons.check_rounded),
+                    label: const Text('我记住了'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFlashcardFace({
+    required List<Color> colors,
+    required IconData icon,
+    required String eyebrow,
+    required String body,
+    required String footer,
+  }) {
+    return Container(
+      width: double.infinity,
+      constraints: const BoxConstraints(minHeight: 210),
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(colors: colors),
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: colors.first.withValues(alpha: .32),
+            blurRadius: 20,
+            spreadRadius: 2,
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(icon, size: 38, color: Colors.white),
+          const SizedBox(height: 10),
+          Text(
+            eyebrow,
+            style: const TextStyle(color: Colors.white70, fontSize: 12),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            body,
+            textAlign: TextAlign.center,
+            maxLines: 7,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 16,
+              height: 1.45,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            footer,
+            textAlign: TextAlign.center,
+            style: const TextStyle(color: Colors.white70, fontSize: 11),
+          ),
         ],
       ),
     );
@@ -23665,6 +24763,7 @@ class _ReorderGameWidgetState extends State<ReorderGameWidget> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -23693,7 +24792,9 @@ class _ReorderGameWidgetState extends State<ReorderGameWidget> {
             return Padding(
               padding: const EdgeInsets.only(bottom: 10),
               child: Material(
-                color: isSelected ? kBlue.withValues(alpha: 0.1) : Colors.white,
+                color: isSelected
+                    ? kBlue.withValues(alpha: 0.16)
+                    : colors.surfaceContainerHigh,
                 borderRadius: BorderRadius.circular(12),
                 child: InkWell(
                   onTap: _answered ? null : () => _onTapItem(i),
@@ -23705,7 +24806,7 @@ class _ReorderGameWidgetState extends State<ReorderGameWidget> {
                     ),
                     decoration: BoxDecoration(
                       border: Border.all(
-                        color: isSelected ? kBlue : kLine,
+                        color: isSelected ? kBlue : colors.outlineVariant,
                         width: isSelected ? 2 : 1,
                       ),
                       borderRadius: BorderRadius.circular(12),
@@ -23717,7 +24818,9 @@ class _ReorderGameWidgetState extends State<ReorderGameWidget> {
                           height: 32,
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
-                            color: isSelected ? kBlue : kBg,
+                            color: isSelected
+                                ? kBlue
+                                : colors.surfaceContainerHighest,
                           ),
                           child: Center(
                             child: isSelected
@@ -23731,10 +24834,10 @@ class _ReorderGameWidgetState extends State<ReorderGameWidget> {
                                   )
                                 : Text(
                                     '${i + 1}',
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                       fontSize: 13,
                                       fontWeight: FontWeight.w700,
-                                      color: kMuted,
+                                      color: colors.onSurfaceVariant,
                                     ),
                                   ),
                           ),
@@ -23745,7 +24848,9 @@ class _ReorderGameWidgetState extends State<ReorderGameWidget> {
                             _items[i],
                             style: TextStyle(
                               fontSize: 14,
-                              color: isSelected ? kMuted : kInk,
+                              color: isSelected
+                                  ? colors.onSurfaceVariant
+                                  : colors.onSurface,
                             ),
                           ),
                         ),
@@ -23912,6 +25017,7 @@ class _TapFastGameWidgetState extends State<TapFastGameWidget>
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -23977,23 +25083,23 @@ class _TapFastGameWidgetState extends State<TapFastGameWidget>
                               ? kGreen.withValues(alpha: 0.1)
                               : _lastCorrect == false
                               ? kRed.withValues(alpha: 0.1)
-                              : kBg,
+                              : colors.surfaceContainerHigh,
                           borderRadius: BorderRadius.circular(16),
                           border: Border.all(
                             color: _lastCorrect == true
                                 ? kGreen
                                 : _lastCorrect == false
                                 ? kRed
-                                : kLine,
+                                : colors.outlineVariant,
                           ),
                         ),
                         child: Text(
                           _statements[_currentIndex],
                           textAlign: TextAlign.center,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 18,
                             fontWeight: FontWeight.w700,
-                            color: kInk,
+                            color: colors.onSurface,
                           ),
                         ),
                       ),
@@ -24215,6 +25321,7 @@ class _SpellGameWidgetState extends State<SpellGameWidget>
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -24224,9 +25331,9 @@ class _SpellGameWidgetState extends State<SpellGameWidget>
             width: double.infinity,
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
-              color: const Color(0xFFEEF2FF),
+              color: colors.surfaceContainerHigh,
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: const Color(0xFFC7D2FE)),
+              border: Border.all(color: colors.outlineVariant),
             ),
             child: Row(
               children: [
@@ -24285,10 +25392,14 @@ class _SpellGameWidgetState extends State<SpellGameWidget>
                       width: 38,
                       height: 48,
                       decoration: BoxDecoration(
-                        color: filled ? const Color(0xFF6366F1) : Colors.white,
+                        color: filled
+                            ? const Color(0xFF6366F1)
+                            : colors.surface,
                         borderRadius: BorderRadius.circular(8),
                         border: Border.all(
-                          color: filled ? const Color(0xFF6366F1) : kLine,
+                          color: filled
+                              ? const Color(0xFF6366F1)
+                              : colors.outlineVariant,
                           width: 1.5,
                         ),
                       ),
@@ -24298,7 +25409,9 @@ class _SpellGameWidgetState extends State<SpellGameWidget>
                         style: TextStyle(
                           fontSize: 20,
                           fontWeight: FontWeight.w800,
-                          color: filled ? Colors.white : kLine,
+                          color: filled
+                              ? Colors.white
+                              : colors.onSurfaceVariant,
                         ),
                       ),
                     ),
@@ -24322,10 +25435,14 @@ class _SpellGameWidgetState extends State<SpellGameWidget>
                     width: 44,
                     height: 54,
                     decoration: BoxDecoration(
-                      color: used ? kLine : const Color(0xFFF3F4F6),
+                      color: used
+                          ? colors.surfaceContainerHighest.withValues(
+                              alpha: 0.45,
+                            )
+                          : colors.surfaceContainerHigh,
                       borderRadius: BorderRadius.circular(10),
                       border: Border.all(
-                        color: used ? kLine : const Color(0xFFD1D5DB),
+                        color: used ? colors.outlineVariant : colors.outline,
                         width: 1.5,
                       ),
                       boxShadow: used
@@ -24344,7 +25461,9 @@ class _SpellGameWidgetState extends State<SpellGameWidget>
                       style: TextStyle(
                         fontSize: 22,
                         fontWeight: FontWeight.w800,
-                        color: used ? kMuted : kInk,
+                        color: used
+                            ? colors.onSurfaceVariant.withValues(alpha: 0.55)
+                            : colors.onSurface,
                       ),
                     ),
                   ),
@@ -24473,6 +25592,7 @@ class _FillBlankGameWidgetState extends State<FillBlankGameWidget> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -24484,9 +25604,14 @@ class _FillBlankGameWidgetState extends State<FillBlankGameWidget> {
                 width: double.infinity,
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFFFFBEB),
+                  color: Color.alphaBlend(
+                    const Color(0xFFF59E0B).withValues(alpha: 0.08),
+                    colors.surfaceContainerHigh,
+                  ),
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: const Color(0xFFFCD34D)),
+                  border: Border.all(
+                    color: const Color(0xFFF59E0B).withValues(alpha: 0.55),
+                  ),
                 ),
                 child: Wrap(
                   crossAxisAlignment: WrapCrossAlignment.center,
@@ -24541,18 +25666,18 @@ class _FillBlankGameWidgetState extends State<FillBlankGameWidget> {
                               vertical: 4,
                             ),
                             decoration: BoxDecoration(
-                              color: const Color(0xFFF3F4F6),
+                              color: colors.surfaceContainerHighest,
                               borderRadius: BorderRadius.circular(6),
                               border: Border.all(
-                                color: const Color(0xFFD1D5DB),
+                                color: colors.outlineVariant,
                                 width: 1,
                               ),
                             ),
-                            child: const Text(
+                            child: Text(
                               '＿＿＿＿',
                               style: TextStyle(
                                 fontSize: 15,
-                                color: Color(0xFF9CA3AF),
+                                color: colors.onSurfaceVariant,
                               ),
                             ),
                           ),
@@ -24582,10 +25707,16 @@ class _FillBlankGameWidgetState extends State<FillBlankGameWidget> {
                       vertical: 10,
                     ),
                     decoration: BoxDecoration(
-                      color: used ? kLine : Colors.white,
+                      color: used
+                          ? colors.surfaceContainerHighest.withValues(
+                              alpha: 0.45,
+                            )
+                          : colors.surfaceContainerHigh,
                       borderRadius: BorderRadius.circular(10),
                       border: Border.all(
-                        color: used ? kLine : const Color(0xFF6366F1),
+                        color: used
+                            ? colors.outlineVariant
+                            : const Color(0xFF6366F1),
                         width: 1.5,
                       ),
                       boxShadow: used
@@ -24605,7 +25736,9 @@ class _FillBlankGameWidgetState extends State<FillBlankGameWidget> {
                       style: TextStyle(
                         fontSize: 15,
                         fontWeight: FontWeight.w700,
-                        color: used ? kMuted : const Color(0xFF6366F1),
+                        color: used
+                            ? colors.onSurfaceVariant.withValues(alpha: 0.55)
+                            : colors.onSurface,
                       ),
                     ),
                   ),
@@ -24742,20 +25875,25 @@ class _TrueFalseGameWidgetState extends State<TrueFalseGameWidget>
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Column(
         children: [
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
-            children: const [
-              Icon(Icons.swipe_rounded, size: 16, color: kMuted),
-              SizedBox(width: 6),
+            children: [
+              Icon(
+                Icons.swipe_rounded,
+                size: 16,
+                color: colors.onSurfaceVariant,
+              ),
+              const SizedBox(width: 6),
               Text(
                 '左滑=错 · 右滑=对 · 或点击按钮',
                 style: TextStyle(
                   fontSize: 12,
-                  color: kMuted,
+                  color: colors.onSurfaceVariant,
                   fontWeight: FontWeight.w600,
                 ),
               ),
@@ -24802,19 +25940,19 @@ class _TrueFalseGameWidgetState extends State<TrueFalseGameWidget>
                           ? const Color(0xFFD1FAE5)
                           : _result == false
                           ? const Color(0xFFFEE2E2)
-                          : Colors.white;
+                          : colors.surfaceContainerHigh;
                       return Container(
                         width: double.infinity,
                         padding: const EdgeInsets.all(28),
                         decoration: BoxDecoration(
-                          color: flash ? color : Colors.white,
+                          color: flash ? color : colors.surfaceContainerHigh,
                           borderRadius: BorderRadius.circular(20),
                           border: Border.all(
                             color: _result == true
                                 ? kGreen
                                 : _result == false
                                 ? kRed
-                                : kLine,
+                                : colors.outlineVariant,
                             width: 2,
                           ),
                           boxShadow: [
@@ -25053,6 +26191,7 @@ class _LinkUpGameWidgetState extends State<LinkUpGameWidget>
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -25091,10 +26230,10 @@ class _LinkUpGameWidgetState extends State<LinkUpGameWidget>
             ],
           ),
           const SizedBox(height: 8),
-          const Center(
+          Center(
             child: Text(
               '点击相关联的两块进行配对消除',
-              style: TextStyle(fontSize: 12, color: kMuted),
+              style: TextStyle(fontSize: 12, color: colors.onSurfaceVariant),
             ),
           ),
           const SizedBox(height: 16),
@@ -25122,7 +26261,7 @@ class _LinkUpGameWidgetState extends State<LinkUpGameWidget>
                             ? kRed.withValues(alpha: 0.2)
                             : selected
                             ? const Color(0xFF6366F1)
-                            : Colors.white,
+                            : colors.surfaceContainerHigh,
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
                           color: tile.cleared
@@ -25131,7 +26270,7 @@ class _LinkUpGameWidgetState extends State<LinkUpGameWidget>
                               ? kRed
                               : selected
                               ? const Color(0xFF6366F1)
-                              : kLine,
+                              : colors.outlineVariant,
                           width: selected ? 2 : 1,
                         ),
                         boxShadow: tile.cleared || selected || tile.wrongFlash
@@ -25153,10 +26292,10 @@ class _LinkUpGameWidgetState extends State<LinkUpGameWidget>
                             fontSize: 14,
                             fontWeight: FontWeight.w700,
                             color: tile.cleared
-                                ? kMuted
+                                ? colors.onSurfaceVariant
                                 : selected
                                 ? Colors.white
-                                : kInk,
+                                : colors.onSurface,
                             decoration: tile.cleared
                                 ? TextDecoration.lineThrough
                                 : TextDecoration.none,
