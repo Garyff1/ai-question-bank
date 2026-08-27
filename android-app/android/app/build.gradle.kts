@@ -1,9 +1,37 @@
+import java.io.FileInputStream
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("kotlin-android")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
 }
+
+val signingProperties = Properties()
+val signingPropertiesFile = rootProject.file("key.properties")
+if (signingPropertiesFile.exists()) {
+    FileInputStream(signingPropertiesFile).use(signingProperties::load)
+}
+
+fun signingValue(environmentName: String, propertyName: String): String? =
+    System.getenv(environmentName)?.trim()?.takeIf { it.isNotEmpty() }
+        ?: signingProperties.getProperty(propertyName)?.trim()?.takeIf { it.isNotEmpty() }
+
+val releaseStorePath = signingValue("AIQB_RELEASE_KEYSTORE_PATH", "storeFile")
+val releaseStorePassword = signingValue("AIQB_RELEASE_KEYSTORE_PASSWORD", "storePassword")
+val releaseKeyAlias = signingValue("AIQB_RELEASE_KEY_ALIAS", "keyAlias")
+val releaseKeyPassword = signingValue("AIQB_RELEASE_KEY_PASSWORD", "keyPassword")
+val hasReleaseSigning = listOf(
+    releaseStorePath,
+    releaseStorePassword,
+    releaseKeyAlias,
+    releaseKeyPassword,
+).all { !it.isNullOrBlank() }
+val allowDebugReleaseSigning =
+    (System.getenv("AIQB_ALLOW_DEBUG_RELEASE_SIGNING")
+        ?: signingProperties.getProperty("allowDebugReleaseSigning")
+        ?: "false").toBoolean()
 
 android {
     namespace = "com.garyff.aiquestionbank.ai_question_bank_android"
@@ -30,11 +58,28 @@ android {
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        if (hasReleaseSigning) {
+            create("release") {
+                storeFile = file(releaseStorePath!!)
+                storePassword = releaseStorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = when {
+                hasReleaseSigning -> signingConfigs.getByName("release")
+                allowDebugReleaseSigning -> signingConfigs.getByName("debug")
+                else -> throw GradleException(
+                    "Release signing is not configured. Provide AIQB_RELEASE_* environment " +
+                        "variables or android/key.properties. Debug signing is allowed only " +
+                        "when AIQB_ALLOW_DEBUG_RELEASE_SIGNING=true is explicitly set.",
+                )
+            }
             // 关闭 R8 代码压缩/混淆：避免 ML Kit 等插件反射调用的类被错误移除。
             isMinifyEnabled = false
             isShrinkResources = false

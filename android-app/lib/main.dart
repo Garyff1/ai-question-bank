@@ -31,6 +31,8 @@ import 'core/security/api_key_security_audit.dart';
 import 'core/security/secure_screen.dart';
 import 'core/storage/secure_api_config_storage.dart';
 import 'core/subject/subject_capabilities.dart';
+import 'core/theme/app_motion.dart';
+import 'core/widgets/ambient_motion_layer.dart';
 import 'features/challenge/challenge_rules.dart';
 import 'features/card_run/card_run_models.dart';
 import 'features/card_run/card_run_page.dart';
@@ -6182,6 +6184,8 @@ class _HomeHeroCard extends StatelessWidget {
     final greeting = hour < 12
         ? l10n.homeGreetingMorning
         : (hour < 18 ? l10n.homeGreetingAfternoon : l10n.homeGreetingEvening);
+    final reduceMotion = AppSettingsScope.of(context).reduceMotion;
+    const radius = 28.0;
     return Container(
       padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
       decoration: BoxDecoration(
@@ -6190,7 +6194,7 @@ class _HomeHeroCard extends StatelessWidget {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
-        borderRadius: BorderRadius.circular(28),
+        borderRadius: BorderRadius.circular(radius),
         boxShadow: const [
           BoxShadow(
             color: Color(0x332563EB),
@@ -6199,119 +6203,104 @@ class _HomeHeroCard extends StatelessWidget {
           ),
         ],
       ),
-      child: Stack(
-        children: [
-          Positioned(
-            right: -34,
-            top: -36,
-            child: Container(
-              width: 156,
-              height: 156,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: Colors.white.withValues(alpha: 0.10),
-              ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(radius - 1),
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: AmbientMotionLayer(reduceMotion: reduceMotion),
             ),
-          ),
-          Positioned(
-            right: 18,
-            bottom: 10,
-            child: Container(
-              width: 96,
-              height: 96,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(28),
-                color: Colors.white.withValues(alpha: 0.07),
-              ),
-            ),
-          ),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const _LogoMark(size: 48),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          greeting,
-                          style: const TextStyle(
-                            color: Colors.white70,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                        Text(
-                          l10n.homeKnowledgePrompt,
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 24,
-                            height: 1.16,
-                            fontWeight: FontWeight.w900,
-                          ),
-                          maxLines: 2,
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 18),
-              Row(
-                children: [
-                  Expanded(
-                    child: _GlassStatusPill(
-                      icon: Icons.bolt_rounded,
-                      label: _levelTitle(
-                        xpProfile.level,
-                        Localizations.localeOf(context),
-                      ),
-                      value: 'Lv.${xpProfile.level} · ${xpProfile.totalXp} XP',
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: _GlassStatusPill(
-                      icon: Icons.local_fire_department_rounded,
-                      label: l10n.streakLabel,
-                      value:
-                          Localizations.localeOf(context).languageCode == 'en'
-                          ? '${xpProfile.checkinStreak} days'
-                          : '${xpProfile.checkinStreak} 天',
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 10),
-              Row(
-                children: [
-                  Expanded(
-                    child: _GlassStatusPill(
-                      icon: configReady
-                          ? Icons.check_circle_rounded
-                          : Icons.key_rounded,
-                      label: 'API',
-                      value: configReady ? l10n.configured : l10n.notConfigured,
-                    ),
-                  ),
-                  if (!configReady) ...[
-                    const SizedBox(width: 10),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const _LogoMark(size: 48),
+                    const SizedBox(width: 14),
                     Expanded(
-                      child: FilledButton.tonalIcon(
-                        onPressed: onOpenConfig,
-                        icon: const Icon(Icons.key_rounded, size: 18),
-                        label: Text(l10n.configureKey),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            greeting,
+                            style: const TextStyle(
+                              color: Colors.white70,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          Text(
+                            l10n.homeKnowledgePrompt,
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 24,
+                              height: 1.16,
+                              fontWeight: FontWeight.w900,
+                            ),
+                            maxLines: 2,
+                          ),
+                        ],
                       ),
                     ),
                   ],
-                ],
-              ),
-            ],
-          ),
-        ],
+                ),
+                const SizedBox(height: 18),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _GlassStatusPill(
+                        icon: Icons.bolt_rounded,
+                        label: _levelTitle(
+                          xpProfile.level,
+                          Localizations.localeOf(context),
+                        ),
+                        value:
+                            'Lv.${xpProfile.level} · ${xpProfile.totalXp} XP',
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: _GlassStatusPill(
+                        icon: Icons.local_fire_department_rounded,
+                        label: l10n.streakLabel,
+                        value:
+                            Localizations.localeOf(context).languageCode == 'en'
+                            ? '${xpProfile.checkinStreak} days'
+                            : '${xpProfile.checkinStreak} 天',
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _GlassStatusPill(
+                        icon: configReady
+                            ? Icons.check_circle_rounded
+                            : Icons.key_rounded,
+                        label: 'API',
+                        value: configReady
+                            ? l10n.configured
+                            : l10n.notConfigured,
+                      ),
+                    ),
+                    if (!configReady) ...[
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: FilledButton.tonalIcon(
+                          onPressed: onOpenConfig,
+                          icon: const Icon(Icons.key_rounded, size: 18),
+                          label: Text(l10n.configureKey),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -6342,25 +6331,30 @@ class _GlassStatusPill extends StatelessWidget {
         children: [
           Icon(icon, color: Colors.white, size: 18),
           const SizedBox(width: 8),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                label,
-                style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.72),
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.72),
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
-              ),
-              _AnimatedValue(
-                value: value,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w900,
+                _AnimatedValue(
+                  value: value,
+                  maxLines: 1,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w900,
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ],
       ),
@@ -6494,17 +6488,38 @@ class _TodayTaskTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = done ? kGreen : Theme.of(context).colorScheme.primary;
-    return InkWell(
-      onTap: done ? null : onTap,
-      borderRadius: BorderRadius.circular(12),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 7),
+    final colors = Theme.of(context).colorScheme;
+    return _BouncyTap(
+      onTap: onTap,
+      enabled: !done,
+      child: AnimatedContainer(
+        duration: AppMotion.resolve(
+          AppSettingsScope.of(context).reduceMotion,
+          AppMotion.state,
+        ),
+        margin: const EdgeInsets.only(top: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+        decoration: BoxDecoration(
+          color: done
+              ? kGreen.withValues(alpha: 0.08)
+              : colors.primary.withValues(alpha: 0.045),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: done
+                ? kGreen.withValues(alpha: 0.22)
+                : colors.outlineVariant.withValues(alpha: 0.62),
+          ),
+        ),
         child: Row(
           children: [
-            Icon(
-              done ? Icons.check_circle_rounded : icon,
-              color: color,
-              size: 19,
+            AnimatedSwitcher(
+              duration: AppMotion.state,
+              child: Icon(
+                done ? Icons.check_circle_rounded : icon,
+                key: ValueKey(done),
+                color: color,
+                size: 19,
+              ),
             ),
             const SizedBox(width: 10),
             Expanded(
@@ -6519,7 +6534,22 @@ class _TodayTaskTile extends StatelessWidget {
                 ),
               ),
             ),
-            if (!done) const Icon(Icons.chevron_right_rounded, size: 18),
+            AnimatedSwitcher(
+              duration: AppMotion.state,
+              child: done
+                  ? const Icon(
+                      Icons.done_all_rounded,
+                      key: ValueKey('done'),
+                      color: kGreen,
+                      size: 18,
+                    )
+                  : Icon(
+                      Icons.arrow_forward_rounded,
+                      key: const ValueKey('next'),
+                      color: colors.primary,
+                      size: 18,
+                    ),
+            ),
           ],
         ),
       ),
@@ -6540,19 +6570,28 @@ class _ContinueChallengeCard extends StatelessWidget {
     final completedLevels = progress.stars.entries
         .where((entry) => entry.value > 0)
         .length;
-    return InkWell(
+    return _BouncyTap(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(22),
-      child: Ink(
+      child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           gradient: LinearGradient(
             colors: [
               const Color(0xFF172554),
               rule.isBoss ? const Color(0xFF7F1D1D) : const Color(0xFF312E81),
+              rule.isBoss ? const Color(0xFF991B1B) : const Color(0xFF1D4ED8),
             ],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
           ),
           borderRadius: BorderRadius.circular(22),
+          boxShadow: [
+            BoxShadow(
+              color: (rule.isBoss ? kRed : kBlue).withValues(alpha: 0.18),
+              blurRadius: 22,
+              offset: const Offset(0, 10),
+            ),
+          ],
         ),
         child: Row(
           children: [
@@ -6600,7 +6639,19 @@ class _ContinueChallengeCard extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 12),
-            const Icon(Icons.arrow_forward_rounded, color: Colors.white),
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.12),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.arrow_forward_rounded,
+                color: Colors.white,
+                size: 20,
+              ),
+            ),
           ],
         ),
       ),
@@ -6700,11 +6751,13 @@ class _LearningStatusCard extends StatelessWidget {
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
               color: boostActive
-                  ? const Color(0xFFFFF7ED)
-                  : const Color(0xFFF8FAFC),
+                  ? colors.tertiaryContainer.withValues(alpha: 0.70)
+                  : colors.surfaceContainerHighest,
               borderRadius: BorderRadius.circular(18),
               border: Border.all(
-                color: boostActive ? const Color(0xFFFDBA74) : kLine,
+                color: boostActive
+                    ? colors.tertiary.withValues(alpha: 0.45)
+                    : colors.outlineVariant,
               ),
             ),
             child: Row(
@@ -6713,7 +6766,9 @@ class _LearningStatusCard extends StatelessWidget {
                   boostActive
                       ? Icons.local_fire_department_rounded
                       : Icons.style_outlined,
-                  color: boostActive ? const Color(0xFFF97316) : kMuted,
+                  color: boostActive
+                      ? colors.tertiary
+                      : colors.onSurfaceVariant,
                 ),
                 const SizedBox(width: 10),
                 Expanded(
@@ -6722,7 +6777,9 @@ class _LearningStatusCard extends StatelessWidget {
                         ? '${l10n.boostActive} · ${_durationText(xpProfile.boostRemaining())}'
                         : l10n.boostHint,
                     style: TextStyle(
-                      color: boostActive ? const Color(0xFF9A3412) : kMuted,
+                      color: boostActive
+                          ? colors.onTertiaryContainer
+                          : colors.onSurfaceVariant,
                       fontWeight: FontWeight.w800,
                     ),
                   ),
@@ -6841,7 +6898,14 @@ class _HomeActionCard extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: colors.surface,
+          gradient: LinearGradient(
+            colors: [
+              colors.surface,
+              Color.alphaBlend(color.withValues(alpha: 0.055), colors.surface),
+            ],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
           borderRadius: BorderRadius.circular(22),
           border: Border.all(color: Theme.of(context).dividerColor),
           boxShadow: const [
@@ -6852,37 +6916,63 @@ class _HomeActionCard extends StatelessWidget {
             ),
           ],
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        child: Stack(
           children: [
-            Container(
-              width: 42,
-              height: 42,
-              decoration: BoxDecoration(
-                color: color.withValues(alpha: 0.10),
-                borderRadius: BorderRadius.circular(15),
+            Positioned(
+              right: -18,
+              top: -18,
+              child: Container(
+                width: 74,
+                height: 74,
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.06),
+                  shape: BoxShape.circle,
+                ),
               ),
-              child: Icon(icon, color: color),
             ),
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
-                  title,
-                  style: TextStyle(
-                    color: colors.onSurface,
-                    fontWeight: FontWeight.w900,
-                    fontSize: 16,
-                  ),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Container(
+                      width: 42,
+                      height: 42,
+                      decoration: BoxDecoration(
+                        color: color.withValues(alpha: 0.10),
+                        borderRadius: BorderRadius.circular(15),
+                      ),
+                      child: Icon(icon, color: color),
+                    ),
+                    Icon(
+                      Icons.north_east_rounded,
+                      color: color.withValues(alpha: 0.72),
+                      size: 18,
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 3),
-                Text(
-                  subtitle,
-                  style: TextStyle(
-                    color: colors.onSurfaceVariant,
-                    fontSize: 12,
-                  ),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: TextStyle(
+                        color: colors.onSurface,
+                        fontWeight: FontWeight.w900,
+                        fontSize: 16,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      subtitle,
+                      style: TextStyle(
+                        color: colors.onSurfaceVariant,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -19727,15 +19817,26 @@ class _BouncyTapState extends State<_BouncyTap>
   @override
   Widget build(BuildContext context) {
     final reduceMotion = AppSettingsScope.of(context).reduceMotion;
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTapDown: reduceMotion ? null : _tapDown,
-      onTapUp: reduceMotion ? null : _tapUp,
-      onTapCancel: reduceMotion ? null : _tapCancel,
-      onTap: _tap,
-      child: reduceMotion
-          ? widget.child
-          : ScaleTransition(scale: _scale, child: widget.child),
+    return Semantics(
+      button: true,
+      enabled: widget.enabled,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTapDown: reduceMotion ? null : _tapDown,
+        onTapUp: reduceMotion ? null : _tapUp,
+        onTapCancel: reduceMotion ? null : _tapCancel,
+        onTap: widget.enabled ? _tap : null,
+        child: reduceMotion
+            ? widget.child
+            : AnimatedBuilder(
+                animation: _controller,
+                child: widget.child,
+                builder: (context, child) => Transform.translate(
+                  offset: Offset(0, 2 * _controller.value),
+                  child: ScaleTransition(scale: _scale, child: child),
+                ),
+              ),
+      ),
     );
   }
 }
@@ -19797,10 +19898,15 @@ class _StaggeredAppearState extends State<_StaggeredAppear>
 
 /// 数字滚动小动画：值变化时旧值向上滑出、新值从下方滑入。
 class _AnimatedValue extends StatelessWidget {
-  const _AnimatedValue({required this.value, required this.style});
+  const _AnimatedValue({
+    required this.value,
+    required this.style,
+    this.maxLines,
+  });
 
   final String value;
   final TextStyle style;
+  final int? maxLines;
 
   @override
   Widget build(BuildContext context) {
@@ -19816,7 +19922,13 @@ class _AnimatedValue extends StatelessWidget {
           child: SlideTransition(position: offset, child: child),
         );
       },
-      child: Text(value, key: ValueKey(value), style: style),
+      child: Text(
+        value,
+        key: ValueKey(value),
+        style: style,
+        maxLines: maxLines,
+        overflow: maxLines == null ? null : TextOverflow.ellipsis,
+      ),
     );
   }
 }

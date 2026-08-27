@@ -71,15 +71,6 @@ fn stop_backend(state: &tauri::State<'_, BackendState>) {
             let _ = child.kill();
         }
     }
-
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        let _ = std::process::Command::new("taskkill")
-            .args(["/IM", "backend.exe", "/F", "/T"])
-            .creation_flags(0x08000000)
-            .output();
-    }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]

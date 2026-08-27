@@ -8,9 +8,13 @@ def parse_file(filename: str, content: bytes) -> str:
         return content.decode("utf-8", errors="ignore")
 
     elif ext == ".pdf":
+        if not content.startswith(b"%PDF-"):
+            raise ValueError("文件内容不是有效的 PDF")
         return _parse_pdf(content)
 
     elif ext == ".docx":
+        if not content.startswith(b"PK"):
+            raise ValueError("文件内容不是有效的 DOCX")
         return _parse_docx(content)
 
     else:

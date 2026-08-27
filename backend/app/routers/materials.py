@@ -10,6 +10,23 @@ from app.services.file_service import parse_file
 from app.config import settings
 
 router = APIRouter()
+_UPLOAD_CHUNK_SIZE = 1024 * 1024
+
+
+async def _read_upload_bounded(file: UploadFile) -> bytes:
+    content = bytearray()
+    while True:
+        chunk = await file.read(_UPLOAD_CHUNK_SIZE)
+        if not chunk:
+            break
+        content.extend(chunk)
+        if len(content) > settings.MAX_FILE_SIZE:
+            limit_mb = settings.MAX_FILE_SIZE // (1024 * 1024)
+            raise HTTPException(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                detail=f"文件大小超过{limit_mb}MB限制",
+            )
+    return bytes(content)
 
 
 class MaterialResponse(BaseModel):
@@ -27,12 +44,12 @@ async def upload_material(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    content = await file.read()
-    if len(content) > settings.MAX_FILE_SIZE:
-        raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="文件大小超过20MB限制")
-
     filename = file.filename or "unnamed"
-    text = parse_file(filename, content)
+    content = await _read_upload_bounded(file)
+    try:
+        text = parse_file(filename, content)
+    except (ValueError, ImportError) as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     if not text or len(text.strip()) < 10:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="无法从文件中提取有效文本内容")
 

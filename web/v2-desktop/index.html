@@ -672,11 +672,23 @@ console.log('v2-desktop JS loading...');
 })();
 const API_BASE_KEY='AIQB_API_BASE';
 function cleanApiBase(v){return String(v||'').trim().replace(/\/+$/,'');}
+function safeApiBase(v){
+  var base=cleanApiBase(v);if(!base)return'';
+  try{
+    var url=new URL(base,location.href),tauri=typeof window.__TAURI_INTERNALS__!=='undefined';
+    var loopback=url.hostname==='127.0.0.1'||url.hostname==='localhost';
+    if(tauri)return url.protocol==='http:'&&url.hostname==='127.0.0.1'&&!!url.port?url.origin:'';
+    if(url.origin===location.origin)return url.origin;
+    if(loopback&&(location.hostname==='127.0.0.1'||location.hostname==='localhost'))return url.origin;
+  }catch(error){}
+  return'';
+}
 function resolveApiBase(){
   const q=new URLSearchParams(location.search).get('api_base');
   const injected=window.AIQB_API_BASE||q||localStorage.getItem(API_BASE_KEY)||'';
-  const base=cleanApiBase(injected);
+  const base=safeApiBase(injected);
   if(base)localStorage.setItem(API_BASE_KEY,base);
+  else localStorage.removeItem(API_BASE_KEY);
   return base;
 }
 const AB=resolveApiBase();
@@ -1083,7 +1095,7 @@ function startQuiz(d){quiz={bankId:d.bank_id,questions:d.questions,idx:0,score:0
 function rq(){const q=quiz.questions[quiz.idx];let qq=q.question_type||gqt(q);quiz.qtype=qq;quiz.selected=null;quiz.answered=false;document.getElementById('quizProgress').textContent=`${quiz.idx+1}/${quiz.total}`;document.getElementById('qNum').textContent='Q'+(quiz.idx+1);document.getElementById('qText2').textContent=q.question;document.getElementById('streakVal').textContent=quiz.streak;const stamp=document.getElementById('stampEl');stamp.className='stmp';stamp.innerHTML='';document.getElementById('qcardMain').classList.remove('shk','thud');document.getElementById('explainArea').innerHTML='';document.getElementById('nextArea').classList.remove('show');const w=document.getElementById('answerArea');ms=[];document.querySelectorAll('#progressDots .dot').forEach((s,i)=>{s.classList.toggle('cur',i===quiz.idx);s.classList.remove('cor','wro')});
   if(qq==='subjective'){w.innerHTML='<div class="fill-row" style="max-width:680px;margin:0 auto"><input class="inp" id="fillInput" placeholder="输入你的答案" style="flex:1"><button class="btn btn-p" onclick="submitFill()">提交</button></div>';document.getElementById('fillInput').onkeydown=function(e2){if(e2.key==='Enter')submitFill();};}
   else if(qq==='true_false'){w.innerHTML='<div style="max-width:680px;margin:0 auto"><button class="opt2" data-v="正确" id="optTF0" onclick="selTF(\'正确\')"><span class="ob">√</span><span class="ot">正确</span></button><button class="opt2" data-v="错误" id="optTF1" onclick="selTF(\'错误\')"><span class="ob">×</span><span class="ot">错误</span></button></div>';}
-  else if(q.options){w.innerHTML=`<div style="max-width:680px;margin:0 auto">${q.options.map((o,i)=>qq==='multi_choice'?`<button class="opt2" id="opt${i}" onclick="selMC(${i})"><span class="ob">${String.fromCharCode(65+i)}</span><span class="ot">${o}</span></button>`:`<button class="opt2" id="opt${i}" onclick="selOpt(${i})"><span class="ob">${String.fromCharCode(65+i)}</span><span class="ot">${o}</span></button>`).join('')}</div>`;}
+  else if(q.options){w.innerHTML=`<div style="max-width:680px;margin:0 auto">${q.options.map((o,i)=>qq==='multi_choice'?`<button class="opt2" id="opt${i}" onclick="selMC(${i})"><span class="ob">${String.fromCharCode(65+i)}</span><span class="ot">${escapeHtml(o)}</span></button>`:`<button class="opt2" id="opt${i}" onclick="selOpt(${i})"><span class="ob">${String.fromCharCode(65+i)}</span><span class="ot">${escapeHtml(o)}</span></button>`).join('')}</div>`;}
   else{w.innerHTML='<div class="fill-row" style="max-width:680px;margin:0 auto"><input class="inp" id="fillInput" placeholder="输入你的答案" style="flex:1"><button class="btn btn-p" onclick="submitFill()">提交</button></div>';}
   document.getElementById('nextBtn').textContent=quiz.idx<quiz.total-1?'下一题':'查看结果';
 }
@@ -1096,7 +1108,7 @@ async function doSubmit(){if(!quiz||quiz.answered)return;if(quiz.selected===null
   else if(quiz.qtype==='true_false'){const ci=r.correct_answer==='正确'?0:1;document.getElementById('optTF'+ci)?.classList.add('cor');const si=['正确','错误'].indexOf(ans);if(si>=0&&si!==ci)document.getElementById('optTF'+si)?.classList.add('wro');}
   else{const ci=r.correct_answer?String(r.correct_answer).charCodeAt(0)-65:-1;if(ci>=0){const e2=document.getElementById('opt'+ci);if(e2)e2.classList.add('cor');}if(!cor&&quiz.qtype==='choice'&&quiz.selectedIdx>=0){document.getElementById('opt'+quiz.selectedIdx)?.classList.add('wro');}}
   if(!cor)document.getElementById('qcardMain').classList.add('shk');
-  document.getElementById('explainArea').innerHTML=`<div class="explain" style="max-width:680px;margin:6px auto 0"><b>💡 解析</b><br>${r.explanation||'暂无解析'}</div>${!cor&&r.correct_answer?'<div style="max-width:680px;margin:6px auto 0;font-size:13px;color:var(--red);font-weight:700">正确答案：'+(Array.isArray(r.correct_answer)?r.correct_answer.join(', '):r.correct_answer)+'</div>':''}`;
+  document.getElementById('explainArea').innerHTML=`<div class="explain" style="max-width:680px;margin:6px auto 0"><b>💡 解析</b><br>${escapeHtml(r.explanation||'暂无解析')}</div>${!cor&&r.correct_answer?'<div style="max-width:680px;margin:6px auto 0;font-size:13px;color:var(--red);font-weight:700">正确答案：'+escapeHtml(Array.isArray(r.correct_answer)?r.correct_answer.join(', '):r.correct_answer)+'</div>':''}`;
   const dots=document.querySelectorAll('#progressDots .dot');dots[quiz.idx].classList.remove('cur');dots[quiz.idx].classList.add(cor?'cor':'wro');document.getElementById('nextArea').classList.add('show');
 }catch(e){toast(e.message);quiz.answered=false;}
 }

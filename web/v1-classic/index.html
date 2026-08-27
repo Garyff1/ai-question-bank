@@ -264,16 +264,29 @@ body{font-family:"PingFang SC","Microsoft YaHei",sans-serif;background:#F4F6FB;c
 <script>
 const API_BASE_KEY='AIQB_API_BASE';
 function cleanApiBase(v){return String(v||'').trim().replace(/\/+$/,'');}
+function safeApiBase(v){
+  const base=cleanApiBase(v);if(!base)return '';
+  try{
+    const url=new URL(base,location.href),tauri=typeof window.__TAURI_INTERNALS__!=='undefined';
+    const loopback=url.hostname==='127.0.0.1'||url.hostname==='localhost';
+    if(tauri)return url.protocol==='http:'&&url.hostname==='127.0.0.1'&&!!url.port?url.origin:'';
+    if(url.origin===location.origin)return url.origin;
+    if(loopback&&(location.hostname==='127.0.0.1'||location.hostname==='localhost'))return url.origin;
+  }catch(e){}
+  return '';
+}
 function resolveApiBase(){
   const q=new URLSearchParams(location.search).get('api_base');
   const injected=window.AIQB_API_BASE||q||localStorage.getItem(API_BASE_KEY)||'';
-  const base=cleanApiBase(injected);
+  const base=safeApiBase(injected);
   if(base)localStorage.setItem(API_BASE_KEY,base);
+  else localStorage.removeItem(API_BASE_KEY);
   return base;
 }
 const AB=resolveApiBase();let TK=localStorage.getItem('tk')||'',UID=localStorage.getItem('uid')||'';
 let mats=[],qts=new Set(['choice']),qc=5,qs=null;
 function tt(m,d){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');clearTimeout(t._timer);t._timer=setTimeout(()=>t.classList.remove('show'),d||2000);}
+function escapeHtml(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 
 function nk(r){return UID?'ai_'+UID+'_'+r:'ai_'+r;}
 function clearAllKeys(){['tk','uid'].forEach(k=>localStorage.removeItem(k));const prefix='ai_';Object.keys(localStorage).filter(k=>k.startsWith(prefix)).forEach(k=>localStorage.removeItem(k));}
@@ -326,7 +339,7 @@ function renderMats(){
   const el=document.getElementById('ml'),em=document.getElementById('le2');
   if(!mats.length){el.innerHTML='';em.style.display='flex';return;}
   em.style.display='none';
-  el.innerHTML=mats.map(m=>{const e=(m.filename||'').toLowerCase().split('.').pop();const t=e==='pdf'?'pdf':(e==='docx'||e==='doc')?'word':'txt';const l=t==='pdf'?'PDF':t==='word'?'W':'TXT';return `<div class="mc"><div class="fi ${t}">${l}</div><div class="mi"><div class="mn">${m.filename}</div><div class="mt">${fd(m.created_at)}</div></div><div class="ma"><button class="ga" onclick="og(${m.id},'${(m.filename||'').replace(/'/g,"\\'")}')">出题</button><button class="da" onclick="dm(${m.id})">✕</button></div></div>`;}).join('');
+  el.innerHTML=mats.map(m=>{const e=(m.filename||'').toLowerCase().split('.').pop();const t=e==='pdf'?'pdf':(e==='docx'||e==='doc')?'word':'txt';const l=t==='pdf'?'PDF':t==='word'?'W':'TXT';return `<div class="mc"><div class="fi ${t}">${l}</div><div class="mi"><div class="mn">${escapeHtml(m.filename)}</div><div class="mt">${escapeHtml(fd(m.created_at))}</div></div><div class="ma"><button class="ga" onclick="og(${Number(m.id)})">出题</button><button class="da" onclick="dm(${Number(m.id)})">✕</button></div></div>`;}).join('');
 }
 function fd(d){if(!d)return '';const dt=new Date(d);return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')} ${String(dt.getHours()).padStart(2,'0')}:${String(dt.getMinutes()).padStart(2,'0')}`;}
 function uf(){document.getElementById('fi').click();}
@@ -353,7 +366,7 @@ function setStat(t,ti,de){document.getElementById('csd').className='csd '+t;docu
 async function tc(){
   const k=document.getElementById('ck').value.trim(),b=document.getElementById('cb2').value.trim(),m=document.getElementById('cm').value.trim();
   if(!k||!b||!m){tt('请完整填写');return;}const tr=document.getElementById('tr3');tr.className='tr show';tr.innerHTML='⏳ 测试中...';
-  try{const r=await api('/api/config/test',{method:'POST',body:JSON.stringify({api_key:k,api_base:b,model_name:m})});tr.className='tr show '+(r.success?'suc':'fail');tr.innerHTML=(r.success?'✅ ':'❌ ')+r.message;}catch(e2){tr.className='tr show fail';tr.innerHTML='❌ '+e2.message;}
+  try{const r=await api('/api/config/test',{method:'POST',body:JSON.stringify({api_key:k,api_base:b,model_name:m})});tr.className='tr show '+(r.success?'suc':'fail');tr.textContent=(r.success?'✅ ':'❌ ')+r.message;}catch(e2){tr.className='tr show fail';tr.textContent='❌ '+e2.message;}
 }
 async function sc(){
   const k=document.getElementById('ck').value.trim(),b=document.getElementById('cb2').value.trim(),m=document.getElementById('cm').value.trim();
@@ -366,7 +379,7 @@ setTimeout(()=>{const h=document.querySelector('#screen-list .topbar');if(h){con
 
 // ====== 生成题目（混合题型） ======
 let gmi=0;
-function og(id,nm){gmi=id;document.getElementById('gfn').textContent=nm;qts=new Set(['choice']);document.querySelectorAll('#tg .tc').forEach(c=>c.classList.toggle('sel',c.dataset.t==='choice'));showScreen('generate');}
+function og(id){const mat=mats.find(x=>Number(x.id)===Number(id));if(!mat)return;gmi=id;document.getElementById('gfn').textContent=mat.filename||'';qts=new Set(['choice']);document.querySelectorAll('#tg .tc').forEach(c=>c.classList.toggle('sel',c.dataset.t==='choice'));showScreen('generate');}
 function selt(el,t){
   if(qts.has(t)){if(qts.size>1){qts.delete(t);el.classList.remove('sel');}}else{qts.add(t);el.classList.add('sel');}
 }
@@ -411,8 +424,8 @@ function rq2(){
   else if(qq==='true_false'){w.className='opts';w.innerHTML='<button class="opt" data-v="正确">正确</button><button class="opt" data-v="错误">错误</button>';w.querySelectorAll('.opt').forEach(b=>{b.onclick=()=>{if(qs.answered)return;w.querySelectorAll('.opt').forEach(o=>o.classList.remove('sel'));b.classList.add('sel');qs.selected=b.dataset.v;document.getElementById('sb2').disabled=false;};});}
   else if(q.options&&q.options.length){
     w.className='opts';
-    if(qq==='multi_choice'){w.innerHTML=q.options.map((o,i)=>`<button class="opt" data-i="${i}"><span class="cm">□</span>${o}</button>`).join('');w.querySelectorAll('.opt').forEach(b=>{b.onclick=()=>{if(qs.answered)return;const i=parseInt(b.dataset.i);const idx=ms.indexOf(i);if(idx>=0){ms.splice(idx,1);b.classList.remove('ms');b.querySelector('.cm').textContent='□';}else{ms.push(i);ms.sort();b.classList.add('ms');b.querySelector('.cm').textContent='✓';}qs.selected=ms.length?ms.map(j=>String.fromCharCode(65+j)).join(','):null;document.getElementById('sb2').disabled=!ms.length;};});}
-    else{w.innerHTML=q.options.map((o,i)=>`<button class="opt" data-i="${i}">${o}</button>`).join('');w.querySelectorAll('.opt').forEach(b=>{b.onclick=()=>{if(qs.answered)return;w.querySelectorAll('.opt').forEach(o=>o.classList.remove('sel'));b.classList.add('sel');qs.selected=String.fromCharCode(65+parseInt(b.dataset.i));document.getElementById('sb2').disabled=false;};});}}
+    if(qq==='multi_choice'){w.innerHTML=q.options.map((o,i)=>`<button class="opt" data-i="${i}"><span class="cm">□</span>${escapeHtml(o)}</button>`).join('');w.querySelectorAll('.opt').forEach(b=>{b.onclick=()=>{if(qs.answered)return;const i=parseInt(b.dataset.i);const idx=ms.indexOf(i);if(idx>=0){ms.splice(idx,1);b.classList.remove('ms');b.querySelector('.cm').textContent='□';}else{ms.push(i);ms.sort();b.classList.add('ms');b.querySelector('.cm').textContent='✓';}qs.selected=ms.length?ms.map(j=>String.fromCharCode(65+j)).join(','):null;document.getElementById('sb2').disabled=!ms.length;};});}
+    else{w.innerHTML=q.options.map((o,i)=>`<button class="opt" data-i="${i}">${escapeHtml(o)}</button>`).join('');w.querySelectorAll('.opt').forEach(b=>{b.onclick=()=>{if(qs.answered)return;w.querySelectorAll('.opt').forEach(o=>o.classList.remove('sel'));b.classList.add('sel');qs.selected=String.fromCharCode(65+parseInt(b.dataset.i));document.getElementById('sb2').disabled=false;};});}}
   else{w.className='opts';w.innerHTML='<textarea id="si2" placeholder="输入你的答案..." style="border:1.5px solid var(--line);border-radius:10px;padding:12px;font-size:14.5px;outline:none;background:#fff;width:100%;min-height:80px;resize:vertical;font-family:inherit"></textarea>';document.getElementById('si2').oninput=function(){qs.selected=this.value.trim()||null;document.getElementById('sb2').disabled=!this.value.trim();};}
   qs.answered=false;document.getElementById('fa').innerHTML='';document.getElementById('sb2').style.display='';document.getElementById('sb2').disabled=true;
   document.getElementById('nb2').style.display='none';document.getElementById('stl').innerHTML='';
@@ -426,7 +439,7 @@ async function sa(){if(qs.answered||qs.selected==null)return;qs.answered=true;
     else if(qs.qtype==='choice'&&r.correct_answer&&typeof r.correct_answer==='string'){const ci=r.correct_answer.charCodeAt(0)-65;if(ci>=0&&w.children[ci])w.children[ci].classList.add('cor');if(!cor&&qs.selected.length===1){const si=qs.selected.charCodeAt(0)-65;if(si>=0&&w.children[si])w.children[si].classList.add('wro');}}
     if(!cor){document.getElementById('qc').classList.add('shk');setTimeout(()=>document.getElementById('qc').classList.remove('shk'),400);}
     const fb=document.getElementById('fa');
-    const subjEnd=qs.qtype==='subjective'?' 参考答案如下：':(cor?' 答对了！🎉':' 看看解析吧');fb.innerHTML='<div class="rb '+(cor?'gd':'bd')+'">'+(cor?'✅ 正确！':'❌ 答错了')+subjEnd+'</div>'+(r.correct_answer?'<p class="ca">答案：'+(Array.isArray(r.correct_answer)?r.correct_answer.join(', '):r.correct_answer)+'</p>':'')+(r.explanation?'<div class="ec"><p class="el">💡 解析</p><p class="et">'+r.explanation+'</p></div>':'');
+    const subjEnd=qs.qtype==='subjective'?' 参考答案如下：':(cor?' 答对了！🎉':' 看看解析吧');fb.innerHTML='<div class="rb '+(cor?'gd':'bd')+'">'+(cor?'✅ 正确！':'❌ 答错了')+subjEnd+'</div>'+(r.correct_answer?'<p class="ca">答案：'+escapeHtml(Array.isArray(r.correct_answer)?r.correct_answer.join(', '):r.correct_answer)+'</p>':'')+(r.explanation?'<div class="ec"><p class="el">💡 解析</p><p class="et">'+escapeHtml(r.explanation)+'</p></div>':'');
     const dots=document.querySelectorAll('#pd span');dots[qs.idx].classList.remove('cur');dots[qs.idx].classList.add(cor?'gd':'bd');document.getElementById('sb2').style.display='none';document.getElementById('nb2').style.display='';}catch(e2){tt(e2.message);qs.answered=false;}}
 function spSt(c){const l=document.getElementById('stl');const r=(Math.random()*16-8).toFixed(1)+'deg';const cl=c?'#10B981':'#EF4444';l.innerHTML='<div class="stmp" style="--rot:'+r+'"><svg viewBox="0 0 92 92" width="84" height="84"><circle cx="46" cy="46" r="38" fill="none" stroke="'+cl+'" stroke-width="6"/>'+(c?'<path d="M22 46 L38 62 L70 26" stroke="'+cl+'" stroke-width="9" fill="none" stroke-linecap="round" stroke-linejoin="round"/>':'<g stroke="'+cl+'" stroke-width="9" stroke-linecap="round"><line x1="26" y1="26" x2="66" y2="66"/><line x1="66" y1="26" x2="26" y2="66"/></g>')+'</svg></div>';for(let i=0;i<6;i++){const a=Math.random()*Math.PI*2,d=26+Math.random()*46;const p=document.createElement('span');p.style.cssText='position:absolute;top:46px;right:46px;width:6px;height:6px;border-radius:50%;background:'+cl+';animation:ik .65s ease-out forwards;--dx:'+Math.cos(a)*d+'px;--dy:'+Math.sin(a)*d+'px';l.appendChild(p);setTimeout(()=>p.remove(),700);}setTimeout(()=>{const s=l.querySelector('.stmp');if(s)s.remove();},1400);}
 function nq(){qs.idx++;if(qs.idx>=qs.total){showComplete();return;}rq2();}
@@ -435,8 +448,8 @@ function rq(){qs.idx=0;qs.score=0;qs.streak=0;qs.wrongs=[];document.getElementBy
 function cex(){om({t:'退出答题？',b:'当前进度不会保存。',c3:'退出',dg:true,cb:()=>showScreen('list')});}
 function anim(el,t,s){let cur=0;const step=Math.max(1,Math.round(t/28));const i=setInterval(()=>{cur+=step;if(cur>=t){cur=t;clearInterval(i);}el.textContent=cur+s;},22);}
 function confetti(){const l=document.getElementById('cl2');l.innerHTML='';const cs=['#2563EB','#10B981','#F59E0B','#EF4444','#93C5FD'];for(let i=0;i<26;i++){const b=document.createElement('span');b.className='cfp';b.style.left=Math.random()*100+'%';b.style.background=cs[i%5];b.style.animationDuration=(1.6+Math.random()*1.2)+'s';b.style.animationDelay=Math.random()*0.6+'s';l.appendChild(b);}setTimeout(()=>l.innerHTML='',3200);}
-async function loadHist(){const body=document.getElementById('hb');try{const d=await api('/api/practice/history');if(!d||!d.length){body.innerHTML='<div style="text-align:center;padding:60px 0;color:var(--faint)">暂无记录</div>';return;}body.innerHTML=d.map(h=>{const pct=h.accuracy;const t=(h.material_name||'未知').replace(/\.[^/.]+$/,'')+' #'+h.sequence;return `<div class="hc"><div class="hr"><h4>📝 ${t}</h4><span class="hp" style="color:${pct>=60?'var(--green)':'var(--red)'}">${pct}%</span></div><div class="hd"><span>✅ ${h.correct_count}/${h.total_questions}</span><span>❌ ${h.wrong_count}错</span><span>🕐 ${fd(h.completed_at)}</span></div></div>`;}).join('');}catch(e){}}
-async function loadWrong(){const body=document.getElementById('wb');try{const g=await api('/api/practice/wrong');if(!g||!g.length){body.innerHTML='<div style="text-align:center;padding:60px 0;color:var(--faint)">暂无错题！🎉</div>';return;}body.innerHTML=g.map(gr=>{const nm=(gr.material_name||'未知').replace(/\.[^/.]+$/,'');const items=gr.questions.map((w,i)=>`<div class="wi"><div class="wit">${TLBL[w.question_type]||'题'} · 第${w.question_index+1}题</div><div class="wiq">${i+1}. ${w.question}</div>${w.options&&w.options.length?'<div style="font-size:12px;color:var(--muted);margin-bottom:4px">'+w.options.join(' · ')+'</div>':''}<div class="wia">✅ ${Array.isArray(w.answer)?w.answer.join(', '):w.answer}</div>${w.explanation?'<div class="wie">💡 '+w.explanation+'</div>':''}</div>`).join('');return `<div class="wg"><div class="wh"><h4>📕 ${nm}</h4><div><span class="wgb">${gr.wrong_count}错</span><button class="btn-sm red" style="margin-left:6px" onclick="rw(${gr.bank_id})">重练</button></div></div>${items}</div>`;}).join('');}catch(e){}}
+async function loadHist(){const body=document.getElementById('hb');try{const d=await api('/api/practice/history');if(!d||!d.length){body.innerHTML='<div style="text-align:center;padding:60px 0;color:var(--faint)">暂无记录</div>';return;}body.innerHTML=d.map(h=>{const pct=Number(h.accuracy)||0;const t=(h.material_name||'未知').replace(/\.[^/.]+$/,'')+' #'+h.sequence;return `<div class="hc"><div class="hr"><h4>📝 ${escapeHtml(t)}</h4><span class="hp" style="color:${pct>=60?'var(--green)':'var(--red)'}">${pct}%</span></div><div class="hd"><span>✅ ${Number(h.correct_count)||0}/${Number(h.total_questions)||0}</span><span>❌ ${Number(h.wrong_count)||0}错</span><span>🕐 ${escapeHtml(fd(h.completed_at))}</span></div></div>`;}).join('');}catch(e){}}
+async function loadWrong(){const body=document.getElementById('wb');try{const g=await api('/api/practice/wrong');if(!g||!g.length){body.innerHTML='<div style="text-align:center;padding:60px 0;color:var(--faint)">暂无错题！🎉</div>';return;}body.innerHTML=g.map(gr=>{const nm=(gr.material_name||'未知').replace(/\.[^/.]+$/,'');const items=gr.questions.map((w,i)=>`<div class="wi"><div class="wit">${escapeHtml(TLBL[w.question_type]||'题')} · 第${Number(w.question_index)+1}题</div><div class="wiq">${i+1}. ${escapeHtml(w.question)}</div>${w.options&&w.options.length?'<div style="font-size:12px;color:var(--muted);margin-bottom:4px">'+w.options.map(escapeHtml).join(' · ')+'</div>':''}<div class="wia">✅ ${escapeHtml(Array.isArray(w.answer)?w.answer.join(', '):w.answer)}</div>${w.explanation?'<div class="wie">💡 '+escapeHtml(w.explanation)+'</div>':''}</div>`).join('');return `<div class="wg"><div class="wh"><h4>📕 ${escapeHtml(nm)}</h4><div><span class="wgb">${Number(gr.wrong_count)||0}错</span><button class="btn-sm red" style="margin-left:6px" onclick="rw(${Number(gr.bank_id)})">重练</button></div></div>${items}</div>`;}).join('');}catch(e){}}
 async function rw(bankId){try{const ws=await api('/api/practice/wrong');const g=ws.find(x=>x.bank_id===bankId);if(!g||!g.questions.length){tt('没有错题');return;}startQuiz({bank_id:bankId,questions:g.questions});showScreen('practice');}catch(e){tt(e.message);}}
 async function loadStats(){try{const s=await api('/api/stats');document.getElementById('st1').textContent=s.total_questions;document.getElementById('st2').textContent=s.correct_count;document.getElementById('st3').textContent=s.practice_count;document.getElementById('st4').textContent=s.last_practice_time?fd(s.last_practice_time):'暂无';document.getElementById('ss3').textContent=`${s.correct_count} / ${s.total_questions} 题正确`;const pct=s.total_questions?Math.round(s.correct_count/s.total_questions*100):0;const ring=document.getElementById('sr');const len=2*Math.PI*50;ring.style.strokeDasharray=len;setTimeout(()=>{ring.style.strokeDashoffset=len*(1-pct/100);},100);anim(document.getElementById('sp2'),pct,'%');}catch(e){}}
 const stl2=document.createElement('style');stl2.textContent='@keyframes ik{0%{transform:translate(0,0)scale(1);opacity:.85}100%{transform:translate(var(--dx),var(--dy))scale(0);opacity:0}}';document.head.appendChild(stl2);

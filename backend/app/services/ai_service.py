@@ -2,7 +2,7 @@ import json
 import re
 import httpx
 from app.config import settings
-from app.services.provider_compat import build_chat_payload, build_llm_headers
+from app.services.provider_compat import build_chat_payload, build_llm_headers, normalize_api_base
 
 
 VALID_TYPES = ("choice", "multi_choice", "true_false", "fill", "subjective")
@@ -98,12 +98,13 @@ JSON 格式示例：
 
 def _call_llm(prompt: str, api_key=None, api_base=None, model=None):
     key = api_key or settings.OPENAI_API_KEY
-    base = (api_base or settings.OPENAI_API_BASE).rstrip("/")
+    base = normalize_api_base(api_base or settings.OPENAI_API_BASE)
     mdl = model or settings.AI_MODEL
     if not key or key == "sk-your-api-key-here":
         raise ValueError("请先配置 API Key")
 
-    with httpx.Client(timeout=120) as client:
+    timeout = httpx.Timeout(connect=10, read=90, write=30, pool=10)
+    with httpx.Client(timeout=timeout, follow_redirects=False) as client:
         resp = client.post(
             f"{base}/chat/completions",
             json=build_chat_payload(

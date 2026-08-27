@@ -8,6 +8,7 @@ from app.database import get_db
 from app.models import User, Material, QuestionBank, ApiConfig
 from app.utils.auth import get_current_user
 from app.services.ai_service import generate_questions
+from app.security.secret_cipher import decrypt_secret
 
 router = APIRouter()
 
@@ -86,7 +87,7 @@ def generate(req: GenerateRequest, db: Session = Depends(get_db), current_user: 
                 question_type=qtype,
                 question_count=count,
                 target_audience=req.target_audience,
-                api_key=api_config.api_key,
+                api_key=decrypt_secret(api_config.api_key),
                 api_base=api_config.api_base,
                 model=api_config.model_name,
                 prev_topics=prev_topics,
@@ -95,8 +96,11 @@ def generate(req: GenerateRequest, db: Session = Depends(get_db), current_user: 
             for q in questions:
                 q["question_type"] = qtype
             all_questions.extend(questions)
-    except RuntimeError as e:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+    except RuntimeError:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="模型暂时未能生成有效题目，请检查配置或稍后重试",
+        )
 
     bank = QuestionBank(
         user_id=current_user.id,

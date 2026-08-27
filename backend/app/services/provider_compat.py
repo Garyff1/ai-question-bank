@@ -1,6 +1,14 @@
 from typing import Any
 
 
+from app.config import settings
+from app.security.network_targets import validate_api_base
+
+
+def normalize_api_base(api_base: str) -> str:
+    return validate_api_base(api_base, allow_loopback=settings.DESKTOP_MODE)
+
+
 def build_llm_headers(api_key: str, api_base: str) -> dict[str, str]:
     """Build OpenAI-compatible headers without logging the credential."""
     if "xiaomimimo.com" in api_base.lower():

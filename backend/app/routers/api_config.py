@@ -7,7 +7,8 @@ from app.database import get_db
 from app.models import User, ApiConfig
 from app.utils.auth import get_current_user
 from app.config import settings
-from app.services.provider_compat import build_chat_payload, build_llm_headers
+from app.services.provider_compat import build_chat_payload, build_llm_headers, normalize_api_base
+from app.security.secret_cipher import encrypt_secret, is_encrypted_secret
 
 router = APIRouter()
 
@@ -50,7 +51,7 @@ class SaveConfigRequest(BaseModel):
     def base_not_empty(cls, v: str) -> str:
         if not v.strip():
             raise ValueError("API 地址不能为空")
-        return v.rstrip("/")
+        return normalize_api_base(v)
 
     @field_validator("model_name")
     @classmethod
@@ -66,6 +67,25 @@ class TestRequest(BaseModel):
     model_name: str
 
     model_config = {"protected_namespaces": ()}
+
+    @field_validator("api_key")
+    @classmethod
+    def test_key_not_empty(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("API Key 不能为空")
+        return v.strip()
+
+    @field_validator("api_base")
+    @classmethod
+    def test_base_safe(cls, v: str) -> str:
+        return normalize_api_base(v)
+
+    @field_validator("model_name")
+    @classmethod
+    def test_model_not_empty(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("模型名称不能为空")
+        return v.strip()
 
 
 @router.get("/providers")
@@ -83,6 +103,9 @@ def get_config(
     config = db.query(ApiConfig).filter(ApiConfig.user_id == current_user.id).first()
     if not config:
         return {"configured": False, "message": "未配置 API，请先添加 API Key"}
+    if not is_encrypted_secret(config.api_key):
+        config.api_key = encrypt_secret(config.api_key)
+        db.commit()
     return {
         "configured": True,
         "provider": config.provider,
@@ -102,14 +125,14 @@ def save_config(
     existing = db.query(ApiConfig).filter(ApiConfig.user_id == current_user.id).first()
     if existing:
         existing.provider = req.provider
-        existing.api_key = req.api_key
+        existing.api_key = encrypt_secret(req.api_key)
         existing.api_base = req.api_base
         existing.model_name = req.model_name
     else:
         config = ApiConfig(
             user_id=current_user.id,
             provider=req.provider,
-            api_key=req.api_key,
+            api_key=encrypt_secret(req.api_key),
             api_base=req.api_base,
             model_name=req.model_name,
         )
@@ -136,7 +159,7 @@ def test_connection(
         )
         url = f"{req.api_base.rstrip('/')}/chat/completions"
 
-        with httpx.Client(timeout=30) as client:
+        with httpx.Client(timeout=30, follow_redirects=False) as client:
             resp = client.post(url, json=payload, headers=headers)
             if resp.status_code == 200:
                 data = resp.json()
@@ -152,5 +175,5 @@ def test_connection(
         return {"success": False, "message": "无法连接服务器，请检查 API Base URL 是否正确"}
     except httpx.TimeoutException:
         return {"success": False, "message": "连接超时，请检查网络或 API 地址"}
-    except Exception as e:
-        return {"success": False, "message": f"测试失败：{str(e)[:200]}"}
+    except Exception:
+        return {"success": False, "message": "测试失败，请检查服务地址、模型名称和网络设置"}

@@ -1,10 +1,11 @@
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 import mimetypes
 from pathlib import Path
 
 from app.database import engine, Base
+from app.config import settings
 from app.routers import auth, materials, questions, practice, stats, api_config
 
 Base.metadata.create_all(bind=engine)
@@ -19,11 +20,22 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=settings.CORS_ORIGINS,
+    allow_origin_regex=settings.CORS_ORIGIN_REGEX,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Referrer-Policy", "no-referrer")
+    response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+    return response
 
 app.include_router(auth.router, prefix="/api/auth", tags=["认证"])
 app.include_router(materials.router, prefix="/api/materials", tags=["资料管理"])
@@ -36,6 +48,16 @@ app.include_router(api_config.router, prefix="/api/config", tags=["API配置"])
 web_path = Path(__file__).resolve().parent.parent.parent / "web"
 if not web_path.exists():
     web_path = Path(__file__).resolve().parent.parent / "web"
+web_path = web_path.resolve()
+
+
+def _safe_web_target(relative_path: str) -> Path | None:
+    candidate = (web_path / relative_path).resolve()
+    try:
+        candidate.relative_to(web_path)
+    except ValueError:
+        return None
+    return candidate
 
 
 @app.get("/api/status")
@@ -48,10 +70,14 @@ async def health():
     return {"ok": True, "service": "ai-question-bank-backend", "version": "1.0.0"}
 
 
-@app.api_route("/{path:path}", methods=["GET", "HEAD"])
+@app.api_route("/{path:path}", methods=["GET", "HEAD"], include_in_schema=False)
 async def serve_static(path: str):
     """兜底路由：API 之外的路径走静态文件，SPA 友好"""
-    target = web_path / path if path else web_path
+    if path == "api" or path.startswith("api/"):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="API route not found")
+    target = _safe_web_target(path) if path else web_path
+    if target is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Static path not found")
     if target.is_file():
         return FileResponse(str(target))
     # 目录 => 找 index.html
