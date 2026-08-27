@@ -71,13 +71,24 @@ jobs:
           mkdir -p dist
           cp build/app/outputs/flutter-apk/app-release.apk "dist/ai-question-bank-${{ inputs.tag }}.apk"
 
+      - name: Verify APK signature and create checksum
+        shell: bash
+        run: |
+          BUILD_TOOLS_VERSION="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort -V | tail -1)"
+          APKSIGNER="$ANDROID_HOME/build-tools/$BUILD_TOOLS_VERSION/apksigner"
+          APK="dist/ai-question-bank-${{ inputs.tag }}.apk"
+          "$APKSIGNER" verify --verbose --print-certs "$APK"
+          sha256sum "$APK" > "$APK.sha256"
+
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ inputs.tag }}
           target_commitish: ${{ github.sha }}
           name: ${{ inputs.title }}
-          files: android-app/dist/*.apk
+          files: |
+            android-app/dist/*.apk
+            android-app/dist/*.sha256
           draft: false
           prerelease: ${{ inputs.prerelease }}
           fail_on_unmatched_files: true

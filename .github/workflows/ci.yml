@@ -54,11 +54,21 @@ jobs:
       - name: Build release APK artifact
         run: flutter build apk --release --no-pub
 
+      - name: Verify APK signature and checksum
+        shell: bash
+        run: |
+          BUILD_TOOLS_VERSION="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort -V | tail -1)"
+          APKSIGNER="$ANDROID_HOME/build-tools/$BUILD_TOOLS_VERSION/apksigner"
+          "$APKSIGNER" verify --verbose --print-certs build/app/outputs/flutter-apk/app-release.apk
+          sha256sum build/app/outputs/flutter-apk/app-release.apk > build/app/outputs/flutter-apk/app-release.apk.sha256
+
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: android-${{ github.sha }}
-          path: android-app/build/app/outputs/flutter-apk/app-release.apk
+          path: |
+            android-app/build/app/outputs/flutter-apk/app-release.apk
+            android-app/build/app/outputs/flutter-apk/app-release.apk.sha256
           if-no-files-found: error
           retention-days: 14
 
