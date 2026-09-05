@@ -26,6 +26,10 @@ void main() {
       schemaRejectedCount: 1,
       policyRejectedCount: 1,
       finalCount: 16,
+      quotaRejectedCount: 2,
+      typeTargets: const {'choice': 12, 'fill': 8},
+      typeAccepted: const {'choice': 12, 'fill': 4},
+      typeMissing: const {'fill': 4},
     );
     final result = PaperGenerationResult<int>(
       status: PaperGenerationStatus.partial,
@@ -38,5 +42,8 @@ void main() {
     expect(diagnostics.schemaRejectedCount, 1);
     expect(diagnostics.policyRejectedCount, 1);
     expect(diagnostics.duplicateRejectedCount, 1);
+    expect(diagnostics.quotaRejectedCount, 2);
+    expect(diagnostics.typeQuotaSatisfied, isFalse);
+    expect(diagnostics.typeMissing, {'fill': 4});
   });
 }

@@ -138,4 +138,85 @@ void main() {
     expect(snapshots.last.expectedCount, 5);
     expect(snapshots.last.fraction, 1);
   });
+
+  test(
+    'request failure after a successful batch returns the checkpoint',
+    () async {
+      final checkpoints = <List<Map<String, dynamic>>>[];
+      final result = await AiJsonBatchCollector.collectWithDiagnostics(
+        expectedCount: 5,
+        maxBatchSize: 3,
+        identityOf: (item) => item['question'].toString(),
+        onCheckpoint: (items, _) => checkpoints.add(items),
+        request: (requestedCount, requestNumber, _) async {
+          if (requestNumber == 2) {
+            throw StateError('temporary provider failure');
+          }
+          return '[{"question":"已完成1","answer":"A"},'
+              '{"question":"已完成2","answer":"B"}]';
+        },
+      );
+
+      expect(result.items, hasLength(2));
+      expect(result.items.last['question'], '已完成2');
+      expect(result.diagnostics.stoppedByRequestFailure, isTrue);
+      expect(result.diagnostics.failedRequestCount, 1);
+      expect(result.diagnostics.lastErrorType, 'StateError');
+      expect(checkpoints.last, hasLength(2));
+    },
+  );
+
+  test('first request failure keeps the original error', () async {
+    await expectLater(
+      AiJsonBatchCollector.collectWithDiagnostics(
+        expectedCount: 3,
+        request: (_, _, _) async => throw ArgumentError('bad request'),
+      ),
+      throwsA(isA<ArgumentError>()),
+    );
+  });
+
+  test('incomplete exception exposes recoverable partial items', () async {
+    try {
+      await AiJsonBatchCollector.collect(
+        expectedCount: 3,
+        maxRequests: 1,
+        request: (_, _, _) async => '[{"question":"可恢复题目","answer":"A"}]',
+      );
+      fail('expected AiJsonIncompleteException');
+    } on AiJsonIncompleteException catch (error) {
+      expect(error.partialItems, hasLength(1));
+      expect(error.diagnostics?.acceptedCount, 1);
+    }
+  });
+
+  test(
+    'cancellation waits for the latest checkpoint before rethrowing',
+    () async {
+      var requestNumber = 0;
+      var persistedCount = 0;
+      await expectLater(
+        AiJsonBatchCollector.collectWithDiagnostics(
+          expectedCount: 3,
+          maxBatchSize: 1,
+          shouldRethrowRequestError: (error) => error is _CancelledForTest,
+          onCheckpoint: (items, _) async {
+            await Future<void>.delayed(const Duration(milliseconds: 5));
+            persistedCount = items.length;
+          },
+          request: (_, _, _) async {
+            requestNumber++;
+            if (requestNumber == 2) throw const _CancelledForTest();
+            return '[{"question":"已完成","answer":"A"}]';
+          },
+        ),
+        throwsA(isA<_CancelledForTest>()),
+      );
+      expect(persistedCount, 1);
+    },
+  );
+}
+
+class _CancelledForTest implements Exception {
+  const _CancelledForTest();
 }

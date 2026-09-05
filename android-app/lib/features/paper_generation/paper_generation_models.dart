@@ -41,6 +41,12 @@ class PaperGenerationDiagnostics {
     required this.requestCount,
     required this.requestedBatchSizes,
     required this.decodedBatchSizes,
+    this.quotaRejectedCount = 0,
+    this.typeTargets = const {},
+    this.typeAccepted = const {},
+    this.typeMissing = const {},
+    this.interruptedByRequestFailure = false,
+    this.failedRequestCount = 0,
   });
 
   final int targetCount;
@@ -53,12 +59,25 @@ class PaperGenerationDiagnostics {
   final int requestCount;
   final List<int> requestedBatchSizes;
   final List<int> decodedBatchSizes;
+  final int quotaRejectedCount;
+  final Map<String, int> typeTargets;
+  final Map<String, int> typeAccepted;
+  final Map<String, int> typeMissing;
+  final bool interruptedByRequestFailure;
+  final int failedRequestCount;
+
+  bool get typeQuotaSatisfied =>
+      typeMissing.values.every((value) => value <= 0);
 
   factory PaperGenerationDiagnostics.fromCollection(
     AiJsonCollectionDiagnostics collection, {
     required int schemaRejectedCount,
     required int policyRejectedCount,
     required int finalCount,
+    int quotaRejectedCount = 0,
+    Map<String, int> typeTargets = const {},
+    Map<String, int> typeAccepted = const {},
+    Map<String, int> typeMissing = const {},
   }) {
     return PaperGenerationDiagnostics(
       targetCount: collection.expectedCount,
@@ -71,6 +90,12 @@ class PaperGenerationDiagnostics {
       requestCount: collection.requestCount,
       requestedBatchSizes: collection.requestedBatchSizes,
       decodedBatchSizes: collection.decodedBatchSizes,
+      quotaRejectedCount: quotaRejectedCount,
+      typeTargets: Map<String, int>.unmodifiable(typeTargets),
+      typeAccepted: Map<String, int>.unmodifiable(typeAccepted),
+      typeMissing: Map<String, int>.unmodifiable(typeMissing),
+      interruptedByRequestFailure: collection.stoppedByRequestFailure,
+      failedRequestCount: collection.failedRequestCount,
     );
   }
 
@@ -85,6 +110,12 @@ class PaperGenerationDiagnostics {
     'requests': requestCount,
     'requestedBatchSizes': requestedBatchSizes,
     'decodedBatchSizes': decodedBatchSizes,
+    'quotaRejected': quotaRejectedCount,
+    'typeTargets': typeTargets,
+    'typeAccepted': typeAccepted,
+    'typeMissing': typeMissing,
+    'interruptedByRequestFailure': interruptedByRequestFailure,
+    'failedRequests': failedRequestCount,
   };
 }
 

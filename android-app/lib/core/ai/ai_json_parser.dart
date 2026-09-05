@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 /// 解析大模型返回的对象数组，并对末尾被截断的响应做安全降级。
@@ -164,9 +165,12 @@ class AiJsonBatchCollector {
     int maxBatchSize = 5,
     int? maxRequests,
     bool Function(Map<String, dynamic> value)? isValid,
+    AiJsonItemAcceptanceCallback? canAccept,
     String Function(Map<String, dynamic> value)? identityOf,
     bool requireExact = true,
     AiJsonBatchProgressCallback? onProgress,
+    AiJsonCheckpointCallback? onCheckpoint,
+    bool Function(Object error)? shouldRethrowRequestError,
   }) async {
     final collection = await collectWithDiagnostics(
       expectedCount: expectedCount,
@@ -175,13 +179,18 @@ class AiJsonBatchCollector {
       maxBatchSize: maxBatchSize,
       maxRequests: maxRequests,
       isValid: isValid,
+      canAccept: canAccept,
       identityOf: identityOf,
       onProgress: onProgress,
+      onCheckpoint: onCheckpoint,
+      shouldRethrowRequestError: shouldRethrowRequestError,
     );
     if (requireExact && collection.items.length < expectedCount) {
       throw AiJsonIncompleteException(
         expectedCount: expectedCount,
         actualCount: collection.items.length,
+        partialItems: collection.items,
+        diagnostics: collection.diagnostics,
       );
     }
     return collection.items;
@@ -203,8 +212,11 @@ class AiJsonBatchCollector {
     int maxBatchSize = 5,
     int? maxRequests,
     bool Function(Map<String, dynamic> value)? isValid,
+    AiJsonItemAcceptanceCallback? canAccept,
     String Function(Map<String, dynamic> value)? identityOf,
     AiJsonBatchProgressCallback? onProgress,
+    AiJsonCheckpointCallback? onCheckpoint,
+    bool Function(Object error)? shouldRethrowRequestError,
   }) async {
     if (expectedCount <= 0) {
       return const AiJsonCollectionResult(
@@ -239,7 +251,11 @@ class AiJsonBatchCollector {
     var decodedCount = 0;
     var invalidCount = 0;
     var duplicateCount = 0;
+    var acceptanceRejectedCount = 0;
     var emptyResponseCount = 0;
+    var failedRequestCount = 0;
+    var stoppedByRequestFailure = false;
+    var lastErrorType = '';
     final requestedBatchSizes = <int>[];
     final decodedBatchSizes = <int>[];
 
@@ -252,11 +268,39 @@ class AiJsonBatchCollector {
           ? remaining
           : effectiveBatchSize;
       requestedBatchSizes.add(requestedCount);
-      final raw = await request(
-        requestedCount,
-        requestNumber,
-        List<Map<String, dynamic>>.unmodifiable(collected),
-      );
+      late final String raw;
+      try {
+        raw = await request(
+          requestedCount,
+          requestNumber,
+          List<Map<String, dynamic>>.unmodifiable(collected),
+        );
+      } catch (error, stackTrace) {
+        failedRequestCount++;
+        stoppedByRequestFailure = true;
+        lastErrorType = error.runtimeType.toString();
+        decodedBatchSizes.add(0);
+        final progress = AiJsonBatchProgress(
+          requestNumber: requestNumber,
+          requestedCount: requestedCount,
+          decodedCount: 0,
+          acceptedCount: collected.length.clamp(0, expectedCount),
+          expectedCount: expectedCount,
+        );
+        onProgress?.call(progress);
+        await onCheckpoint?.call(
+          List<Map<String, dynamic>>.unmodifiable(collected),
+          progress,
+        );
+        // With no recoverable object, preserve the original API/network error
+        // so callers can display the correct failure. Once at least one batch
+        // succeeded, return that checkpoint as a partial result instead.
+        if (collected.isEmpty ||
+            (shouldRethrowRequestError?.call(error) ?? false)) {
+          Error.throwWithStackTrace(error, stackTrace);
+        }
+        break;
+      }
       final decoded = AiJsonParser.decodeObjectList(raw, rootKeys: rootKeys);
       decodedBatchSizes.add(decoded.length);
       decodedCount += decoded.length;
@@ -277,11 +321,20 @@ class AiJsonBatchCollector {
           continue;
         }
         final identity = identityOf?.call(value) ?? jsonEncode(value);
-        if (identities.add(identity)) {
-          collected.add(value);
-        } else {
+        if (identities.contains(identity)) {
           duplicateCount++;
+          continue;
         }
+        if (canAccept != null &&
+            !canAccept(
+              value,
+              List<Map<String, dynamic>>.unmodifiable(collected),
+            )) {
+          acceptanceRejectedCount++;
+          continue;
+        }
+        identities.add(identity);
+        collected.add(value);
         if (collected.length >= expectedCount) break;
       }
 
@@ -291,14 +344,17 @@ class AiJsonBatchCollector {
       } else {
         consecutiveEmptyResponses = 0;
       }
-      onProgress?.call(
-        AiJsonBatchProgress(
-          requestNumber: requestNumber,
-          requestedCount: requestedCount,
-          decodedCount: decoded.length,
-          acceptedCount: collected.length.clamp(0, expectedCount),
-          expectedCount: expectedCount,
-        ),
+      final progress = AiJsonBatchProgress(
+        requestNumber: requestNumber,
+        requestedCount: requestedCount,
+        decodedCount: decoded.length,
+        acceptedCount: collected.length.clamp(0, expectedCount),
+        expectedCount: expectedCount,
+      );
+      onProgress?.call(progress);
+      await onCheckpoint?.call(
+        List<Map<String, dynamic>>.unmodifiable(collected),
+        progress,
       );
     }
 
@@ -311,8 +367,12 @@ class AiJsonBatchCollector {
         decodedCount: decodedCount,
         invalidCount: invalidCount,
         duplicateCount: duplicateCount,
+        acceptanceRejectedCount: acceptanceRejectedCount,
         acceptedCount: items.length,
         emptyResponseCount: emptyResponseCount,
+        failedRequestCount: failedRequestCount,
+        stoppedByRequestFailure: stoppedByRequestFailure,
+        lastErrorType: lastErrorType,
         requestedBatchSizes: requestedBatchSizes,
         decodedBatchSizes: decodedBatchSizes,
       ),
@@ -322,6 +382,18 @@ class AiJsonBatchCollector {
 
 typedef AiJsonBatchProgressCallback =
     void Function(AiJsonBatchProgress progress);
+
+typedef AiJsonCheckpointCallback =
+    FutureOr<void> Function(
+      List<Map<String, dynamic>> items,
+      AiJsonBatchProgress progress,
+    );
+
+typedef AiJsonItemAcceptanceCallback =
+    bool Function(
+      Map<String, dynamic> value,
+      List<Map<String, dynamic>> accepted,
+    );
 
 /// 一次真实批次完成后的进度快照。进度只来自已解析并接纳的对象，不按时间伪造。
 class AiJsonBatchProgress {
@@ -362,8 +434,12 @@ class AiJsonCollectionDiagnostics {
     required this.decodedCount,
     required this.invalidCount,
     required this.duplicateCount,
+    this.acceptanceRejectedCount = 0,
     required this.acceptedCount,
     required this.emptyResponseCount,
+    this.failedRequestCount = 0,
+    this.stoppedByRequestFailure = false,
+    this.lastErrorType = '',
     required this.requestedBatchSizes,
     required this.decodedBatchSizes,
   });
@@ -373,8 +449,12 @@ class AiJsonCollectionDiagnostics {
   final int decodedCount;
   final int invalidCount;
   final int duplicateCount;
+  final int acceptanceRejectedCount;
   final int acceptedCount;
   final int emptyResponseCount;
+  final int failedRequestCount;
+  final bool stoppedByRequestFailure;
+  final String lastErrorType;
   final List<int> requestedBatchSizes;
   final List<int> decodedBatchSizes;
 
@@ -384,8 +464,12 @@ class AiJsonCollectionDiagnostics {
     'decoded': decodedCount,
     'invalid': invalidCount,
     'duplicate': duplicateCount,
+    'acceptanceRejected': acceptanceRejectedCount,
     'accepted': acceptedCount,
     'emptyResponses': emptyResponseCount,
+    'failedRequests': failedRequestCount,
+    'stoppedByRequestFailure': stoppedByRequestFailure,
+    if (lastErrorType.isNotEmpty) 'lastErrorType': lastErrorType,
     'requestedBatchSizes': requestedBatchSizes,
     'decodedBatchSizes': decodedBatchSizes,
   };
@@ -395,10 +479,14 @@ class AiJsonIncompleteException implements Exception {
   const AiJsonIncompleteException({
     required this.expectedCount,
     required this.actualCount,
+    this.partialItems = const [],
+    this.diagnostics,
   });
 
   final int expectedCount;
   final int actualCount;
+  final List<Map<String, dynamic>> partialItems;
+  final AiJsonCollectionDiagnostics? diagnostics;
 
   @override
   String toString() =>

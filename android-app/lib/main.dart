@@ -19,7 +19,9 @@ import 'app/app.dart';
 import 'app/app_settings_controller.dart';
 import 'core/localization/localization_extensions.dart';
 import 'core/ai/ai_json_parser.dart';
+import 'core/ai/material_context_selector.dart';
 import 'core/ai/provider_catalog.dart';
+import 'core/ai/question_type_quota.dart';
 import 'core/ai_guard/ai_request_guard.dart';
 import 'core/ai/question_generation_policy.dart';
 import 'core/motion/motion_states.dart';
@@ -2986,8 +2988,7 @@ class _AppShellState extends State<AppShell> {
             try {
               final generated = await AiService.generateQuestions(
                 config: _config,
-                material:
-                    '${sourceMaterial.content}\n\n【仅重新生成一道题】\n原题：${current.prompt}\n用户要求：${instruction.isEmpty ? '更换表达和考查角度，避免与原题重复' : instruction}',
+                material: sourceMaterial.content,
                 types: [current.type],
                 count: 1,
                 audience: '通用',
@@ -2996,6 +2997,10 @@ class _AppShellState extends State<AppShell> {
                   (item) => item['type'] == 'listening',
                 ),
                 outputLanguage: '跟随资料主要语言',
+                priorityInstruction:
+                    '仅重新生成一道题。原题：${current.prompt}\n'
+                    '用户要求：${instruction.isEmpty ? '更换表达和考查角度，避免与原题重复' : instruction}\n'
+                    '不得改动试卷中的其他题目，不得返回原题。',
               );
               if (generated.isEmpty) return null;
               final replacement = generated.first;
@@ -3812,6 +3817,9 @@ class _AppShellState extends State<AppShell> {
       return;
     }
     final estimatedCount = template?.totalCount ?? max(10, pageCount * 8);
+    final draftId = DateTime.now().millisecondsSinceEpoch.toString();
+    final draftCreatedAt = DateTime.now();
+    var checkpointCount = 0;
     if (!await _confirmHighUsageTask(
       questionCount: estimatedCount,
       materialLength: material.content.length,
@@ -3846,6 +3854,33 @@ class _AppShellState extends State<AppShell> {
       Navigator.of(context, rootNavigator: true).pop();
     }
 
+    Future<void> saveCheckpoint(List<PaperQuestion> questions) async {
+      if (questions.isEmpty || !mounted) return;
+      checkpointCount = questions.length;
+      final checkpoint = Paper(
+        id: draftId,
+        subject: subject,
+        gradeLevel: gradeLevel,
+        pageCount: pageCount,
+        materialName: material.name,
+        questions: questions,
+        createdAt: draftCreatedAt,
+        scoreConfig: scoreConfig,
+        name: paperName,
+        durationMinutes: durationMinutes,
+      );
+      setState(() {
+        final index = _papers.indexWhere((item) => item.id == draftId);
+        if (index >= 0) {
+          _papers[index] = checkpoint;
+        } else {
+          _papers.insert(0, checkpoint);
+        }
+      });
+      await _savePapers();
+      await PaperDraftStorage().saveEditor(_paperToEditorDocument(checkpoint));
+    }
+
     try {
       progressStage.value = 1;
       await Future<void>.delayed(const Duration(milliseconds: 120));
@@ -3867,6 +3902,7 @@ class _AppShellState extends State<AppShell> {
           if (!progressOpen) return;
           progressBatch.value = progress;
         },
+        onCheckpoint: saveCheckpoint,
       );
       final questions = generation.items;
       if (questions.isEmpty) {
@@ -3875,19 +3911,24 @@ class _AppShellState extends State<AppShell> {
       } else {
         progressStage.value = 3;
         final paper = Paper(
-          id: DateTime.now().millisecondsSinceEpoch.toString(),
+          id: draftId,
           subject: subject,
           gradeLevel: gradeLevel,
           pageCount: pageCount,
           materialName: material.name,
           questions: questions,
-          createdAt: DateTime.now(),
+          createdAt: draftCreatedAt,
           scoreConfig: scoreConfig,
           name: paperName,
           durationMinutes: durationMinutes,
         );
         setState(() {
-          _papers.insert(0, paper);
+          final index = _papers.indexWhere((item) => item.id == draftId);
+          if (index >= 0) {
+            _papers[index] = paper;
+          } else {
+            _papers.insert(0, paper);
+          }
         });
         await _savePapers();
         if (mounted) {
@@ -3899,6 +3940,15 @@ class _AppShellState extends State<AppShell> {
             await _openPaperEditor(paper, material);
           } else {
             final target = generation.diagnostics.targetCount;
+            final missingTypes = generation.diagnostics.typeMissing.entries
+                .where((entry) => entry.value > 0)
+                .map(
+                  (entry) =>
+                      '${_paperQuestionTypeLabel(entry.key)} ${entry.value} 道',
+                )
+                .join('、');
+            final interrupted =
+                generation.diagnostics.interruptedByRequestFailure;
             final action = await showDialog<String>(
               context: context,
               builder: (context) => AlertDialog(
@@ -3908,7 +3958,10 @@ class _AppShellState extends State<AppShell> {
                   '模型共返回 ${generation.diagnostics.modelDecodedCount} 个可解析对象，'
                   '结构无效 ${generation.diagnostics.schemaRejectedCount} 个，'
                   '偏离资料 ${generation.diagnostics.policyRejectedCount} 个，'
-                  '重复 ${generation.diagnostics.duplicateRejectedCount} 个。\n\n'
+                  '重复 ${generation.diagnostics.duplicateRejectedCount} 个，'
+                  '超出题型配额 ${generation.diagnostics.quotaRejectedCount} 个。'
+                  '${missingTypes.isEmpty ? '' : '\n仍缺少：$missingTypes。'}'
+                  '${interrupted ? '\n本轮因接口异常中断，已保留此前成功题目。' : ''}\n\n'
                   '继续补齐会再次调用你的模型 API。',
                 ),
                 actions: [
@@ -3950,7 +4003,11 @@ class _AppShellState extends State<AppShell> {
       }
     } catch (error) {
       closeProgress();
-      _showSnack(safeApiErrorMessage(error));
+      if (error is AiTaskCancelledException && checkpointCount > 0) {
+        _showSnack('已取消生成，前 $checkpointCount 道有效题已保存为试卷草稿');
+      } else {
+        _showSnack(safeApiErrorMessage(error));
+      }
     } finally {
       await GenerationWakeLock.release();
       closeProgress();
@@ -3989,6 +4046,15 @@ class _AppShellState extends State<AppShell> {
     );
   }
 
+  String _paperQuestionTypeLabel(String type) => switch (type) {
+    'choice' => '单选题',
+    'multi_choice' => '多选题',
+    'fill' => '填空题',
+    'true_false' => '判断题',
+    'subjective' => '解答题',
+    _ => type,
+  };
+
   Future<void> _continuePaperDraft({
     required Paper paper,
     required StudyMaterial material,
@@ -4006,6 +4072,50 @@ class _AppShellState extends State<AppShell> {
     final progressStage = ValueNotifier<int>(2);
     final progressBatch = ValueNotifier<AiJsonBatchProgress?>(null);
     var progressOpen = true;
+    var checkpointCount = 0;
+
+    Paper mergeSupplement(List<PaperQuestion> supplement) {
+      final seen = paper.questions
+          .map(
+            (item) => item.question.question
+                .replaceAll(RegExp(r'\s+'), '')
+                .toLowerCase(),
+          )
+          .toSet();
+      final unique = supplement
+          .where(
+            (item) => seen.add(
+              item.question.question
+                  .replaceAll(RegExp(r'\s+'), '')
+                  .toLowerCase(),
+            ),
+          )
+          .toList(growable: false);
+      return Paper(
+        id: paper.id,
+        subject: paper.subject,
+        gradeLevel: paper.gradeLevel,
+        pageCount: paper.pageCount,
+        materialName: paper.materialName,
+        questions: [...paper.questions, ...unique],
+        createdAt: paper.createdAt,
+        scoreConfig: paper.scoreConfig,
+        name: paper.name,
+        durationMinutes: paper.durationMinutes,
+      );
+    }
+
+    Future<void> saveCheckpoint(List<PaperQuestion> questions) async {
+      if (questions.isEmpty || !mounted) return;
+      checkpointCount = questions.length;
+      final checkpoint = mergeSupplement(questions);
+      final index = _papers.indexWhere((item) => item.id == paper.id);
+      if (index < 0) return;
+      setState(() => _papers[index] = checkpoint);
+      await _savePapers();
+      await PaperDraftStorage().saveEditor(_paperToEditorDocument(checkpoint));
+    }
+
     final dialog = showDialog<void>(
       context: context,
       barrierDismissible: false,
@@ -4048,35 +4158,9 @@ class _AppShellState extends State<AppShell> {
           if (!progressOpen) return;
           progressBatch.value = progress;
         },
+        onCheckpoint: saveCheckpoint,
       );
-      final seen = paper.questions
-          .map(
-            (item) => item.question.question
-                .replaceAll(RegExp(r'\s+'), '')
-                .toLowerCase(),
-          )
-          .toSet();
-      final uniqueSupplement = supplement.items
-          .where(
-            (item) => seen.add(
-              item.question.question
-                  .replaceAll(RegExp(r'\s+'), '')
-                  .toLowerCase(),
-            ),
-          )
-          .toList(growable: false);
-      final updated = Paper(
-        id: paper.id,
-        subject: paper.subject,
-        gradeLevel: paper.gradeLevel,
-        pageCount: paper.pageCount,
-        materialName: paper.materialName,
-        questions: [...paper.questions, ...uniqueSupplement],
-        createdAt: paper.createdAt,
-        scoreConfig: paper.scoreConfig,
-        name: paper.name,
-        durationMinutes: paper.durationMinutes,
-      );
+      final updated = mergeSupplement(supplement.items);
       final index = _papers.indexWhere((item) => item.id == paper.id);
       if (index >= 0) {
         setState(() => _papers[index] = updated);
@@ -4084,17 +4168,35 @@ class _AppShellState extends State<AppShell> {
       }
       closeProgress();
       final target = targetTemplate.totalCount;
-      if (updated.questions.length >= target) {
+      final stillMissing = _remainingPaperTemplate(
+        targetTemplate,
+        updated.questions,
+      );
+      if (stillMissing.totalCount <= 0) {
         _showSnack('试卷已补齐（共 ${updated.questions.length} 题）');
       } else {
+        final missingText = <String>[
+          if (stillMissing.choiceCount > 0) '单选题 ${stillMissing.choiceCount} 道',
+          if (stillMissing.multiChoiceCount > 0)
+            '多选题 ${stillMissing.multiChoiceCount} 道',
+          if (stillMissing.fillCount > 0) '填空题 ${stillMissing.fillCount} 道',
+          if (stillMissing.judgeCount > 0) '判断题 ${stillMissing.judgeCount} 道',
+          if (stillMissing.subjectiveCount > 0)
+            '解答题 ${stillMissing.subjectiveCount} 道',
+        ].join('、');
         _showSnack(
-          '本轮补题后共 ${updated.questions.length} / $target 题；已停止继续请求以保护 API 额度',
+          '本轮补题后共 ${updated.questions.length} / $target 题'
+          '${missingText.isEmpty ? '' : '，仍缺少$missingText'}；已停止继续请求以保护 API 额度',
         );
       }
       if (mounted) await _openPaperEditor(updated, material);
     } catch (error) {
       closeProgress();
-      _showSnack(safeApiErrorMessage(error));
+      if (error is AiTaskCancelledException && checkpointCount > 0) {
+        _showSnack('已取消补题，本轮新增的 $checkpointCount 道有效题已保存');
+      } else {
+        _showSnack(safeApiErrorMessage(error));
+      }
     } finally {
       closeProgress();
       await dialog;
@@ -17795,6 +17897,9 @@ class PaperPdfService {
   }
 }
 
+typedef PaperGenerationCheckpointCallback =
+    Future<void> Function(List<PaperQuestion> questions);
+
 class AiService {
   static Future<void> test(ApiConfig config) async {
     await AiRequestGuard.instance.runTask<void>(
@@ -17858,6 +17963,8 @@ class AiService {
     int maxBatchSize = 5,
     int? maxRequests,
     AiJsonBatchProgressCallback? onProgress,
+    AiJsonCheckpointCallback? onCheckpoint,
+    QuestionTypeQuotaPlan? typeQuotaPlan,
   }) {
     return AiJsonBatchCollector.collectWithDiagnostics(
       expectedCount: expectedCount,
@@ -17866,6 +17973,11 @@ class AiService {
       maxRequests: maxRequests,
       isValid: isValid,
       onProgress: onProgress,
+      onCheckpoint: onCheckpoint,
+      shouldRethrowRequestError: (error) => error is AiTaskCancelledException,
+      canAccept: typeQuotaPlan == null || typeQuotaPlan.isEmpty
+          ? null
+          : (value, accepted) => typeQuotaPlan.canAccept(value, accepted),
       identityOf: (value) {
         final identity = [
           value['question'],
@@ -17896,6 +18008,14 @@ class AiService {
           ..writeln('这是第 $requestNumber 批，本批严格只返回 $requestedCount 个完整对象。')
           ..writeln('必须从 [ 开始、以 ] 结束；不要 Markdown，不要前后说明，不要省略号。')
           ..writeln('每个对象必须包含完整题干、答案和所需字段，解析请简洁，避免输出被截断。');
+        final batchTypes =
+            typeQuotaPlan?.nextBatchTypes(existing, requestedCount) ??
+            const <String>[];
+        if (batchTypes.isNotEmpty) {
+          batchInstruction.writeln(
+            typeQuotaPlan!.instructionForBatch(batchTypes),
+          );
+        }
         if (previousTitles.isNotEmpty) {
           batchInstruction
             ..writeln('以下题目已经收集，本批不得重复：')
@@ -17922,6 +18042,89 @@ class AiService {
     );
   }
 
+  static bool _isQuestionShapeValid(
+    Map<String, dynamic> item,
+    QuestionTypeQuotaPlan quotaPlan,
+  ) {
+    final rawType = item['question_type'] ?? item['type'];
+    if (rawType == null || rawType.toString().trim().isEmpty) return false;
+    final type = QuestionTypeQuotaPlan.normalizeType(rawType);
+    if (!quotaPlan.targets.containsKey(type)) return false;
+    final question = (item['question'] ?? item['title'] ?? '')
+        .toString()
+        .trim();
+    if (question.isEmpty) return false;
+    final rawAnswer = item['answer'] ?? item['correct_answer'];
+    final hasAnswer = rawAnswer is Iterable
+        ? rawAnswer.isNotEmpty
+        : (rawAnswer ?? '').toString().trim().isNotEmpty;
+    if (!hasAnswer) return false;
+    if (type == 'choice' || type == 'multi_choice' || type == 'sort') {
+      var options = _normalizeQuestionOptions(item['options']);
+      if (options.length < 2) options = _extractLetteredOptions(question);
+      if (options.length < 2) return false;
+      if (type == 'multi_choice' && _answerSet(rawAnswer).length < 2) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  static String _paperSectionForType(String type) => switch (type) {
+    'choice' => '一、单项选择题',
+    'multi_choice' => '二、多项选择题',
+    'fill' => '三、填空题',
+    'true_false' => '四、判断题',
+    _ => '五、解答题',
+  };
+
+  static List<PaperQuestion> _paperQuestionsFromItems(
+    Iterable<Map<String, dynamic>> items,
+    QuestionTypeQuotaPlan typeQuotaPlan, {
+    void Function()? onConversionRejected,
+  }) {
+    final typeOrder = <String, int>{
+      for (var index = 0; index < typeQuotaPlan.targets.length; index++)
+        typeQuotaPlan.targets.keys.elementAt(index): index,
+    };
+    final parsed = <({AiQuestion question, Map<String, dynamic> map})>[];
+    for (final item in items) {
+      try {
+        final map = Map<String, dynamic>.from(item);
+        final question = AiQuestion.fromJson(map);
+        if (question.question.trim().isEmpty) {
+          onConversionRejected?.call();
+          continue;
+        }
+        parsed.add((question: question, map: map));
+      } catch (_) {
+        // One malformed provider object must not discard the valid questions
+        // already collected in earlier batches.
+        onConversionRejected?.call();
+      }
+    }
+    parsed.sort(
+      (left, right) => (typeOrder[left.question.type] ?? 99).compareTo(
+        typeOrder[right.question.type] ?? 99,
+      ),
+    );
+    final sectionIndexes = <String, int>{};
+    return parsed
+        .map((entry) {
+          final type = entry.question.type;
+          final index = (sectionIndexes[type] ?? 0) + 1;
+          sectionIndexes[type] = index;
+          return PaperQuestion(
+            section: _paperSectionForType(type),
+            indexInSection: index,
+            question: entry.question,
+            knowledgePoint:
+                (entry.map['knowledge_point'] as String?)?.trim() ?? '',
+          );
+        })
+        .toList(growable: false);
+  }
+
   static Future<List<AiQuestion>> generateQuestions({
     required ApiConfig config,
     required String material,
@@ -17933,6 +18136,7 @@ class AiService {
     bool enableListening = false,
     String outputLanguage = '跟随资料主要语言',
     AiJsonBatchProgressCallback? onProgress,
+    String priorityInstruction = '',
   }) {
     final capabilities = SubjectCapabilities.resolve(
       subject,
@@ -17959,6 +18163,7 @@ class AiService {
         effectiveRichContent,
         effectiveListening,
         outputLanguage,
+        priorityInstruction,
       ]),
       action: (_) => _generateQuestionsUnprotected(
         config: config,
@@ -17971,6 +18176,7 @@ class AiService {
         enableListening: effectiveListening,
         outputLanguage: outputLanguage,
         onProgress: onProgress,
+        priorityInstruction: priorityInstruction,
       ),
     );
   }
@@ -17986,13 +18192,30 @@ class AiService {
     bool enableListening = false,
     String outputLanguage = '跟随资料主要语言',
     AiJsonBatchProgressCallback? onProgress,
+    String priorityInstruction = '',
   }) async {
-    final typeText = types.map(_typeLabel).join('、');
+    final typeQuotaPlan = QuestionTypeQuotaPlan.evenlyDistributed(
+      types: types,
+      totalCount: count,
+    );
+    final effectiveTypes = typeQuotaPlan.targets.keys.toList(growable: false);
+    final typeText = effectiveTypes.map(_typeLabel).join('、');
     final richTarget = richContentTargetCount(count);
-    final materialText = material.length > 6500
-        ? material.substring(0, 6500)
-        : material;
+    final materialText = MaterialContextSelector.select(
+      material: material,
+      maxChars: 6500,
+      focusQuery: '$subject ${effectiveTypes.join(' ')} $priorityInstruction',
+    );
     final groundingPolicy = await QuestionGenerationPolicy.load();
+    final priorityBlock = priorityInstruction.trim().isEmpty
+        ? ''
+        : '''
+【本次最高优先级任务】
+${priorityInstruction.trim()}
+''';
+    final quotaBlock = typeQuotaPlan.targets.entries
+        .map((entry) => '${entry.key} ${entry.value} 道')
+        .join('；');
     // v2.7.5: 当 enableListening=true 时，即使 enableRichContent=false 也必须允许 listening 块
     // listening 是 rich_content 数组的一种类型，不能被纯文字模式禁掉
     final richRequireBlock = enableRichContent
@@ -18021,7 +18244,9 @@ class AiService {
 本次完整任务目标为 $count 道题，客户端会分成多个小批次请求。请以消息末尾的本批数量为准，目标群体：$audience。
 学科：$subject。
 题型范围：$typeText。
+全任务题型配额：$quotaBlock。每批还会附加更精确的本批配额，必须严格满足。
 输出语言：$outputLanguage。除非资料需要保留原文，否则题干、选项和解析使用该语言。
+$priorityBlock
 
 严格只返回 JSON，不要 Markdown，不要解释。JSON 格式如下：
 [
@@ -18043,7 +18268,7 @@ class AiService {
 2. 多选题必须有 4 个选项，答案为数组。
 3. 判断题 options 可为 ["正确","错误"]。
 4. 填空题和主观题 options 为空数组。
-5. question_type 必须使用：${types.join(',')}。
+5. question_type 必须使用：${effectiveTypes.join(',')}。
 $richRequireBlock
 7. 涉及图形/公式的题目，**禁止**在题干中使用"如图所示"等无法表达的描述，必须通过 rich_content 字段返回对应的图形描述。
 $chartNote
@@ -18058,7 +18283,9 @@ $materialText
 本次完整任务目标为 $count 道题，客户端会分成多个小批次请求。请以消息末尾的本批数量为准，目标群体：$audience。
 学科：$subject。
 题型范围：$typeText。
+全任务题型配额：$quotaBlock。每批还会附加更精确的本批配额，必须严格满足。
 输出语言：$outputLanguage。除非资料需要保留原文，否则题干、选项和解析使用该语言。
+$priorityBlock
 
 严格只返回 JSON，不要 Markdown，不要解释。JSON 格式如下：
 [
@@ -18080,7 +18307,7 @@ $materialText
 2. 多选题必须有 4 个选项，答案为数组。
 3. 判断题 options 可为 ["正确","错误"]。
 4. 填空题和主观题 options 为空数组。
-5. question_type 必须使用：${types.join(',')}。
+5. question_type 必须使用：${effectiveTypes.join(',')}。
 $richRequireBlock
 $chartNote
 $listeningNote
@@ -18106,15 +18333,9 @@ $materialText
       maxBatchSize: plan.maxBatchSize,
       maxRequests: plan.safeRequestLimit,
       onProgress: onProgress,
+      typeQuotaPlan: typeQuotaPlan,
       isValid: (item) {
-        final question = (item['question'] ?? item['title'] ?? '')
-            .toString()
-            .trim();
-        final answer = (item['answer'] ?? item['correct_answer'] ?? '')
-            .toString()
-            .trim();
-        return question.isNotEmpty &&
-            answer.isNotEmpty &&
+        return _isQuestionShapeValid(item, typeQuotaPlan) &&
             !QuestionGenerationPolicy.isClearlyIrrelevantMetadataQuestion(item);
       },
     );
@@ -18192,9 +18413,6 @@ $materialText
     required int level,
     String audience = '通用',
   }) async {
-    final materialText = material.length > 6500
-        ? material.substring(0, 6500)
-        : material;
     final groundingPolicy = await QuestionGenerationPolicy.load();
     final isBoss = level == 5;
     final difficultyDesc = level <= 2
@@ -18209,7 +18427,12 @@ $materialText
     final chapterInfo = _rpgChaptersForSubject(subject);
     final chTitle = chapterInfo.length >= chapter
         ? chapterInfo[chapter - 1].title
-        : '第${chapter}章';
+        : '第$chapter章';
+    final materialText = MaterialContextSelector.select(
+      material: material,
+      maxChars: 6500,
+      focusQuery: '$subject $chTitle 第$chapter章',
+    );
 
     final prompt =
         '''请基于下面学习资料生成闯关 RPG 题目。
@@ -18323,9 +18546,6 @@ $materialText
     String audience = '通用',
     List<WrongItem> wrongItems = const [],
   }) async {
-    final materialText = material.length > 6500
-        ? material.substring(0, 6500)
-        : material;
     final groundingPolicy = await QuestionGenerationPolicy.load();
     final isBoss = level == 5;
     final difficultyDesc = level <= 2
@@ -18336,7 +18556,12 @@ $materialText
     final chapterInfo = _rpgChaptersForSubject(subject);
     final chTitle = chapterInfo.length >= chapter
         ? chapterInfo[chapter - 1].title
-        : '第${chapter}章';
+        : '第$chapter章';
+    final materialText = MaterialContextSelector.select(
+      material: material,
+      maxChars: 6500,
+      focusQuery: '$subject $chTitle 第$chapter章',
+    );
 
     final rule = ChallengeRules.forLevel(level);
     final gameCount = rule.questionCount;
@@ -18712,6 +18937,7 @@ $materialText
     String knowledgePointSpec = '',
     int listeningCount = 0,
     AiJsonBatchProgressCallback? onProgress,
+    PaperGenerationCheckpointCallback? onCheckpoint,
   }) async {
     final result = await generatePaperResult(
       config: config,
@@ -18727,6 +18953,7 @@ $materialText
       knowledgePointSpec: knowledgePointSpec,
       listeningCount: listeningCount,
       onProgress: onProgress,
+      onCheckpoint: onCheckpoint,
     );
     return result.items;
   }
@@ -18746,6 +18973,7 @@ $materialText
     int listeningCount = 0,
     List<String> excludedQuestions = const [],
     AiJsonBatchProgressCallback? onProgress,
+    PaperGenerationCheckpointCallback? onCheckpoint,
   }) {
     final capabilities = SubjectCapabilities.resolve(
       subject,
@@ -18799,6 +19027,7 @@ $materialText
             listeningCount: listeningCount,
             excludedQuestions: excludedQuestions,
             onProgress: onProgress,
+            onCheckpoint: onCheckpoint,
           ),
         );
   }
@@ -18819,12 +19048,8 @@ $materialText
     int listeningCount = 0,
     List<String> excludedQuestions = const [],
     AiJsonBatchProgressCallback? onProgress,
+    PaperGenerationCheckpointCallback? onCheckpoint,
   }) async {
-    final materialText = material.length > 8000
-        ? material.substring(0, 8000)
-        : material;
-    final groundingPolicy = await QuestionGenerationPolicy.load();
-
     // 选择题型分布：优先使用显式模板；否则按默认规则
     final tpl =
         template ??
@@ -18833,6 +19058,22 @@ $materialText
           gradeLevel: gradeLevel,
           pageCount: pageCount,
         );
+    final typeQuotaPlan = QuestionTypeQuotaPlan.fromTargets({
+      'choice': tpl.choiceCount,
+      'multi_choice': tpl.multiChoiceCount,
+      'fill': tpl.fillCount,
+      'true_false': tpl.judgeCount,
+      'subjective': tpl.subjectiveCount,
+    });
+    final materialText = MaterialContextSelector.select(
+      material: material,
+      maxChars: 8000,
+      focusQuery: '$subject $gradeLevel $chapterRange $knowledgePointSpec',
+    );
+    final groundingPolicy = await QuestionGenerationPolicy.load();
+    final paperQuotaBlock = typeQuotaPlan.targets.entries
+        .map((entry) => '${entry.key} ${entry.value} 道')
+        .join('；');
 
     final cs = scoreConfig.choiceScore;
     final fs = scoreConfig.fillScore;
@@ -18939,6 +19180,7 @@ $materialText
 请基于下面学习资料，生成一份完整的$subject 试卷$totalLine。
 适用对象：$gradeLevel。
 试卷页数：约 $pageCount 面（共约 $totalQ 题）。
+全卷题型配额：$paperQuotaBlock。达到总题数但题型配额不符仍视为未完成。
 
 【重要】客户端将把全卷拆成多个小批次。请严格服从消息末尾的“分批输出指令”，本批只返回指定数量，不要尝试一次输出整卷。
 
@@ -18949,7 +19191,7 @@ ${sections.join('\n')}
 {
   "section": "一、单项选择题",
   "indexInSection": 1,
-  "question_type": "choice | fill | true_false | subjective",
+  "question_type": "choice | multi_choice | fill | true_false | subjective",
   "question": "题干",
   "options": ["A. 选项", "B. 选项", "C. 选项", "D. 选项"],
   "answer": "A 或 填空答案 或 正确/错误 或 主观题参考答案",
@@ -18960,8 +19202,8 @@ ${sections.join('\n')}
 $richDocBlock
 
 【硬性要求】
-1. section 字段必须使用"一、单项选择题"/"二、填空题"/"三、判断题"/"四、解答题"中的对应值。
-2. 选择题必须有 4 个选项（A/B/C/D），options 形如 ["A. xxx","B. xxx","C. xxx","D. xxx"]，答案为单个字母（如 "A"）。
+1. section 与 question_type 必须严格对应：choice → "一、单项选择题"；multi_choice → "二、多项选择题"；fill → "三、填空题"；true_false → "四、判断题"；subjective → "五、解答题"。
+2. 单项选择题必须有 4 个选项（A/B/C/D），答案为单个字母；多项选择题也必须有 4 个选项，答案必须为字母数组（例如 ["A","C"]）。
 3. 判断题 options 用 ["正确","错误"]，答案为"正确"或"错误"。
 4. 填空题和主观题 options 必须是空数组 []。
 5. 题目难度从基础到综合递增。
@@ -19013,14 +19255,15 @@ $materialText
       maxBatchSize: plan.maxBatchSize,
       maxRequests: plan.safeRequestLimit,
       onProgress: onProgress,
+      onCheckpoint: onCheckpoint == null
+          ? null
+          : (items, _) async {
+              final questions = _paperQuestionsFromItems(items, typeQuotaPlan);
+              if (questions.isNotEmpty) await onCheckpoint(questions);
+            },
+      typeQuotaPlan: typeQuotaPlan,
       isValid: (item) {
-        final question = (item['question'] ?? item['title'] ?? '')
-            .toString()
-            .trim();
-        final answer = (item['answer'] ?? item['correct_answer'] ?? '')
-            .toString()
-            .trim();
-        if (question.isEmpty || answer.isEmpty) {
+        if (!_isQuestionShapeValid(item, typeQuotaPlan)) {
           schemaRejectedCount++;
           return false;
         }
@@ -19034,20 +19277,11 @@ $materialText
       },
     );
     final list = collection.items;
-    final paperQuestions = list
-        .map((item) {
-          final map = Map<String, dynamic>.from(item);
-          final q = AiQuestion.fromJson(map);
-          if (q.question.trim().isEmpty) return null;
-          return PaperQuestion(
-            section: map['section'] as String? ?? '',
-            indexInSection: (map['indexInSection'] as num?)?.toInt() ?? 0,
-            question: q,
-            knowledgePoint: (map['knowledge_point'] as String?)?.trim() ?? '',
-          );
-        })
-        .whereType<PaperQuestion>()
-        .toList();
+    final paperQuestions = _paperQuestionsFromItems(
+      list,
+      typeQuotaPlan,
+      onConversionRejected: () => schemaRejectedCount++,
+    );
     // 试卷听力题兜底：英语资料开启听力但模型返回不足时，补齐到20%-30%。
     final actualTotal = paperQuestions.length;
     final actualMinTarget = actualTotal == 0
@@ -19157,9 +19391,20 @@ $materialText
       schemaRejectedCount: schemaRejectedCount,
       policyRejectedCount: policyRejectedCount,
       finalCount: paperQuestions.length,
+      quotaRejectedCount: collection.diagnostics.acceptanceRejectedCount,
+      typeTargets: typeQuotaPlan.targets,
+      typeAccepted: typeQuotaPlan.countsForTypes(
+        paperQuestions.map((item) => item.question.type),
+      ),
+      typeMissing: typeQuotaPlan.missingForTypes(
+        paperQuestions.map((item) => item.question.type),
+      ),
     );
     debugPrint('[PaperGeneration] ${jsonEncode(diagnostics.toJson())}');
-    final status = paperQuestions.length >= totalQ
+    final quotaSatisfied = typeQuotaPlan.isSatisfiedByTypes(
+      paperQuestions.map((item) => item.question.type),
+    );
+    final status = paperQuestions.length >= totalQ && quotaSatisfied
         ? PaperGenerationStatus.success
         : paperQuestions.isEmpty
         ? PaperGenerationStatus.failed
